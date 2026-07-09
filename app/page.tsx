@@ -223,7 +223,7 @@ export default function Home() {
               <div className="w-full aspect-square bg-ivory rounded-lg mb-4 flex items-center justify-center text-muted text-xs text-center px-4">
                 [Photo placeholder]
               </div>
-              <p className="text-sm italic mb-3">"[Add a real quote here once you have one]"</p>
+              <p className="text-sm italic mb-3">"[Add quote]"</p>
               <p className="label">Name, role — e.g. Explorer-tier student</p>
             </div>
           ))}
