@@ -16,13 +16,12 @@ export default function ProjectsPage() {
           <div key={p.name} className="bg-white border border-black/10 rounded-xl p-6">
             <div className="flex justify-between mb-4">
               <span className={`label rounded px-2 py-1 ${tierColors[p.tier].badge}`}>{p.tier}</span>
-              <span className="label bg-coral/10 text-coral rounded px-2 py-1">Deployed</span>
+              <span className="label bg-coral/10 text-coral rounded px-2 py-1">Built</span>
             </div>
             <h3 className="font-bold text-xl mb-2">{p.name}</h3>
             <p className="text-muted text-sm mb-4">{p.desc}</p>
             <p className="label mb-1">Skills gained</p>
             <p className="text-sm mb-4">{p.skills}</p>
-            <p className="font-mono text-sm text-coral mb-4">↗ {p.url}</p>
             <div className="flex gap-2">
               {p.stack.map((s) => (
                 <span key={s} className="text-xs border border-black/10 rounded px-2 py-1 text-muted">

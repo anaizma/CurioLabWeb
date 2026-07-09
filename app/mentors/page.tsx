@@ -106,8 +106,7 @@ export default function MentorsPage() {
             Submit
           </button>
           <p className="text-xs text-muted">
-            Note: this form isn't wired to a backend yet — see the note on
-            hooking it up to Formspree or Resend.
+           Backend currently being worked on, will be depolyed and live soon
           </p>
         </form>
       </div>
@@ -115,10 +114,10 @@ export default function MentorsPage() {
       <div className="bg-indigo text-white rounded-2xl p-8 md:p-12">
         <h2 className="text-2xl font-bold mb-4">Questions before applying?</h2>
         <p className="text-white/70 max-w-xl mb-6">
-          Reach out and we'll walk you through what a semester actually looks
+          Reach out and we'll walk you through what a semester with CurioLab looks
           like.
         </p>
-        <a href="mailto:hello@curiolab.org" className="inline-block bg-white text-indigo px-6 py-3 rounded-md font-medium hover:bg-white/90 transition-colors">
+        <a href="mailto:aizma@curiolab.org" className="inline-block bg-white text-indigo px-6 py-3 rounded-md font-medium hover:bg-white/90 transition-colors">
           Email us →
         </a>
       </div>
