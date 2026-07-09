@@ -1,10 +1,14 @@
 import { Resend } from "resend";
 import { NextResponse } from "next/server";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export async function POST(request: Request) {
   try {
+    if (!process.env.RESEND_API_KEY) {
+      console.error("RESEND_API_KEY is not set");
+      return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const { name, email, message } = await request.json();
 
     if (!name || !email || !message) {
@@ -12,7 +16,7 @@ export async function POST(request: Request) {
     }
 
     await resend.emails.send({
-      from: "CurioLab Website <onboarding@resend.dev>", // swap for hello@curiolab.org once your domain is verified
+      from: "CurioLab Website <onboarding@resend.dev>",
       to: "hello@curiolab.org",
       replyTo: email,
       subject: `New contact form message from ${name}`,
