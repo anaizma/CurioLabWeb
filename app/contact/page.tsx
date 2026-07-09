@@ -41,7 +41,7 @@ export default function ContactPage() {
         </div>
         <div className="bg-white border border-black/10 rounded-xl p-6">
           <p className="label mb-2">Locations</p>
-          <p className="font-medium">Tucker, GA & Cleveland, OH</p>
+          <p className="font-medium">Cleveland, OH</p>
         </div>
       </div>
 
