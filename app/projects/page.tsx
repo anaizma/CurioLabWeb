@@ -7,7 +7,7 @@ export default function ProjectsPage() {
       <h1 className="text-3xl md:text-5xl font-bold mb-6">What students actually ship</h1>
       <p className="text-muted max-w-2xl mb-16">
         Real deployed work a student can hand to anyone — an admissions
-        officer, a recruiter, a grandparent. Each one is a link that opens
+        officer, a recruiter, a parent or peer. Each one is a link that opens
         something that works.
       </p>
 

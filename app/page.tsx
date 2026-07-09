@@ -141,15 +141,15 @@ export default function Home() {
       {/* Full Ladder */}
       <section className="mx-auto max-w-6xl px-6 pb-20">
         <p className="label mb-3">One program, one path</p>
-        <h2 className="text-2xl md:text-4xl font-bold mb-4">The CurioLab ladder</h2>
+        <h2 className="text-2xl md:text-4xl font-bold mb-4">The CurioLab Ladder</h2>
         <p className="text-muted max-w-2xl mb-10">
           Every student starts as an Explorer and advances on demonstrated
-          output, not time served. Each rung has someone above to learn from
+          output. Each rung has someone above to learn from
           and, eventually, someone below to teach.
         </p>
 
         <div className="border border-black/10 rounded-2xl bg-white p-8 md:p-12 divide-y divide-black/10">
-          <p className="font-mono text-sm text-muted pb-6">curiolab/</p>
+          <p className="font-mono text-sm text-muted pb-6">CurioLab/</p>
           {tiers.map((t) => {
             const c = tierColors[t.name];
             return (
@@ -178,11 +178,11 @@ export default function Home() {
 
       {/* Full Projects */}
       <section className="mx-auto max-w-6xl px-6 pb-20">
-        <p className="label mb-3">Proof, not brochure copy</p>
+        <p className="label mb-3">Projects Built</p>
         <h2 className="text-2xl md:text-4xl font-bold mb-4">What students actually ship</h2>
         <p className="text-muted max-w-2xl mb-10">
           Real deployed work a student can hand to anyone — an admissions
-          officer, a recruiter, a grandparent. Each one is a link that opens
+          officer, a recruiter, a parent or peer. Each one is a link that opens
           something that works.
         </p>
         <div className="grid md:grid-cols-2 gap-6">
@@ -221,7 +221,7 @@ export default function Home() {
           {[1, 2, 3].map((i) => (
             <div key={i} className="bg-white border border-black/10 rounded-xl p-6">
               <div className="w-full aspect-square bg-ivory rounded-lg mb-4 flex items-center justify-center text-muted text-xs text-center px-4">
-                [Photo placeholder — swap in a real student/parent/mentor photo]
+                [Photo placeholder]
               </div>
               <p className="text-sm italic mb-3">"[Add a real quote here once you have one]"</p>
               <p className="label">Name, role — e.g. Explorer-tier student</p>
