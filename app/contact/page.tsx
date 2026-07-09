@@ -35,8 +35,8 @@ export default function ContactPage() {
       <div className="grid md:grid-cols-2 gap-8 mb-16">
         <div className="bg-white border border-black/10 rounded-xl p-6">
           <p className="label mb-2">Email</p>
-          <a href="mailto:aizma@acuriolab.org" className="font-medium hover:underline">
-            aizma@acuriolab.org
+          <a href="mailto:anaizma16@gmail.com" className="font-medium hover:underline">
+            anaizma16@gmail.com
           </a>
         </div>
         <div className="bg-white border border-black/10 rounded-xl p-6">
@@ -90,7 +90,7 @@ export default function ContactPage() {
         )}
         {status === "error" && (
           <p className="text-sm text-coral font-medium">
-            Something went wrong. Please email us directly at aizma@acuriolab.org.
+            Something went wrong. Please email us directly at anaizma16@gmail.com.
           </p>
         )}
       </form>
