@@ -30,14 +30,13 @@ export default function MentorsPage() {
 
       <div className="mb-16">
         <a
-          href="#"
+          href="https://forms.gle/q6sis4exvarcpn1r9"
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-block bg-coral text-white px-8 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors"
         >
           Apply to be a mentor →
         </a>
-        <p className="text-xs text-muted mt-2">
-          Need to add our form's URL once we make it live, non-active rn
-        </p>
       </div>
 
       <div className="mb-16">
