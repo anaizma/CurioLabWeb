@@ -24,7 +24,6 @@ const evidence = [
 const tiers = [
   {
     name: "Supporter",
-    price: "$[amount]/year",
     benefits: [
       "Your name or logo listed as a program supporter",
       "Invitation to our annual Demo Day",
@@ -32,7 +31,6 @@ const tiers = [
   },
   {
     name: "Partner",
-    price: "$[amount]/year",
     benefits: [
       "Everything in Supporter",
       "A branded project track for the semester",
@@ -42,7 +40,6 @@ const tiers = [
   },
   {
     name: "Founding Partner",
-    price: "$[amount]/year",
     benefits: [
       "Everything in Partner",
       "Direct input on which community problems students tackle that semester",
@@ -93,7 +90,6 @@ export default function SupportPage() {
           {tiers.map((t) => (
             <div key={t.name} className="bg-white border border-black/10 rounded-xl p-6">
               <h3 className="font-bold text-lg mb-1">{t.name}</h3>
-              <p className="text-coral font-mono text-sm mb-4">{t.price}</p>
               <ul className="space-y-2 text-sm">
                 {t.benefits.map((b) => (
                   <li key={b} className="border-b border-black/10 pb-2">{b}</li>
