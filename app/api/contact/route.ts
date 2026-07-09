@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     await resend.emails.send({
       from: "CurioLab Website <onboarding@resend.dev>",
-      to: "hello@curiolab.org",
+      to: "aizma@acuriolab.org",
       replyTo: email,
       subject: `New contact form message from ${name}`,
       text: `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`,
