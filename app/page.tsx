@@ -102,8 +102,7 @@ export default function Home() {
       <section className="mx-auto max-w-6xl px-6 pb-20">
         <p className="label mb-3">The gap we fill</p>
         <h2 className="text-2xl md:text-4xl font-bold max-w-2xl">
-          Schools teach subjects. Clubs build narrow skills. Hackathons end on
-          Sunday.
+          Schools teach subjects. Clubs build narrow skills. Hackathons last a day.
         </h2>
         <p className="text-muted mt-4 max-w-2xl">
           The students who figure it out anyway usually had a parent who was

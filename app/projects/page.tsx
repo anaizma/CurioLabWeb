@@ -3,7 +3,7 @@ import { projects, tierColors } from "@/lib/data";
 export default function ProjectsPage() {
   return (
     <div className="mx-auto max-w-6xl px-6 py-20">
-      <p className="label mb-3">Proof, not brochure copy</p>
+      <p className="label mb-3">Projects Built</p>
       <h1 className="text-3xl md:text-5xl font-bold mb-6">What students actually ship</h1>
       <p className="text-muted max-w-2xl mb-16">
         Real deployed work a student can hand to anyone — an admissions
