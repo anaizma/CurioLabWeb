@@ -1,4 +1,6 @@
 "use client";
+import Image from "next/image";
+
 
 import Link from "next/link";
 import { useState } from "react";
@@ -19,7 +21,8 @@ export default function Nav() {
     <header className="border-b border-black/10 bg-cream sticky top-0 z-50">
       <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-bold text-lg">
-          <span className="inline-block w-6 h-6 rounded bg-coral" />
+          <Image src="/images/projects/logoo.png" alt="CurioLab logo" width={28} height={28} />
+
           CurioLab
         </Link>
 

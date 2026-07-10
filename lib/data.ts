@@ -42,7 +42,7 @@ export const projects = [
     desc: "A working alarm clock students designed and built — set and stop alarms, a buzzer for sound, and a snooze function.",
     skills: "Reading button inputs and real-time logic in Arduino C++, controlling a buzzer output, and working with an LCD display to show the current time and alarm state.",
     stack: ["Arduino", "C++", "LCD Display"],
-    image: "/images/projects/alarm-clock.jpg",
+    image: "/images/projects/alarmclock.jpeg",
   },
   {
     tier: "Explorer",
@@ -50,7 +50,7 @@ export const projects = [
     desc: "A physical timer that runs a Pomodoro-style focus schedule, alternating work and break intervals for study sessions.",
     skills: "Programming timed states and countdowns in C++, driving an LCD display to show live status, and designing a simple, clear physical interface.",
     stack: ["Arduino Nano", "C++", "LCD Display"],
-    image: "/images/projects/pomodoro-timer.jpg",
+    image: "/images/projects/projects.jpeg",
   },
   {
     tier: "Builder",
@@ -58,7 +58,7 @@ export const projects = [
     desc: "A 3D-modeled safe enclosure with a working locking mechanism and passcode entry, built piece by piece from a CAD model.",
     skills: "Constructing individual mechanical parts — the locking mechanism, enclosure, and keypad housing — based on a CAD model, and writing the passcode logic in Arduino C++.",
     stack: ["Arduino", "C++", "CAD"],
-    image: "/images/projects/electronic-safe.jpg",
+    image: "/images/projects/safe.jpeg",
   },
   {
     tier: "Builder",
@@ -66,6 +66,6 @@ export const projects = [
     desc: "A remote-controlled car students wired and programmed from scratch — drives forward and backward on command.",
     skills: "Motor control and driver circuits, receiving and interpreting remote signals, and debugging real hardware behavior in real time.",
     stack: ["Arduino Nano", "C++", "Motors"],
-    image: "/images/projects/robotic-car.jpg",
+    image: "/images/projects/projects.jpeg",
   },
 ];

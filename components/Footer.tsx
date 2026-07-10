@@ -1,4 +1,6 @@
 import Link from "next/link";
+import Image from "next/image";
+
 
 export default function Footer() {
   return (
@@ -6,7 +8,7 @@ export default function Footer() {
       <div className="mx-auto max-w-6xl px-6 py-16 grid grid-cols-2 md:grid-cols-4 gap-10">
         <div className="col-span-2">
           <div className="flex items-center gap-2 font-bold text-lg mb-3">
-            <span className="inline-block w-6 h-6 rounded bg-coral" />
+            <Image src="/images/projects/logoo.png" alt="CurioLab logo" width={28} height={28} />
             CurioLab
           </div>
           <p className="text-muted text-sm max-w-xs">
