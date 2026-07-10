@@ -98,7 +98,7 @@ export default function SupportPage() {
             </div>
           ))}
         </div>
-        <a href="mailto:hello@curiolab.org" className="text-coral font-medium hover:underline block mt-8">
+        <a href="mailto:aizma@curiolab.org" className="text-coral font-medium hover:underline block mt-8">
           Sponsor inquiry →
         </a>
       </section>
@@ -118,7 +118,7 @@ export default function SupportPage() {
               chapter at your school, we'd love to talk early — nothing
               formal yet, just a conversation.
             </p>
-            <a href="mailto:hello@curiolab.org" className="text-coral font-medium hover:underline">
+            <a href="mailto:aizma@curiolab.org" className="text-coral font-medium hover:underline">
               Get in touch about starting a chapter →
             </a>
           </div>

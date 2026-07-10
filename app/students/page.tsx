@@ -80,7 +80,7 @@ export default function StudentsPage() {
       </div>
 
       <div className="mt-16 text-center">
-        <a href="mailto:hello@curiolab.org" className="inline-block bg-coral text-white px-8 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
+        <a href="mailto:aizma@curiolab.org" className="inline-block bg-coral text-white px-8 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
           Apply to join →
         </a>
       </div>
