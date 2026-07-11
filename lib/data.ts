@@ -39,7 +39,7 @@ export const projects = [
   {
     tier: "Explorer",
     name: "Alarm Clock",
-    desc: "A working alarm clock students designed and built — set and stop alarms, a buzzer for sound, and a snooze function.",
+    desc: "A working alarm clock students designed and built: set and stop alarms, a buzzer for sound, and a snooze function.",
     skills: "Reading button inputs and real-time logic in Arduino C++, controlling a buzzer output, and working with an LCD display to show the current time and alarm state.",
     stack: ["Arduino", "C++", "LCD Display"],
     image: "/images/projects/alarmclock.jpeg",
@@ -55,7 +55,7 @@ export const projects = [
   {
     tier: "Builder",
     name: "Electronic Safe",
-    desc: "A 3D-modeled safe enclosure with a working locking mechanism and passcode entry, built piece by piece from a CAD model.",
+    desc: "A 3D-modeled safe enclosure with a working locking mechanism and passcode entry, built piece by piece from the circuit to the CAD model.",
     skills: "Constructing individual mechanical parts — the locking mechanism, enclosure, and keypad housing — based on a CAD model, and writing the passcode logic in Arduino C++.",
     stack: ["Arduino", "C++", "CAD"],
     image: "/images/projects/safe.jpeg",
