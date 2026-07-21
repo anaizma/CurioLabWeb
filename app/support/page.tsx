@@ -2,7 +2,7 @@ const evidence = [
   {
     n: "01",
     title: "Learner progression records",
-    desc: "Tier advancement, project completion, and attendance for every 5th–12th grade student.",
+    desc: "Tier advancement, project completion, and attendance for every 6th–12th grade student.",
   },
   {
     n: "02",
@@ -61,7 +61,7 @@ export default function SupportPage() {
           <p className="text-white/70 max-w-2xl mb-12">
             Most STEM grant narratives describe activities. CurioLab's
             platform, Luminent, produces documented proof of work at every
-            level — which is rare in the 5th–12th grade STEM space, and the
+            level — which is rare in the 6th–12th grade STEM space, and the
             reason CurioLab competes above its weight class for funding.
           </p>
 

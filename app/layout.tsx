@@ -19,7 +19,7 @@ const editorial = Work_Sans({
 export const metadata: Metadata = {
   title: "CurioLab — The infrastructure layer for student-led impact",
   description:
-    "CurioLab takes students in grades 5 through 12 from curiosity to a deployed project — with structured curriculum, near-peer mentors, co-founders, and access to a university lab.",
+    "CurioLab takes students in grades 6 through 12 from curiosity to a deployed project — with structured curriculum, near-peer mentors, co-founders, and access to a university lab.",
 };
 
 export default function RootLayout({

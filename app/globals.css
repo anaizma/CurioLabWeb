@@ -35,3 +35,28 @@ body {
 .label {
   @apply font-mono text-xs uppercase tracking-widest text-muted;
 }
+
+@keyframes ink-morph {
+  0%, 100% { border-radius: 42% 58% 65% 35% / 45% 40% 60% 55%; }
+  33% { border-radius: 63% 37% 40% 60% / 55% 65% 35% 45%; }
+  66% { border-radius: 35% 65% 55% 45% / 40% 50% 50% 60%; }
+}
+@keyframes ink-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes fade-in {
+  to { opacity: 1; }
+}
+
+.ink-blob {
+  animation: ink-morph 16s ease-in-out infinite, ink-spin 40s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ink-blob { animation: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
