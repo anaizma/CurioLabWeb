@@ -10,6 +10,26 @@ Milestone 0 (schema, triggers, authorization engine, session auth, audit log, th
 
 Therefore the fall 2026 cohort runs on paper: signed forms, a spreadsheet roster, and the documented manual process in [paper-period.md](paper-period.md). Milestones 0 and 1 target the spring 2027 cohort, with the legal review landing well ahead of it. This is the same principle as the rest of the plan: the platform must not touch a real child's data before the floor under it is sound, and a rushed intake system holding real families is worse than no system. Two consequences are designed now, not later: the paper period is import-ready (mapping in [06](06-onboarding-flows.md), discipline in [paper-period.md](paper-period.md)), and the same guarantees run as a documented manual process during the paper period.
 
+## Buildable now versus live with real data
+
+The legal review gates **real families' data reaching production, not the code**. All of
+Milestone 1 is buildable and testable now against synthetic data (the embedded-Postgres
+harness), and should be, so it is ready the day the review clears. What the gate forbids is a
+real child's data flowing through an un-reviewed path in production.
+
+Two consequences for the application funnel:
+
+- **Stage 1 lead capture has no gate at all.** It collects a parent or guardian email and
+  nothing about a child, so it is outside COPPA's minor-data surface — the same category as the
+  public site. It ships during the paper period as live interest capture, and its
+  unconverted-lead deletion is the § 312.4(c)(1)(vii) job from
+  [compliance-coppa.md](compliance-coppa.md) 1.5 / Part 3.
+- **Stages 2 and 3 are built and tested against synthetic data**, but do not collect a real
+  family's data in production until the review clears. The public write now creates an
+  `application_lead` (parent email only), superseding the earlier single-row `application` that
+  collected a child's name at the public endpoint. See
+  [plans/milestone-1-application-funnel.md](plans/milestone-1-application-funnel.md).
+
 ## Milestone 0: The floor (the founder builds and locks this)
 
 Not user-facing. The spine every feature hangs off, built first because retrofitting it is the expensive failure mode.
