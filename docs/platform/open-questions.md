@@ -4,16 +4,17 @@ Each item names its owner and what it blocks. Legal items gate Milestone 1 going
 
 ## Awaiting legal review
 
-The founder is not a lawyer and this needs a nonprofit attorney with COPPA competence. Finding and briefing that person is itself weeks, which is part of why fall 2026 runs on paper.
+The founder is not a lawyer and this needs a nonprofit attorney with COPPA competence. The list below is narrowed by the analysis in [compliance-coppa.md](compliance-coppa.md), which resolved several items against the amended rule (16 CFR Part 312, 90 FR 16977). Item L1 is the one that could change posture materially; L2 through L5 are narrow.
 
 | # | question | owner | blocks |
 |---|---|---|---|
-| L1 | **Deletion versus seven-year retention.** COPPA gives a parent the right to delete a child's personal information; the retention commitment exists so verification URLs work. These cannot both be absolute. The design implements either answer (tiered full-erase versus redaction preserving an anonymized verification skeleton), but which is lawful, and whether a refusal to fully erase is defensible, is a legal question. This is the top item. | attorney, then founder | deletion fulfillment tooling (M4), and the wording of the retention promise |
-| L2 | **Age-18 authority transfer.** Whether guardian read access may lawfully persist past 18 even briefly (the design keeps it through `maturation_pending` and to a 90-day backstop). | attorney | the coming-of-age flow copy and the backstop period |
-| L3 | **Safeguarding consent suspension.** Whether a staff member may suspend a minor's `public_profile` and `photo_media` on a safeguarding concern pending a new guardian, which is a staff write to consent, the one sanctioned exception to guardian-or-self. | attorney | the safeguarding path going live |
-| L4 | **A minor in a paid, company-like staff role.** An Innovator who becomes a Junior Mentor may be 17, holding a paid role while still a minor with guardian consents. Labor and COPPA implications. | attorney | activating minor mentors |
-| L5 | **Whether the signed form plus manual name-match is sufficient verifiable parental consent.** The mechanism is a recognized COPPA method, but confirm for this exact process, including the `in_person_witnessed` and `sms_form_match` variants. | attorney | the guardianship floor as designed |
-| L6 | **COPPA data-review and deletion portal adequacy.** Whether the guardian portal as specified satisfies the parent's review and deletion rights in substance, not just form. | attorney | guardian portal sign-off |
+| L1 | **Does the § 312.2 nonprofit exclusion apply**, given the Luminent licensing relationship and shared founder? Build assuming no. The open complications are curriculum licensing to for-profit businesses and sponsorship framing. | attorney | posture only; build proceeds to full compliance regardless |
+| L2 | **Is seven-year retention of the verification skeleton** (tier, project titles, dates, mentor hours) defensible under § 312.10 as reasonably necessary? | attorney | the retention number for that one data class |
+| L3 | **Confirm § 312.6(c) termination** is the right response to a parent's deletion demand, and what notice the family is owed. | attorney | deletion fulfillment copy |
+| L4 | **Ohio requirements for a seventeen-year-old in a paid staff role** over younger minors. | attorney | activating minor mentors |
+| L5 | **Whether guardian read access may persist past 18** during the maturation window. | attorney | the coming-of-age copy and the backstop period |
+
+Retained design flag, not on the narrowed list but worth the attorney's eye if it goes live: the safeguarding consent suspension (a staff write to consent) in [04-state-machines.md](04-state-machines.md).
 
 FERPA is not built for now. It may apply later if CurioLab partners with a school district or receives federal funding. Two places are cheap to keep FERPA-ready and are already built that way: the audit `detail` plus the `minor_record.read` action make an access log a query, and the clean separation of verified academic-ish data from narrative and community content keeps a future directory-versus-protected-record line drawable. Neither costs anything today.
 
@@ -34,3 +35,14 @@ FERPA is not built for now. It may apply later if CurioLab partners with a schoo
 - Moderation owner is the Chapter Director, with instructors as first responders and escalation to `platform_admin`.
 - Billing is external (Stripe); scholarships are native.
 - Feed reading requires `platform_participation` for minors.
+
+## Resolved by the COPPA analysis (see [compliance-coppa.md](compliance-coppa.md))
+
+- **Deletion versus retention** is not a standoff. § 312.6 gives the parent's deletion right priority and § 312.6(c) permits terminating participation as the consequence. Deletion ends participation and the verification record; this is stated in the consent form.
+- **Retention is tiered by data class**, not a blanket seven years, per § 312.10. Contact details, DOB, and community content age out at active enrollment plus one year; only the verification skeleton and consent evidence keep the longer window.
+- **The signed-form consent method is valid** under § 312.5(b)(2)(i), scan or in-person. `email_plus` and `text_plus` are unavailable because CurioLab discloses.
+- **Public visibility requires separate consent** (§ 312.5(a)(2)) and cannot gate participation (§ 312.7). Already designed; now enforced as a check.
+
+## Documents to write (not code), tracked in [compliance-coppa.md](compliance-coppa.md)
+
+- Written data retention policy (§ 312.10), written information security program (§ 312.8(b), founder as coordinator), online privacy notice (§ 312.4(d)), and third-party written assurances (§ 312.8(c)) from the Postgres host, R2, and Resend.

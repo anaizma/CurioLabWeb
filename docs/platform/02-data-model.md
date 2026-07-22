@@ -150,12 +150,15 @@ Guardian access derives entirely from a `verified` row. `rejected` is a name mis
 | action | enum(`grant`,`revoke`) | revocation is a new row |
 | source | enum(`signed_form`,`digital`) | |
 | source_ref | uuid fk null | the document, for form-sourced rows |
+| enrollment_record_id | uuid fk null | non-null when `source = 'signed_form'`; the temporal anchor |
 | scope_ref | uuid fk null | the specific project or issue, for `external_publication` |
 | granted_by | uuid fk null | guardian, or the student if 18+; backfilled for form-sourced rows |
 | effective_at | timestamptz | the guardian's decision instant; signature date for a form |
 | reason | enum(`standard`,`safeguarding`) | safeguarding is a staff-initiated revoke |
 
-Constraints: a `data_collection` row with `source = 'signed_form'` and null `source_ref` is invalid; `external_publication` requires non-null `scope_ref`; `effective_at` may not be in the future and may not precede the related enrollment record.
+Constraints: a `data_collection` row with `source = 'signed_form'` and null `source_ref` is invalid; a `signed_form` row with null `enrollment_record_id` is invalid; `external_publication` requires non-null `scope_ref`; `effective_at` may not be in the future and may not precede the **application submission date** (reached through `enrollment_record.application_id`), not the enrollment record's own creation. A signature date legitimately precedes the upload, so the enrollment record's `created_at` is the wrong floor; the application submission is the earliest meaningful anchor because a guardian cannot sign consent for a program not yet applied to. This is the ruled fix for the gap noted in [BUILD-STATUS.md](BUILD-STATUS.md).
+
+Retention of consent rows follows the tiered schedule in [compliance-coppa.md](compliance-coppa.md) 1.5: consent evidence is kept seven years as audit defense.
 
 Current state ordering: order by `effective_at DESC`, with `seq` as tiebreaker only for identical `effective_at`. `effective_at` is the guardian's decision, `seq` is filing order. See the two ordering tests in [07](07-test-plan.md).
 

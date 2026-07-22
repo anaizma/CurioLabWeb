@@ -62,6 +62,10 @@ For a team that turns over every semester, the reasoning matters more than the c
 
 **The schedule was the last thing to get honest.** Artifact 9 wrote the phasing as though fall 2026 was achievable. It is not, for one founder with the legal review as a hard gate. The fall cohort runs on paper; Milestones 0 and 1 target spring 2027.
 
+**Seven-year blanket retention was never lawful under the amended rule.** Locked decision 9 from the brief applied one number to everything. § 312.10 (new in the 2025 amendments) requires retention only as long as reasonably necessary per purpose, forbids indefinite retention, and requires a written policy published in the notice. Retention is now tiered by data class: the verification skeleton and consent evidence keep the seven-year window, but contact details, DOB, and community content age out at active enrollment plus one year. See [compliance-coppa.md](compliance-coppa.md) 1.5.
+
+**The deletion-versus-retention conflict was not a standoff.** It was flagged as needing a legal opinion. § 312.6(a)(2) gives the parent's deletion right priority and § 312.6(c) permits terminating participation as the consequence, so it resolves in the parent's favor by reading the rule. Deletion ends participation and the verification record, stated in the consent form. See [compliance-coppa.md](compliance-coppa.md) 1.6.
+
 ## Documentation corrections to carry into the vision document
 
 - The vision document says grades 7 through 12 in several places. The ruling is **6 through 12**. Update the document and the site copy.

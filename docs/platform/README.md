@@ -28,10 +28,13 @@ The architecture is competent but not unusual. What makes it durable for a team 
 | [06-onboarding-flows.md](06-onboarding-flows.md) | Guardian, student, mentor, staff, coming-of-age, and paper-period import |
 | [07-test-plan.md](07-test-plan.md) | Test layers, the authorization matrix, the must-not register |
 | [08-build-phasing.md](08-build-phasing.md) | Milestones, ordering, and the fall-on-paper ruling |
+| [compliance-coppa.md](compliance-coppa.md) | COPPA findings under the amended rule, the consent-flow build spec, and the retention schedule; authoritative on retention, deletion, and consent separability |
 | [decision-log.md](decision-log.md) | What was decided, what was rejected, and why, including the corrections |
 | [open-questions.md](open-questions.md) | Items awaiting legal review and items still undecided |
 | [paper-period.md](paper-period.md) | Fall 2026 manual process and import-ready form and folder discipline |
+| [BUILD-STATUS.md](BUILD-STATUS.md) | What is coded and verified, what needs the operator, and known gaps |
+| [plans/milestone-0.md](plans/milestone-0.md) | Milestone 0 execution plan (built and verified) |
 
 ## Status
 
-The design is complete and approved. The fall 2026 cohort runs on paper per [08-build-phasing.md](08-build-phasing.md). Milestones 0 and 1 target the spring 2027 cohort, gated on the legal review tracked in [open-questions.md](open-questions.md). The only deliverable with an unmoved deadline is [paper-period.md](paper-period.md).
+The design is complete and approved, and Milestone 0 is built and verified (see [BUILD-STATUS.md](BUILD-STATUS.md)). The COPPA analysis in [compliance-coppa.md](compliance-coppa.md) resolved the deletion and retention questions and narrowed the legal review to the items in [open-questions.md](open-questions.md). Milestone 1 is being built against local Postgres with synthetic data; it does not go live with real families' data until the legal review clears. The only deliverable with an unmoved deadline is [paper-period.md](paper-period.md).
