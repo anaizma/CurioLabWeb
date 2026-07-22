@@ -209,6 +209,7 @@ export type Capability =
   | 'application.transition'
   | 'enrollment.create'
   | 'member.invite'
+  | 'guardianship.verify'
   | 'profile.edit_narrative'
   | 'narrative.review'
   | 'verification.regenerate'

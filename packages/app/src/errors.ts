@@ -78,3 +78,34 @@ export class GuardianInviteEmailMismatchError extends Error {
     this.name = 'GuardianInviteEmailMismatchError'
   }
 }
+
+/** The referenced guardianship edge does not exist (verify of an unknown id). */
+export class GuardianshipNotFoundError extends Error {
+  readonly guardianshipId: string
+  constructor(guardianshipId: string) {
+    super(`guardianship not found: ${guardianshipId}`)
+    this.name = 'GuardianshipNotFoundError'
+    this.guardianshipId = guardianshipId
+  }
+}
+
+/**
+ * The requested guardianship state change is not a legal edge of the
+ * guardianship lifecycle (04-state-machines). Verification only ever fires on a
+ * `pending` edge; an already `verified`, `rejected`, `revoked`, or `lapsed` edge
+ * is not verifiable. Carries the structured reason from `canTransition` so a
+ * route can map it to a 409, distinct from a Forbidden (an authorization failure
+ * that leaks no reason).
+ */
+export class IllegalGuardianshipTransitionError extends Error {
+  readonly from: string | null
+  readonly to: string
+  readonly reason: TransitionResult['reason']
+  constructor(from: string | null, to: string, reason: TransitionResult['reason']) {
+    super(`illegal guardianship transition ${from ?? '(none)'} -> ${to}${reason ? ` (${reason})` : ''}`)
+    this.name = 'IllegalGuardianshipTransitionError'
+    this.from = from
+    this.to = to
+    this.reason = reason
+  }
+}

@@ -41,7 +41,8 @@ export type TransitionCapability =
   | 'membership.offboard'
   | 'membership.suspend'
   | 'membership.reinstate'
-  | 'guardianship.verify'
+  // 'guardianship.verify' is now a first-class Capability (added in M1 step 4),
+  // so it arrives via `Capability` above and is not redeclared here.
   | 'guardianship.revoke'
   | 'maturation.confirm'
   | 'newsletter.submit_review'

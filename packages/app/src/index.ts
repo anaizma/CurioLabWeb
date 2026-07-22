@@ -38,6 +38,13 @@ export type {
   UsernameCredentials,
   AcceptInviteResult,
 } from './invite.js'
+export { GuardianshipService } from './guardianship.js'
+export type {
+  GuardianshipServiceDeps,
+  GuardianshipAuthorizeFn,
+  VerifyGuardianshipOptions,
+  VerifyGuardianshipResult,
+} from './guardianship.js'
 export {
   InMemoryStorageAdapter,
   R2StorageAdapter,
@@ -57,6 +64,8 @@ export {
   INVITE_INITIAL_DELIVERY_STATUS,
   GUARDIAN_RELATIONSHIP_DEFAULT,
   GUARDIAN_VERIFICATION_METHOD,
+  normalizeGuardianName,
+  guardianNamesMatch,
   type InviteInitialDeliveryStatus,
   type GuardianRelationship,
   type GuardianVerificationMethod,
@@ -74,4 +83,6 @@ export {
   InvalidInviteError,
   InviteCredentialMismatchError,
   GuardianInviteEmailMismatchError,
+  GuardianshipNotFoundError,
+  IllegalGuardianshipTransitionError,
 } from './errors.js'

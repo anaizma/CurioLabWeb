@@ -182,6 +182,17 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director', 'comms_associate'],
     writes: true,
   },
+  // guardianship verify (Flow A step 6; 04-state-machines guardianship
+  // "pending -> verified" / "pending -> rejected", both triggered by
+  // `guardianship.verify`, actor chapter_director). The name-on-account /
+  // name-on-form match is the authority floor: on match the edge verifies, on
+  // mismatch it is rejected and the accepting account closed. Chapter-scoped to
+  // the enrolling chapter; the write is the whole verify/reject decision.
+  'guardianship.verify': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
 
   // ---- profile / narrative -------------------------------------------------
   'profile.edit_narrative': {

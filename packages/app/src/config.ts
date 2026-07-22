@@ -67,7 +67,41 @@ export const INVITE_INITIAL_DELIVERY_STATUS: InviteInitialDeliveryStatus = 'sent
 export type GuardianRelationship = 'parent' | 'guardian' | 'other'
 export const GUARDIAN_RELATIONSHIP_DEFAULT: GuardianRelationship = 'guardian'
 export type GuardianVerificationMethod = 'signed_form_match' | 'in_person_witnessed' | 'sms_form_match'
+/**
+ * The default `verification_method` recorded when a guardianship edge is
+ * verified (Flow A step 6). The spec/task refers to this informally as the
+ * "signed_form_scan" method; the schema enum value that encodes it is
+ * `signed_form_match` (02-data-model guardianship). `in_person_witnessed` is
+ * supported as a per-call input override; `sms_form_match` is reserved for a
+ * later SMS flow. A value, not a literal, per compliance-coppa.md Part 3
+ * "Configuration, not code".
+ */
 export const GUARDIAN_VERIFICATION_METHOD: GuardianVerificationMethod = 'signed_form_match'
+
+/**
+ * The guardian name-match normalization (Flow A step 6, the authority floor).
+ * We compare the accepting account's `legal_name` to
+ * `enrollment_record.guardian_name_on_form` after, in order:
+ *   1. Unicode NFC normalization (so combining vs precomposed forms compare equal),
+ *   2. trimming leading/trailing whitespace,
+ *   3. collapsing every internal whitespace run to a single space,
+ *   4. locale-independent case folding (`toLowerCase`).
+ *
+ * This deliberately forgives ONLY casing and spacing — the differences a
+ * transcriber introduces copying a signature onto a form — while treating a
+ * genuinely different name as a mismatch, which on Flow A step 6 rejects the
+ * edge and closes the account. Diacritics are PRESERVED (NFC, not stripped):
+ * "Jose" and "José" are different names, because accent-stripping would
+ * over-match and weaken the authority floor. Punctuation is likewise preserved.
+ */
+export function normalizeGuardianName(name: string): string {
+  return name.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+/** Whether two names match under {@link normalizeGuardianName}. */
+export function guardianNamesMatch(a: string, b: string): boolean {
+  return normalizeGuardianName(a) === normalizeGuardianName(b)
+}
 
 export interface AppConfig {
   dedupeWindowMs: number
@@ -87,6 +121,8 @@ export interface AppConfig {
   guardianRelationshipDefault: GuardianRelationship
   /** the intended verification_method on a pending guardianship edge. */
   guardianVerificationMethod: GuardianVerificationMethod
+  /** the guardian name-match predicate (Flow A step 6); a config-not-code tunable. */
+  guardianNameMatch: (nameOnAccount: string, nameOnForm: string) => boolean
 }
 
 export const defaultConfig: AppConfig = {
@@ -99,4 +135,5 @@ export const defaultConfig: AppConfig = {
   inviteInitialDeliveryStatus: INVITE_INITIAL_DELIVERY_STATUS,
   guardianRelationshipDefault: GUARDIAN_RELATIONSHIP_DEFAULT,
   guardianVerificationMethod: GUARDIAN_VERIFICATION_METHOD,
+  guardianNameMatch: guardianNamesMatch,
 }

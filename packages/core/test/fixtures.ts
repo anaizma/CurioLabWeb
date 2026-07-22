@@ -368,6 +368,11 @@ export const enrollmentInC1: Resource = { id: 'enrollment-1', chapter_id: C1 }
 // is the chapter the invite is issued into; no subject snapshot.
 export const inviteInC1: Resource = { chapter_id: C1 }
 
+// guardianship verify (Flow A step 6, the name-match authority floor) —
+// chapter-scoped ops write, resolved against the enrolling chapter; no subject
+// consent snapshot (verification precedes any digital consent).
+export const guardianshipInC1: Resource = { id: 'guardianship-1', chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,
