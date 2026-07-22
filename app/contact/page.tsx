@@ -25,9 +25,9 @@ export default function ContactPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-20">
-      <p className="label mb-3">Get in touch</p>
+      <p className="label-blue mb-3">Get in touch</p>
       <h1 className="text-3xl md:text-5xl font-bold mb-6">Contact</h1>
-      <p className="text-muted max-w-xl mb-12">
+      <p className="text-black max-w-xl mb-12">
         Questions about applying, mentoring, sponsoring, or starting a
         chapter — reach out and a real person will get back to you.
       </p>

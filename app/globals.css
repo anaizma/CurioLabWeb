@@ -27,13 +27,20 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Page background: white by default; the homepage re-tints its own wrapper. */
 body {
-  background-color: var(--color-cream);
+  background-color: #FFFFFF;
   color: var(--color-ink);
 }
 
 .label {
   @apply font-mono text-xs uppercase tracking-widest text-muted;
+}
+
+/* Blue eyebrow variant — section kickers, for a brighter accent than muted brown. */
+.label-blue {
+  @apply font-mono text-xs uppercase tracking-widest;
+  color: #5d7ed1;
 }
 
 @keyframes ink-morph {

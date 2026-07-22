@@ -44,7 +44,7 @@ const voices = [
 
 export default function Home() {
   return (
-    <div>
+    <div className="bg-[#FFFDFB]">
       {/* Hero */}
       <section className="relative isolate overflow-hidden">
         <div
@@ -67,9 +67,8 @@ export default function Home() {
               </span>
             </h1>
             <p className="text-[19px] font-medium leading-relaxed text-[#3d3630] max-w-[42ch] mb-8 opacity-0 animate-[fade-in_0.8s_ease_300ms_forwards]">
-              CurioLab is a multi-semester program for grades 6–12. Students
-              learn to develop and program, work with university mentors and
-              labs, and become an engineer with something real they made.
+              CurioLab is a <span className="font-bold">multi-semester</span> engineering program for students in grades 6–12. With <span className="font-bold">continuous university mentorship</span>, real tools and labs, and increasingly ambitious projects, students learn to design, build, and program—developing the skills and independence to turn their own ideas into reality.
+
             </p>
             <div className="flex flex-wrap gap-4 mb-11 opacity-0 animate-[fade-in_0.8s_ease_420ms_forwards]">
               <Link href="/students" className="bg-coral text-white px-6 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
@@ -112,7 +111,7 @@ export default function Home() {
       {/* Full Projects */}
       <section className="mx-auto max-w-6xl px-6 pt-20 pb-20">
         <h2 className="text-2xl md:text-5xl font-bold mb-10">What students built</h2>
-        <p className="text-muted max-w-3xl mb-10">
+        <p className="text-black max-w-3xl mb-10">
           Projects students designed, prototyped, and got working, with their mentors.
         </p>
         <div className="grid md:grid-cols-2 gap-6">
@@ -137,7 +136,7 @@ export default function Home() {
 
       {/* Voices — teaser, links to full /stories page */}
       <section className="mx-auto max-w-6xl px-6 pb-20">
-        <p className="label mb-3">In their own words</p>
+        <p className="label-blue mb-3">In their own words</p>
         <h2 className="text-2xl md:text-4xl font-bold mb-10">Experiences from current students</h2>
         <div className="grid md:grid-cols-3 gap-6">
           {voices.map((v) => (
@@ -186,7 +185,7 @@ export default function Home() {
 
       {/* Get involved — condensed teaser, full detail lives on /support */}
       <section className="mx-auto max-w-6xl px-6 py-16">
-        <p className="text-muted">
+        <p className="text-black">
           Want to get involved as a funder, a school, or a family?{" "}
           <Link href="/support" className="text-coral font-medium hover:underline">
             See how to partner with CurioLab →
@@ -196,11 +195,11 @@ export default function Home() {
 
       {/* Final CTA */}
       <section className="mx-auto max-w-6xl px-6 pb-20 text-center">
-        <p className="label mb-4">Fall 2026 Cohort · Applications Open</p>
+        <p className="label-blue mb-4">Fall 2026 Cohort · Applications Open</p>
         <h2 className="font-editorial font-light text-3xl md:text-5xl leading-tight max-w-2xl mx-auto mb-6">
           Ready to see what your student could build?
         </h2>
-        <p className="text-muted max-w-xl mx-auto mb-8">
+        <p className="text-black max-w-xl mx-auto mb-8">
           Applications for the Fall 2026 cohort are open now. No experience
           required — just curiosity.
         </p>

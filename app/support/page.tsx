@@ -79,11 +79,11 @@ export default function SupportPage() {
 
       {/* Sponsorship tiers */}
       <section className="mx-auto max-w-6xl px-6 py-20">
-        <p className="label mb-3">Sponsor a cohort</p>
+        <p className="label-blue mb-3">Sponsor a cohort</p>
         <h2 className="text-2xl md:text-4xl font-bold mb-4">
           Fund a project track, meet builders before anyone else recruits them
         </h2>
-        <p className="text-muted max-w-2xl mb-12">
+        <p className="text-black max-w-2xl mb-12">
           Put your name on real, deployed student work — not a flyer.
         </p>
         <div className="grid md:grid-cols-3 gap-6">
@@ -105,14 +105,14 @@ export default function SupportPage() {
 
       {/* Other ways to get involved */}
       <section className="mx-auto max-w-6xl px-6 py-20">
-        <p className="label mb-3">Get involved</p>
+        <p className="label-blue mb-3">Get involved</p>
         <h2 className="text-2xl md:text-4xl font-bold mb-12">
           Other ways to back student builders
         </h2>
         <div className="space-y-10">
           <div className="border-b border-black/10 pb-10">
             <h3 className="text-xl font-bold mb-2">Start a chapter</h3>
-            <p className="text-muted max-w-2xl mb-4">
+            <p className="text-black max-w-2xl mb-4">
               We're just beginning to explore bringing CurioLab to additional
               universities beyond CWRU. If you're interested in starting a
               chapter at your school, we'd love to talk early — nothing
@@ -124,7 +124,7 @@ export default function SupportPage() {
           </div>
           <div className="border-b border-black/10 pb-10">
             <h3 className="text-xl font-bold mb-2">Refer a student</h3>
-            <p className="text-muted max-w-2xl mb-4">
+            <p className="text-black max-w-2xl mb-4">
               Teachers and counselors are our most trusted pipeline. If a
               student you know wants to build, send them our way.
             </p>

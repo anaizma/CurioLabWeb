@@ -29,9 +29,9 @@ const staff = [
 export default function TeamPage() {
   return (
     <div className="mx-auto max-w-6xl px-6 py-20">
-      <p className="label mb-3">Who runs CurioLab</p>
+      <p className="label-blue mb-3">Who runs CurioLab</p>
       <h1 className="text-3xl md:text-5xl font-bold mb-6">The Team</h1>
-      <p className="text-muted max-w-2xl mb-16">
+      <p className="text-black max-w-2xl mb-16">
         CurioLab is run by a student-led team, a rotating bench of
         near-peer student mentors, and a university lab that supervises
         Innovator and University-tier work.
