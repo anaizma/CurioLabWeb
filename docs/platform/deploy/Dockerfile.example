@@ -1,0 +1,31 @@
+# CurioLab platform backend container (template, Milestone 0.5)
+#
+# Not wired into the repo root deliberately; the marketing site has its own
+# deploy. Adapt when the platform app entrypoint exists (Milestone 1+).
+#
+# Single always-on container: the app plus the pg-boss worker. Run the
+# migrations in packages/db/migrations before first boot.
+
+# --- build stage ---
+FROM node:20-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages ./packages
+# Install workspace deps (core, db, runtime, and the app once it exists).
+RUN npm ci
+# Build the workspace packages. Add the Next app build here at Milestone 1+.
+RUN npm run build --workspaces --if-present
+
+# --- runtime stage ---
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /app ./
+# Health check hits the app's /healthz once the app entrypoint exists.
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+EXPOSE 3000
+# Runs the app server and the pg-boss worker in one container to start;
+# split into two processes later if load requires. Placeholder command until
+# the Milestone 1 entrypoint lands.
+CMD ["node", "packages/runtime/dist/server.js"]
