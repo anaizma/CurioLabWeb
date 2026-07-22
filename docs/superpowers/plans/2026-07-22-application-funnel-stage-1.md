@@ -183,11 +183,30 @@ When the backend agent restructures `application` for the funnel, fold Stage 1 i
   creates the `application`.
 - No student email is ever collected; the 2B link is delivered to the parent.
 
-## Retention job
+## Retention job — aligns with the backend's § 312.4(c)(1)(vii) work
 
 `sweepExpiredLeads` deletes unconverted leads past `expires_at` (30 days) — the
-§ 312.4(c)(1)(vii) delete-if-no-consent obligation. Wire it to the platform's pg-boss worker at
-go-live; until then it is invokable directly.
+§ 312.4(c)(1)(vii) delete-if-no-consent obligation.
+
+The backend agent already implemented this obligation for the *current* model (commit
+`3da1b5b`): `packages/app/src/retention.ts` defines the canonical 30-day consent-seeking window,
+and `packages/app/src/retention-sweep.ts` (`sweepUnconsentedApplications`) redacts stale
+`application` rows and writes an audit entry citing `16 CFR 312.4(c)(1)(vii)`. My
+`sweepExpiredLeads` is the **funnel-model version of the same job**, on `application_lead`
+instead of `application`.
+
+Alignment for Phase 2:
+
+- Source the window from `packages/app/src/retention.ts`, not a second hardcoded constant
+  (`LEAD_TTL_MS` mirrors it for now).
+- Consolidate `sweepUnconsentedApplications` and `sweepExpiredLeads` into one sweep once the
+  funnel supersedes the single-row model — the lead becomes the thing holding "contact
+  information collected to seek consent," so the sweep target moves from `application` to
+  `application_lead`.
+- Match their audit-entry shape (`citation: '16 CFR 312.4(c)(1)(vii)'`) when the sweep moves
+  into `packages/app`.
+
+Wire it to the platform's pg-boss worker at go-live; until then it is invokable directly.
 
 ## Go-live dependencies (not provisioned here)
 
