@@ -30,6 +30,8 @@ import {
   membershipInC1,
   guardianshipInC1,
   dobCorrectInC1,
+  deletionRequestInC1,
+  exportRequestInC1,
   safetyReport,
   ordinaryReport,
   childRecordOfS,
@@ -381,6 +383,26 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectAllow(actors.platform_admin, 'dob.correct', dobCorrectInC1) // platformGrant
     expectDeny(actors.chapter_director_c2, 'dob.correct', dobCorrectInC1, 'out_of_scope')
     expectDeny(actors.lead_instructor_c1, 'dob.correct', dobCorrectInC1, 'role_not_permitted')
+  })
+
+  test('deletion.review (ops review, chapter-scoped write; director, or admin via platformGrant)', () => {
+    expectAllow(actors.chapter_director_c1, 'deletion.review', deletionRequestInC1)
+    expectAllow(actors.platform_admin, 'deletion.review', deletionRequestInC1) // platformGrant
+    expectDeny(actors.chapter_director_c2, 'deletion.review', deletionRequestInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'deletion.review', deletionRequestInC1, 'role_not_permitted')
+  })
+
+  test('deletion.fulfill (tiered erase/redaction, chapter-scoped write; director only)', () => {
+    expectAllow(actors.chapter_director_c1, 'deletion.fulfill', deletionRequestInC1)
+    expectDeny(actors.chapter_director_c2, 'deletion.fulfill', deletionRequestInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'deletion.fulfill', deletionRequestInC1, 'role_not_permitted')
+    expectDeny(actors.student_18, 'deletion.fulfill', deletionRequestInC1, 'role_not_permitted')
+  })
+
+  test('export.fulfill (the review-right deliverable, chapter-scoped write; director only)', () => {
+    expectAllow(actors.chapter_director_c1, 'export.fulfill', exportRequestInC1)
+    expectDeny(actors.chapter_director_c2, 'export.fulfill', exportRequestInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'export.fulfill', exportRequestInC1, 'role_not_permitted')
   })
 
   test('platform override does not clear subject consent (admin) but grants scope+role (staff read)', () => {

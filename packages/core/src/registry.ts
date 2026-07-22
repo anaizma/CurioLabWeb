@@ -218,6 +218,30 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+  // deletion review + tiered fulfillment, and export fulfillment (the ops
+  // compliance side of Milestone 1; 04-state-machines deletion_request lifecycle;
+  // compliance-coppa.md 1.6 the parent's deletion right + § 312.6(c) termination,
+  // Part 3 tiered deletion; Part 2 Stage 4 the export review-right). All three are
+  // chapter-scoped ops writes performed by the Chapter Director (packages/app
+  // DeletionFulfillmentService / ExportFulfillmentService), resolved against the
+  // subject's enrolling chapter; platform_admin is covered by platformGrant. No
+  // subject-consent snapshot: a deletion HONORS a parent's direction (it is not
+  // gated on the child's own consent), and the export is the parent's review right.
+  'deletion.review': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+  'deletion.fulfill': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+  'export.fulfill': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
 
   // ---- profile / narrative -------------------------------------------------
   'profile.edit_narrative': {

@@ -384,6 +384,14 @@ export const guardianshipInC1: Resource = { id: 'guardianship-1', chapter_id: C1
 // resource. No consent snapshot (a factual correction, not a consent decision).
 export const dobCorrectInC1: Resource = { id: 'acct-child-in-pod', chapter_id: C1 }
 
+// deletion review + fulfillment, and export fulfillment (the ops compliance side
+// of Milestone 1) — chapter-scoped ops writes, resolved against the subject's
+// enrolling chapter. The resource is the request row scoped to that chapter; no
+// subject-consent snapshot (a deletion honors the parent's direction, an export
+// is the parent's review right).
+export const deletionRequestInC1: Resource = { id: 'deletion-request-1', chapter_id: C1 }
+export const exportRequestInC1: Resource = { id: 'export-request-1', chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,

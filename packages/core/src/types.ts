@@ -223,3 +223,7 @@ export type Capability =
   | 'guardian.request_export'
   | 'guardian.request_deletion'
   | 'guardian.view_digest'
+  // ops deletion review + tiered fulfillment, and export fulfillment (M1 step 8)
+  | 'deletion.review'
+  | 'deletion.fulfill'
+  | 'export.fulfill'

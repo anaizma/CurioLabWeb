@@ -243,6 +243,78 @@ export class IllegalMembershipTransitionError extends Error {
   }
 }
 
+/** The referenced deletion_request does not exist (review/fulfill of an unknown id). */
+export class DeletionRequestNotFoundError extends Error {
+  readonly deletionRequestId: string
+  constructor(deletionRequestId: string) {
+    super(`deletion request not found: ${deletionRequestId}`)
+    this.name = 'DeletionRequestNotFoundError'
+    this.deletionRequestId = deletionRequestId
+  }
+}
+
+/** The referenced export_request does not exist (fulfill of an unknown id). */
+export class ExportRequestNotFoundError extends Error {
+  readonly exportRequestId: string
+  constructor(exportRequestId: string) {
+    super(`export request not found: ${exportRequestId}`)
+    this.name = 'ExportRequestNotFoundError'
+    this.exportRequestId = exportRequestId
+  }
+}
+
+/**
+ * A deletion/export decision names a subject account with no enrollment record,
+ * so the enrolling chapter cannot be resolved and the decision cannot be scoped
+ * or authorized. A student always has a seeding enrollment record; this guards a
+ * misuse (mirrors DobCorrectionSubjectNotFoundError).
+ */
+export class DeletionSubjectChapterNotFoundError extends Error {
+  readonly subjectAccountId: string
+  constructor(subjectAccountId: string) {
+    super(`no enrollment record found to scope a deletion/export for account: ${subjectAccountId}`)
+    this.name = 'DeletionSubjectChapterNotFoundError'
+    this.subjectAccountId = subjectAccountId
+  }
+}
+
+/**
+ * The requested deletion_request state change is not a legal edge of the
+ * deletion lifecycle (04-state-machines): fulfillment (`fulfilled_full`,
+ * `fulfilled_redaction`, `partially_fulfilled`, `refused`) is only ever reached
+ * from `under_review`, so a request that was never reviewed (still `requested`)
+ * or already decided cannot be fulfilled. Carries the structured reason from
+ * `canTransition` so a route can map it to a 409, distinct from a Forbidden.
+ */
+export class IllegalDeletionTransitionError extends Error {
+  readonly from: string | null
+  readonly to: string
+  readonly reason: TransitionResult['reason']
+  constructor(from: string | null, to: string, reason: TransitionResult['reason']) {
+    super(`illegal deletion transition ${from ?? '(none)'} -> ${to}${reason ? ` (${reason})` : ''}`)
+    this.name = 'IllegalDeletionTransitionError'
+    this.from = from
+    this.to = to
+    this.reason = reason
+  }
+}
+
+/**
+ * A `partial` (partially_fulfilled) deletion outcome was applied without a
+ * documented `decision_reason`. Unlike `refused` (whose reason is a DB CHECK,
+ * migration 0008), a partial fulfillment has no database check, so the service
+ * enforces the "a partial fulfillment carries a documented reason" rule
+ * (04-state-machines deletion_request; compliance-coppa.md Part 3).
+ */
+export class DeletionReasonRequiredError extends Error {
+  readonly decision: string
+  constructor(decision: string) {
+    super(`a ${decision} deletion outcome requires a documented decision_reason`)
+    this.name = 'DeletionReasonRequiredError'
+    this.decision = decision
+  }
+}
+
 /**
  * The requested guardianship state change is not a legal edge of the
  * guardianship lifecycle (04-state-machines). Verification only ever fires on a

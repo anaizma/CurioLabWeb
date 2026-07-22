@@ -141,6 +141,24 @@ export {
   type SweepUnconsentedApplicationsDeps,
   type SweepUnconsentedApplicationsResult,
 } from './retention-sweep.js'
+export { DeletionFulfillmentService } from './deletion-fulfillment.js'
+export type {
+  DeletionFulfillmentServiceDeps,
+  DeletionFulfillmentAuthorizeFn,
+  DeletionOutcome,
+  DeletionRequestStatus,
+  ReviewDeletionResult,
+  FulfillDeletionResult,
+} from './deletion-fulfillment.js'
+export { ExportFulfillmentService } from './export-fulfillment.js'
+export type {
+  ExportFulfillmentServiceDeps,
+  ExportFulfillmentAuthorizeFn,
+  ExportBundle,
+  ExportMembershipView,
+  ExportTierTransitionView,
+  FulfillExportResult,
+} from './export-fulfillment.js'
 export {
   IllegalTransitionError,
   ApplicationNotFoundError,
@@ -160,4 +178,9 @@ export {
   ConsentScopeRefRequiredError,
   ConsentEnrollmentNotFoundError,
   GuardianChildNotFoundError,
+  DeletionRequestNotFoundError,
+  ExportRequestNotFoundError,
+  DeletionSubjectChapterNotFoundError,
+  IllegalDeletionTransitionError,
+  DeletionReasonRequiredError,
 } from './errors.js'
