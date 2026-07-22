@@ -31,6 +31,10 @@ html {
 body {
   background-color: #FFFFFF;
   color: var(--color-ink);
+  /* Floor the layout so the persistent header controls — logo, Log in, Apply,
+     and the menu button — always fit on one static-height row. Below this the
+     page scrolls horizontally rather than letting the controls overlap. */
+  min-width: 440px;
 }
 
 .label {

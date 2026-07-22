@@ -3,9 +3,16 @@ import Image from "next/image";
 
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-// Always shown inline in the header bar (on desktop).
+// Measure before paint on the client; fall back to useEffect during SSR so
+// React doesn't warn about useLayoutEffect on the server.
+const useIsoLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+// Shown inline in the header bar, widest-first. As the window narrows the whole
+// cluster shifts toward the logo first (see the fit logic below); only once that
+// shift is exhausted do links peel off from the right end into the drawer.
 const primaryLinks = [
   { href: "/about", label: "About CurioLab" },
   { href: "/chapter-model", label: "Chapter Model" },
@@ -40,6 +47,40 @@ const studentLinks = [
 export default function Nav() {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
+
+  // Two-phase responsive header: the control cluster shifts toward the logo
+  // (via justify-between shrinking the middle gap) until it is snug against it —
+  // the max shift. Only then, as the window keeps narrowing, do primary links
+  // drop from the right end one at a time. This is measured, not guessed: on
+  // every resize we reveal all links, then hide from the end while the row
+  // overflows, so a link disappears exactly when one more pixel wouldn't fit.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+
+  useIsoLayoutEffect(() => {
+    const row = rowRef.current;
+    const nav = navRef.current;
+    if (!row || !nav) return;
+    const links = Array.from(nav.children) as HTMLElement[];
+
+    const fit = () => {
+      links.forEach((el) => {
+        el.style.display = "";
+      });
+      // Hide from the right while the cluster overflows the available width.
+      for (let i = links.length - 1; i >= 0; i--) {
+        if (row.scrollWidth <= row.clientWidth) break;
+        links[i].style.display = "none";
+      }
+    };
+
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(row);
+    // Label widths change once the brand font swaps in — remeasure then.
+    document.fonts?.ready.then(fit).catch(() => {});
+    return () => ro.disconnect();
+  }, []);
 
   // Lock background scroll and allow Escape to close while the drawer is open.
   useEffect(() => {
@@ -78,7 +119,13 @@ export default function Nav() {
   return (
     <>
       <header className="border-b border-black/10 bg-cream sticky top-0 z-50">
-        <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between gap-4">
+        {/* justify-between lets the controls glide toward the logo as the window
+            narrows; the min gap-8 is the shift cap — the cluster can never slide
+            closer to the logo than this, so nothing ever overlaps it. */}
+        <div
+          ref={rowRef}
+          className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between gap-8"
+        >
           <Link
             href="/"
             onClick={close}
@@ -89,17 +136,13 @@ export default function Nav() {
             CurioLab
           </Link>
 
-          <div className="flex shrink-0 items-center gap-4 lg:gap-6 xl:gap-8">
-            {/* Primary links reveal in tiers as the viewport widens, and peel
-                off from the least-essential end as it narrows — so they never
-                crowd the logo. Everything remains reachable via the drawer. */}
-            <nav className="hidden lg:flex items-center gap-6 xl:gap-8 text-sm">
-              {primaryLinks.map((l, i) => (
+          <div className="flex shrink-0 items-center gap-6 xl:gap-8">
+            <nav ref={navRef} className="flex items-center gap-6 xl:gap-8 text-sm">
+              {primaryLinks.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
-                  // First two show at lg; the last two only at xl.
-                  className={`${i >= 2 ? "hidden xl:inline" : ""} whitespace-nowrap hover:text-coral transition-colors`}
+                  className="whitespace-nowrap hover:text-coral transition-colors"
                 >
                   {l.label}
                 </Link>
