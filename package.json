@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npm run test --workspace=@curiolab/core"
+    "test": "npm run test --workspaces --if-present"
   },
   "dependencies": {
     "next": "16.2.10",
