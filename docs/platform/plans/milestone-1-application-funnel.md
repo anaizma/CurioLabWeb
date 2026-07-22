@@ -1,82 +1,48 @@
-# Milestone 1 — Application funnel: coordination plan
+# Milestone 1 application funnel: lead versus application
 
-Status: living. Stage-1 owner (this doc): the web/frontend agent. Platform backend
-(`packages/*`) owner: the backend agent.
+This plan records the split the build-phasing doc introduced: the public endpoint collects a parent email and nothing about a child, and a child's data enters only later, staff-side and gated. It supersedes the earlier single-row `application` that collected a child's name at the public endpoint (built in M1 step 1 and reworked here). It is grounded in [../08-build-phasing.md](../08-build-phasing.md) "Buildable now versus live with real data" and [../compliance-coppa.md](../compliance-coppa.md).
 
-This is the shared record so the two efforts connect cleanly. Read it before touching the
-application funnel from either side.
+## Why the split
 
-## Why this exists
+The public application endpoint is the one surface a stranger reaches unauthenticated. If it collects a child's name and school, that is a child's personal information collected before any consent, at the least controlled point in the system. Collecting only a parent or guardian email at Stage 1 keeps the public surface outside COPPA's minor-data category (the same category as the public marketing site), which is why Stage 1 can go live during the paper period while Stages 2 and 3 wait behind the legal review.
 
-The application funnel reshapes intake into stages: Stage 1 collects only a parent email (no
-child data); Stage 2 (2A parent / 2B student / 2C parent-submit) collects the rest under one
-token and submits as a parent action; Stage 3 is post-acceptance consent. Design spec:
-[../../superpowers/specs/2026-07-22-application-funnel-stage-1-design.md](../../superpowers/specs/2026-07-22-application-funnel-stage-1-design.md).
+## The three stages
 
-## Division of work
+### Stage 1: lead capture (public, no gate, no child data)
 
-### Built now, by the web agent (Stage 1, self-contained)
+`application_lead` is the public write. It carries a parent or guardian email and nothing else identifying a child.
 
-To avoid colliding with the backend agent's live, uncommitted work in `packages/app` and
-`packages/db`, Stage 1 is deliberately self-contained in the web app and touches no package:
+| application_lead | type | notes |
+|---|---|---|
+| id | uuid | |
+| email | citext | parent or guardian email, the only contact datum |
+| source | text | where the lead came from |
+| status | enum(`new`,`contacted`,`converted`,`deleted`) | |
+| chapter_id | uuid fk null | if the form was chapter-specific |
+| converted_application_id | uuid fk null | set when a lead becomes an application |
+| contacted_at, converted_at, deleted_at | timestamptz null | |
 
-- `app/apply/page.tsx` — the Stage-1 form (parent email, filler role, chapter, source).
-- `app/api/apply/route.ts` — the public write; calls the lead service, sends emails.
-- `lib/leads/*` — a small lead service (`createLead`, `sweepExpiredLeads`) over a `LeadStore`
-  interface, with an in-memory store for dev/test and a `postgres` adapter for production.
-- `db/application_lead.sql` — the `application_lead` table DDL (web-app-owned for now).
-- Emails via Resend: a parent receipt (no live link yet) and a staff notification.
+- The public write `submitLead(email, source)` is unauthenticated and inert: it creates one `application_lead` in `new`, no account, no child data. Rate limiting and the bot check are HTTP-layer concerns. Dedupe on `email` within a configurable window.
+- Because it holds only a parent email collected to seek consent, its deletion when a lead does not convert within the window is the § 312.4(c)(1)(vii) job: unconverted leads older than the consent-seeking window (30 days, config) are deleted. This replaces the earlier sweep that redacted child PII from stale applications, because there is no longer child PII at this stage.
 
-### The Phase-2 handoff (backend agent owns, when convenient)
+### Stage 2: application (staff-gated, child data enters here)
 
-When the backend agent restructures `application` for the funnel, fold Stage 1 in:
+A staff member converts a lead into a full `application`, which is where the child's name, grade, school, guardian name, and the signed-form pipeline begin. This is the existing `application` entity and the existing ops review flow (screen, interview, accept, decline, withdraw, reopen), unchanged except that it is created by conversion rather than by the public endpoint.
 
-1. **Move the lead model into `packages/db`**: an `application_lead` table (columns as in
-   `db/application_lead.sql`), replacing the web-app-owned copy — a Drizzle def + a migration
-   (`0005_application_lead.sql` or the next free number).
-2. **Move lead logic into `packages/app`**: `LeadService.createLead` / `sweepExpiredLeads`
-   mirroring `lib/leads/service.ts`, gated the same inert way as the current public write.
-3. **Supersede `submitApplication`**: the public write creates a *lead*, not an `application`
-   row with a child's name. `application.applicant_name` / `applicant_contact_email` (currently
-   NOT NULL) move off the public path; child facts arrive at 2A and the row is created at 2C.
-4. **Repoint the web route** `app/api/apply/route.ts` from `lib/leads` to `@curiolab/app`.
-5. **Retire** `db/application_lead.sql` and `lib/leads/*` once the above lands.
+- `convertLead(leadId, applicationInput, ctx)` is gated through `authorize` under `application.transition` (a lead-to-application conversion is a staff action). It creates the `application` linked back to the lead (`converted_application_id`), sets the lead `status = 'converted'`, and is atomic.
+- The `application` no longer has a public creation path. Its retention follows the fuller schedule: contact details age out at active enrollment plus one year per [../compliance-coppa.md](../compliance-coppa.md) 1.5.
 
-### The token / 2A–2B–2C contract (for Phase 2)
+### Stage 3: enrollment and onward
 
-- One token per application, shared by 2A/2B/2C with a section parameter; 30-day expiry at
-  request time; partial answers persist against the token; consumed at 2C submit.
-- `application_lead.token_hash` issued at Stage 1 is the seed; `converted_at` is set when 2C
-  creates the `application`.
-- No student email is ever collected; the 2B link is delivered to the parent.
+Unchanged from the flows in [../06-onboarding-flows.md](../06-onboarding-flows.md): enrollment record, signed-form storage, coupling D, the guardian and student invites, verification, consent, and activation.
 
-## Retention job — aligns with the backend's § 312.4(c)(1)(vii) work
+## What this changes in the built code (rework)
 
-`sweepExpiredLeads` deletes unconverted leads past `expires_at` (30 days) — the
-§ 312.4(c)(1)(vii) delete-if-no-consent obligation.
+1. **Add `application_lead`** table and migration.
+2. **Rework the public write:** `submitApplication` at the public endpoint becomes `submitLead` creating an `application_lead`. The full `application` creation moves to `convertLead`, staff-gated.
+3. **Rework the retention sweep:** `sweepUnconsentedApplications` becomes `sweepUnconvertedLeads`, deleting unconverted `application_lead` rows older than the window and writing the same PII-free `retention.*` audit entry. The child-PII-redaction path over `application` is retired, because the public surface no longer collects child PII.
+4. **Update step 1 and retention tests** to the lead model.
 
-The backend agent already implemented this obligation for the *current* model (commit
-`3da1b5b`): `packages/app/src/retention.ts` defines the canonical 30-day consent-seeking window,
-and `packages/app/src/retention-sweep.ts` (`sweepUnconsentedApplications`) redacts stale
-`application` rows and writes an audit entry citing `16 CFR 312.4(c)(1)(vii)`. My
-`sweepExpiredLeads` is the **funnel-model version of the same job**, on `application_lead`
-instead of `application`.
+## Live-during-paper-period note
 
-Alignment for Phase 2:
-
-- Source the window from `packages/app/src/retention.ts`, not a second hardcoded constant
-  (`LEAD_TTL_MS` mirrors it for now).
-- Consolidate `sweepUnconsentedApplications` and `sweepExpiredLeads` into one sweep once the
-  funnel supersedes the single-row model — the lead becomes the thing holding "contact
-  information collected to seek consent," so the sweep target moves from `application` to
-  `application_lead`.
-- Match their audit-entry shape (`citation: '16 CFR 312.4(c)(1)(vii)'`) when the sweep moves
-  into `packages/app`.
-
-Wire it to the platform's pg-boss worker at go-live; until then it is invokable directly.
-
-## Go-live dependencies (not provisioned here)
-
-- A provisioned Postgres (`DATABASE_URL`) with `db/application_lead.sql` applied.
-- The transactional email subdomain with SPF/DKIM/DMARC (currently the Resend sandbox sender).
-- The pg-boss schedule for `sweepExpiredLeads`.
+Stage 1 lead capture is the only part of Milestone 1 that may run live during the paper period, because it collects no child data. Stages 2 and 3 are built and tested against synthetic data now and go live only when the legal review in [../open-questions.md](../open-questions.md) clears.
