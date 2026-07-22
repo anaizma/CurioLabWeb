@@ -143,6 +143,23 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     subjectConsent: externalPublicationForItems,
   },
 
+  // ---- application funnel (ops back office) --------------------------------
+  // 05-api-surface: GET/PATCH /ops/applications -> application.view /
+  // application.transition. 04-state-machines names the actor as
+  // "relations_manager or chapter_director"; relations_manager is not a modeled
+  // Role, so the ops floor here is chapter_director (documented in the app-layer
+  // report). Chapter-scoped; the transition is the mutating capability.
+  'application.view': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  'application.transition': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+
   // ---- profile / narrative -------------------------------------------------
   'profile.edit_narrative': {
     scope: 'own',

@@ -24,6 +24,7 @@ import {
   projectPublicUnconsented,
   narrativeOwnedBy,
   narrativeReviewC1,
+  applicationInC1,
   safetyReport,
   ordinaryReport,
   childRecordOfS,
@@ -332,6 +333,16 @@ describe('capability coverage: allow and deny for every registry key', () => {
   test('guardian.view_digest', () => {
     expectAllow(actors.guardian_of_S, 'guardian.view_digest', guardianResourceOf(CHILD_S))
     expectDeny(actors.no_membership, 'guardian.view_digest', guardianResourceOf(CHILD_S), 'out_of_scope')
+  })
+
+  test('application.view (ops back office, chapter-scoped)', () => {
+    expectAllow(actors.chapter_director_c1, 'application.view', applicationInC1)
+    expectDeny(actors.lead_instructor_c1, 'application.view', applicationInC1, 'role_not_permitted')
+  })
+
+  test('application.transition (ops back office, chapter-scoped write)', () => {
+    expectAllow(actors.chapter_director_c1, 'application.transition', applicationInC1)
+    expectDeny(actors.student_18, 'application.transition', applicationInC1, 'role_not_permitted')
   })
 
   test('platform override does not clear subject consent (admin) but grants scope+role (staff read)', () => {

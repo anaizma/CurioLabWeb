@@ -205,6 +205,8 @@ export type Capability =
   | 'project.submit'
   | 'project.verify'
   | 'project.publish_public'
+  | 'application.view'
+  | 'application.transition'
   | 'profile.edit_narrative'
   | 'narrative.review'
   | 'verification.regenerate'
