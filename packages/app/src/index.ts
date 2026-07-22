@@ -98,6 +98,23 @@ export type {
   RevokeCascade,
 } from './consent.js'
 export {
+  SEVEN_YEARS_MS,
+  ONE_YEAR_MS,
+  CONSENT_SEEKING_WINDOW_MS,
+  CONTACT_TOMBSTONE,
+  RETENTION_SCHEDULE,
+  defaultRetentionConfig,
+  type RetentionAnchor,
+  type RetentionRule,
+  type RetentionDataClass,
+  type RetentionConfig,
+} from './retention.js'
+export {
+  sweepUnconsentedApplications,
+  type SweepUnconsentedApplicationsDeps,
+  type SweepUnconsentedApplicationsResult,
+} from './retention-sweep.js'
+export {
   IllegalTransitionError,
   ApplicationNotFoundError,
   InviteNotFoundError,
