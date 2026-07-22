@@ -208,6 +208,7 @@ export type Capability =
   | 'application.view'
   | 'application.transition'
   | 'enrollment.create'
+  | 'member.invite'
   | 'profile.edit_narrative'
   | 'narrative.review'
   | 'verification.regenerate'

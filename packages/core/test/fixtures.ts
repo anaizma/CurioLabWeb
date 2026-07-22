@@ -364,6 +364,10 @@ export const applicationInC1: Resource = { id: 'application-1', chapter_id: C1 }
 // enrollment upload (coupling D) — chapter-scoped ops write, no subject snapshot.
 export const enrollmentInC1: Resource = { id: 'enrollment-1', chapter_id: C1 }
 
+// invite issue / resend (member.invite) — chapter-scoped ops write. The resource
+// is the chapter the invite is issued into; no subject snapshot.
+export const inviteInC1: Resource = { chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,

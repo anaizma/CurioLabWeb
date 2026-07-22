@@ -26,6 +26,7 @@ import {
   narrativeReviewC1,
   applicationInC1,
   enrollmentInC1,
+  inviteInC1,
   safetyReport,
   ordinaryReport,
   childRecordOfS,
@@ -350,6 +351,13 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectAllow(actors.chapter_director_c1, 'enrollment.create', enrollmentInC1)
     expectDeny(actors.chapter_director_c2, 'enrollment.create', enrollmentInC1, 'out_of_scope')
     expectDeny(actors.lead_instructor_c1, 'enrollment.create', enrollmentInC1, 'role_not_permitted')
+  })
+
+  test('member.invite (ops invite issue/resend, chapter-scoped write; director or comms)', () => {
+    expectAllow(actors.chapter_director_c1, 'member.invite', inviteInC1)
+    expectAllow(actors.comms_associate_c1, 'member.invite', inviteInC1)
+    expectDeny(actors.chapter_director_c2, 'member.invite', inviteInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'member.invite', inviteInC1, 'role_not_permitted')
   })
 
   test('platform override does not clear subject consent (admin) but grants scope+role (staff read)', () => {

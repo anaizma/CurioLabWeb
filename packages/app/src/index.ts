@@ -25,6 +25,19 @@ export type {
   CreateEnrollmentResult,
   SignedForm,
 } from './enrollment.js'
+export { InviteService } from './invite.js'
+export type {
+  InviteServiceDeps,
+  InviteAuthorizeFn,
+  InviteKind,
+  IssueInviteInput,
+  IssueInviteResult,
+  ValidateInviteResult,
+  AcceptCredentials,
+  EmailCredentials,
+  UsernameCredentials,
+  AcceptInviteResult,
+} from './invite.js'
 export {
   InMemoryStorageAdapter,
   R2StorageAdapter,
@@ -40,6 +53,13 @@ export {
   SIGNED_FORM_KEY_PREFIX,
   SIGNED_FORM_CONTENT_TYPE,
   type FormSourcedConsentType,
+  INVITE_TTL_MS,
+  INVITE_INITIAL_DELIVERY_STATUS,
+  GUARDIAN_RELATIONSHIP_DEFAULT,
+  GUARDIAN_VERIFICATION_METHOD,
+  type InviteInitialDeliveryStatus,
+  type GuardianRelationship,
+  type GuardianVerificationMethod,
 } from './config.js'
 export {
   writeApplicationEvent,
@@ -47,4 +67,11 @@ export {
   type ApplicationEventInput,
   type Db,
 } from './events.js'
-export { IllegalTransitionError, ApplicationNotFoundError } from './errors.js'
+export {
+  IllegalTransitionError,
+  ApplicationNotFoundError,
+  InviteNotFoundError,
+  InvalidInviteError,
+  InviteCredentialMismatchError,
+  GuardianInviteEmailMismatchError,
+} from './errors.js'

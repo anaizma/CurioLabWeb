@@ -168,6 +168,20 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+  // invite issue / resend (Flow A step 3, Flow B via guardian, Flow C step 2,
+  // Flow E step 1; 05-api-surface POST /ops/invites, /:id/resend). The account
+  // machine names the actor set "director, comms, admin" (04-state-machines
+  // account row "(none) -> invited"): chapter_director and comms_associate are
+  // the modeled chapter roles; platform_admin is covered by platformGrant (the
+  // Seed-chapter and admin case in Flow E step 3). Chapter-scoped; the resource
+  // is the chapter the invite is issued into. The three unauthenticated accept
+  // endpoints carry no AuthContext and do NOT pass through here (05-api-surface
+  // "single-code-path invariant").
+  'member.invite': {
+    scope: 'chapter',
+    roles: ['chapter_director', 'comms_associate'],
+    writes: true,
+  },
 
   // ---- profile / narrative -------------------------------------------------
   'profile.edit_narrative': {
