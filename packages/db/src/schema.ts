@@ -324,6 +324,11 @@ export const consent = pgTable('consent', {
   action: consentActionEnum('action').notNull(),
   source: consentSourceEnum('source').notNull(),
   sourceRef: uuid('source_ref'),
+  // The temporal anchor for a form-sourced grant (02-data-model.md): non-null
+  // when source = 'signed_form'. effective_at is floored at the submission date
+  // of the application reached through this enrollment record, not the record's
+  // own created_at. Enforced in 0004_consent_temporal_rule.sql.
+  enrollmentRecordId: uuid('enrollment_record_id').references(() => enrollmentRecord.id),
   scopeRef: uuid('scope_ref'),
   grantedBy: uuid('granted_by').references(() => account.id),
   effectiveAt: timestamp('effective_at', { withTimezone: true }).notNull(),

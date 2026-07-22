@@ -72,12 +72,28 @@ describe('Form-sourced consent checks', () => {
     `).rejects.toThrow(/source_ref/i)
   })
 
-  test('data_collection signed_form with a source_ref is accepted (control)', async () => {
+  test('data_collection signed_form with a source_ref and enrollment link is accepted (control)', async () => {
+    // Under the ruled change a signed_form row must also name its enrollment
+    // anchor and carry a signature date not before the application submission.
     const s = await student()
+    const chapter = await makeChapter(h.sql)
+    const term = await makeTerm(h.sql, chapter)
+    const issuer = await makeAdult(h.sql)
+    const application = await makeApplication(h.sql, chapter, 'parent@example.test')
+    const enrollment = await makeEnrollment(h.sql, {
+      applicationId: application,
+      chapterId: chapter,
+      termId: term,
+      createdBy: issuer,
+    })
     const rows = await h.sql`
-      insert into consent (student_account_id, type, action, source, source_ref, effective_at, reason)
-      values (${s}, 'data_collection', 'grant', 'signed_form', ${randomUUID()}, '2025-01-01', 'standard')
-      returning id
+      insert into consent (
+        student_account_id, type, action, source, source_ref, enrollment_record_id,
+        effective_at, reason
+      ) values (
+        ${s}, 'data_collection', 'grant', 'signed_form', ${randomUUID()}, ${enrollment},
+        now(), 'standard'
+      ) returning id
     `
     expect(rows.length).toBe(1)
   })
@@ -105,6 +121,107 @@ describe('Form-sourced consent checks', () => {
     await expect(h.sql`
       insert into consent (student_account_id, type, action, source, effective_at, reason)
       values (${s}, 'platform_participation', 'grant', 'digital', '2099-01-01', 'standard')
+    `).rejects.toThrow(/future/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+describe('Consent enrollment link and temporal rule (ruled change)', () => {
+  // Build an accepted application + enrollment with EXPLICIT timestamps, so the
+  // temporal floor (the application submission date) and the enrollment
+  // record's own creation can be placed on either side of a signature date.
+  async function enrollmentWith(opts: {
+    submittedAt: string
+    enrollmentCreatedAt: string
+  }): Promise<{ studentId: string; enrollmentId: string }> {
+    const chapter = await makeChapter(h.sql)
+    const term = await makeTerm(h.sql, chapter)
+    const issuer = await makeAdult(h.sql)
+    const student = await makeMinor(h.sql)
+    const [app] = await h.sql`
+      insert into application (
+        kind, chapter_id, status, applicant_name, applicant_contact_email,
+        guardian_name, guardian_email, created_at
+      ) values (
+        'student', ${chapter}, 'accepted', 'Minor Testchild',
+        'parent@example.test', 'Parent Testperson', 'parent@example.test', ${opts.submittedAt}
+      ) returning id
+    `
+    const [enr] = await h.sql`
+      insert into enrollment_record (
+        application_id, student_account_id, chapter_id, term_id, signed_form_ref,
+        guardian_name_on_form, created_by, created_at
+      ) values (
+        ${app!.id}, ${student}, ${chapter}, ${term}, ${randomUUID()},
+        'Parent Testperson', ${issuer}, ${opts.enrollmentCreatedAt}
+      ) returning id
+    `
+    return { studentId: student, enrollmentId: enr!.id as string }
+  }
+
+  test('a signed_form consent with null enrollment_record_id is rejected', async () => {
+    const s = await makeMinor(h.sql)
+    await expect(h.sql`
+      insert into consent (
+        student_account_id, type, action, source, source_ref, enrollment_record_id,
+        effective_at, reason
+      ) values (
+        ${s}, 'enrollment', 'grant', 'signed_form', ${randomUUID()}, null,
+        '2026-01-01T00:00:00Z', 'standard'
+      )
+    `).rejects.toThrow(/enrollment_record|signed_form/i)
+  })
+
+  test('a signature after submission but before the enrollment record creation is accepted (the old rule got this wrong)', async () => {
+    // Application submitted Jan 1; guardian signs the form Feb 1; staff upload
+    // the scan (enrollment record created) Mar 1. The old rule floored at the
+    // enrollment record's created_at (Mar 1) and wrongly rejected a Feb 1
+    // signature; the new rule floors at the Jan 1 submission and accepts it.
+    const { studentId, enrollmentId } = await enrollmentWith({
+      submittedAt: '2026-01-01T00:00:00Z',
+      enrollmentCreatedAt: '2026-03-01T00:00:00Z',
+    })
+    const rows = await h.sql`
+      insert into consent (
+        student_account_id, type, action, source, source_ref, enrollment_record_id,
+        effective_at, reason
+      ) values (
+        ${studentId}, 'enrollment', 'grant', 'signed_form', ${randomUUID()}, ${enrollmentId},
+        '2026-02-01T00:00:00Z', 'standard'
+      ) returning id
+    `
+    expect(rows.length).toBe(1)
+  })
+
+  test('an effective_at before the application submission date is rejected', async () => {
+    const { studentId, enrollmentId } = await enrollmentWith({
+      submittedAt: '2026-01-01T00:00:00Z',
+      enrollmentCreatedAt: '2026-03-01T00:00:00Z',
+    })
+    await expect(h.sql`
+      insert into consent (
+        student_account_id, type, action, source, source_ref, enrollment_record_id,
+        effective_at, reason
+      ) values (
+        ${studentId}, 'enrollment', 'grant', 'signed_form', ${randomUUID()}, ${enrollmentId},
+        '2025-12-01T00:00:00Z', 'standard'
+      )
+    `).rejects.toThrow(/submission|precede/i)
+  })
+
+  test('a future effective_at is rejected even with an enrollment link', async () => {
+    const { studentId, enrollmentId } = await enrollmentWith({
+      submittedAt: '2026-01-01T00:00:00Z',
+      enrollmentCreatedAt: '2026-03-01T00:00:00Z',
+    })
+    await expect(h.sql`
+      insert into consent (
+        student_account_id, type, action, source, source_ref, enrollment_record_id,
+        effective_at, reason
+      ) values (
+        ${studentId}, 'enrollment', 'grant', 'signed_form', ${randomUUID()}, ${enrollmentId},
+        '2099-01-01T00:00:00Z', 'standard'
+      )
     `).rejects.toThrow(/future/i)
   })
 })

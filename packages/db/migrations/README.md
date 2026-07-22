@@ -8,6 +8,8 @@ Ordered, hand-authored SQL applied in filename order by the test harness
 | `0000_base.sql` | Extensions (`citext`), enums, the 16 Milestone 0 tables, foreign keys, the `account` identity check, and the ordinary indexes. The plain structural floor. |
 | `0001_guarantees.sql` | The compliance guarantees that must live in the database: the Decision-4 DOB trigger, the form-sourced consent checks (`source_ref`, `scope_ref`, non-future `effective_at`), the single-active-membership partial unique index, the membership shape checks (which cover the alumni shape), evidence-backed `tier_transition` plus the tier-sync trigger (coupling F), the append-only trigger backstop on `consent` and `audit_entry`, the `consent_current` maintenance trigger, the impersonation-of-minor read-only trigger, and the guardian-invite-equals-enrollment-email trigger. |
 | `0002_roles.sql` | Mechanism A: the `curiolab_app` and `curiolab_analytics` Postgres roles and their table grants, including the append-only role-level `REVOKE` and the sensitive-table denials. |
+| `0003_consent_enrollment_link.sql` | Structural: the `consent.enrollment_record_id` column and its FK to `enrollment_record` — the temporal anchor for a form-sourced grant. The plain column only; the guarantees it enables are in `0004`. |
+| `0004_consent_temporal_rule.sql` | The ruled consent change (02-data-model.md): a `signed_form` consent with a null `enrollment_record_id` is invalid, and the temporal trigger (replacing `0001`'s future-only check) floors `effective_at` at the linked application's submission date (`enrollment_record.application_id -> application.created_at`), not the enrollment record's own `created_at`, while keeping the non-future check. `CURIOLAB_MIGRATE_UPTO=0003` witnesses the red state for both. |
 
 ## Why the guarantees are separate from the base tables
 
@@ -56,6 +58,8 @@ the app role's succeeds.
 - `tier_transition`'s "writer resolves to a chapter_director or lead_instructor"
   trigger is not in the Milestone 0 guarantee test list; `evidence_ref NOT NULL`
   and the tier-sync trigger (both listed) ship here.
-- The consent "may not precede the related enrollment record" rule is not
-  enforced because the `consent` row carries no enrollment linkage in the data
-  model; the non-future half of that rule is enforced.
+- The consent temporal rule is now enforced (see `0004_consent_temporal_rule.sql`):
+  the `consent` row carries an `enrollment_record_id` linkage (added in `0003`),
+  and `effective_at` is floored at the linked application's submission date, not
+  the enrollment record's own creation. Both halves (non-future and
+  not-before-submission) ship here.

@@ -17,7 +17,30 @@ export type {
   TransitionOutcome,
   ReopenOutcome,
 } from './service.js'
-export { DEDUPE_WINDOW_MS, defaultConfig, type AppConfig } from './config.js'
+export { EnrollmentService } from './enrollment.js'
+export type {
+  EnrollmentServiceDeps,
+  EnrollmentAuthorizeFn,
+  CreateEnrollmentInput,
+  CreateEnrollmentResult,
+  SignedForm,
+} from './enrollment.js'
+export {
+  InMemoryStorageAdapter,
+  R2StorageAdapter,
+  type StorageAdapter,
+  type PutObjectInput,
+  type R2Config,
+} from './storage.js'
+export {
+  DEDUPE_WINDOW_MS,
+  defaultConfig,
+  type AppConfig,
+  FORM_SOURCED_CONSENT_TYPES,
+  SIGNED_FORM_KEY_PREFIX,
+  SIGNED_FORM_CONTENT_TYPE,
+  type FormSourcedConsentType,
+} from './config.js'
 export {
   writeApplicationEvent,
   type EventWriter,

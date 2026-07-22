@@ -19,10 +19,41 @@
  */
 export const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000 // 24 hours
 
+/**
+ * The consent types granted by a signed enrollment form (coupling D). These are
+ * Block A of the paper form — required to participate (compliance-coppa.md Part 2
+ * Stage 2). They live here, not in code, because Block composition is a
+ * configuration concern per compliance-coppa.md Part 3 "Configuration, not code":
+ * an unfavorable legal answer on separability becomes a value change, not a
+ * migration.
+ */
+export type FormSourcedConsentType = 'enrollment' | 'data_collection'
+export const FORM_SOURCED_CONSENT_TYPES: readonly FormSourcedConsentType[] = [
+  'enrollment',
+  'data_collection',
+] as const
+
+/** The object-storage key prefix under which signed enrollment scans are stored. */
+export const SIGNED_FORM_KEY_PREFIX = 'enrollment/signed-forms'
+/** The default content type recorded for an uploaded signed form. */
+export const SIGNED_FORM_CONTENT_TYPE = 'application/pdf'
+
 export interface AppConfig {
   dedupeWindowMs: number
+  /** Consent types created form-sourced on enrollment (coupling D). */
+  formSourcedConsentTypes: readonly FormSourcedConsentType[]
+  /** The consent `reason` for a form-sourced grant (never safeguarding here). */
+  formSourcedConsentReason: 'standard' | 'safeguarding'
+  /** Storage key prefix for signed enrollment forms. */
+  signedFormKeyPrefix: string
+  /** Default content type for a stored signed form. */
+  signedFormContentType: string
 }
 
 export const defaultConfig: AppConfig = {
   dedupeWindowMs: DEDUPE_WINDOW_MS,
+  formSourcedConsentTypes: FORM_SOURCED_CONSENT_TYPES,
+  formSourcedConsentReason: 'standard',
+  signedFormKeyPrefix: SIGNED_FORM_KEY_PREFIX,
+  signedFormContentType: SIGNED_FORM_CONTENT_TYPE,
 }

@@ -159,6 +159,15 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+  // enrollment upload (Flow A step 2, coupling D): the Chapter Director records
+  // the signed form, the enrollment record, and the two form-sourced consents in
+  // one transaction. 04-state-machines names the actor "chapter_director".
+  // Chapter-scoped; the write is the whole coupling.
+  'enrollment.create': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
 
   // ---- profile / narrative -------------------------------------------------
   'profile.edit_narrative': {

@@ -361,6 +361,9 @@ export const projectPublicUnconsented: Resource = {
 // application funnel (ops back office) — chapter-scoped, no subject snapshot.
 export const applicationInC1: Resource = { id: 'application-1', chapter_id: C1 }
 
+// enrollment upload (coupling D) — chapter-scoped ops write, no subject snapshot.
+export const enrollmentInC1: Resource = { id: 'enrollment-1', chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,

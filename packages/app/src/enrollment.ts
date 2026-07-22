@@ -1,0 +1,162 @@
+// -------------------------------------------------------------------------
+// EnrollmentService — Flow A step 2, coupling D (04-state-machines; 06-onboarding
+// -flows). On `accepted -> enrolled` the Chapter Director records the signed
+// enrollment form, the enrollment record, and the two form-sourced consent rows
+// (`enrollment`, `data_collection`) in ONE transaction, so an operational record
+// never exists before its consent row.
+//
+// The consents are written `granted_by = null` (backfilled at guardian
+// verification) with `source = 'signed_form'`, `source_ref` = the stored form,
+// `enrollment_record_id` set (the temporal anchor), and `effective_at` = the
+// signature date on the form. The database's temporal trigger floors that date
+// at the application submission (not the enrollment record's own creation), so a
+// signature that legitimately precedes the scan upload is accepted.
+//
+// Framework-agnostic: the db handle, the `authorize` wrapper, and the storage
+// backend are all injected. The HTTP route (POST /ops/enrollments) is wired
+// later.
+// -------------------------------------------------------------------------
+
+import type { Sql } from 'postgres'
+import type { AuthContext, Resource } from '@curiolab/core'
+import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
+import { randomUUID } from 'node:crypto'
+import { type AppConfig, defaultConfig, type FormSourcedConsentType } from './config.js'
+import type { StorageAdapter } from './storage.js'
+
+/**
+ * The injected `authorize` dependency, narrowed to this service's one
+ * capability. Structurally the runtime `authorize` wrapper (taken by injection
+ * so the deny/backstop paths are testable without HTTP).
+ */
+export type EnrollmentAuthorizeFn = <T = void>(
+  ctx: AuthContext,
+  capability: 'enrollment.create',
+  resource: Resource,
+  deps: AuthorizeDeps<T>,
+) => Promise<T | undefined>
+
+export interface EnrollmentServiceDeps {
+  sql: Sql
+  authorize: EnrollmentAuthorizeFn
+  storage: StorageAdapter
+  /** Optional overrides for the config-not-code tunables. */
+  config?: Partial<AppConfig>
+}
+
+export interface SignedForm {
+  body: Uint8Array | Buffer | string
+  contentType?: string
+  /** Optional storage key override; a key is synthesized when absent. */
+  key?: string
+}
+
+export interface CreateEnrollmentInput {
+  /** The accepted application this enrollment realizes. */
+  applicationId: string
+  /** The student whose consents these are (consent.student_account_id). */
+  studentAccountId: string
+  chapterId: string
+  termId: string
+  guardianNameOnForm: string
+  /** The signature date on the form; becomes each consent's effective_at. */
+  signatureDate: Date
+  signedForm: SignedForm
+}
+
+export interface CreateEnrollmentResult {
+  enrollmentRecordId: string
+  /** The stored signed-form ref (uuid), shared by the record and the consents. */
+  signedFormRef: string
+  consentIds: Record<FormSourcedConsentType, string>
+}
+
+export class EnrollmentService {
+  private readonly sql: Sql
+  private readonly authorize: EnrollmentAuthorizeFn
+  private readonly storage: StorageAdapter
+  private readonly config: AppConfig
+
+  constructor(deps: EnrollmentServiceDeps) {
+    this.sql = deps.sql
+    this.authorize = deps.authorize
+    this.storage = deps.storage
+    this.config = { ...defaultConfig, ...deps.config }
+  }
+
+  /**
+   * POST /ops/enrollments — coupling D. Gated through `authorize` under
+   * `enrollment.create` (chapter-scoped, Chapter Director). In one transaction:
+   * store the signed form, insert the enrollment record, insert the two
+   * form-sourced consents. All-or-nothing: if any step fails nothing persists,
+   * and an already-uploaded form is compensated so no orphan dangles.
+   */
+  async createEnrollment(
+    input: CreateEnrollmentInput,
+    ctx: AuthContext,
+  ): Promise<CreateEnrollmentResult> {
+    // Authorization first (writes one permission.denied and throws Forbidden on
+    // deny). The application id is the resource; its chapter is the scope.
+    const resource: Resource = { id: input.applicationId, chapter_id: input.chapterId }
+    await this.authorize(ctx, 'enrollment.create', resource, { sql: this.sql })
+
+    const key =
+      input.signedForm.key ??
+      `${this.config.signedFormKeyPrefix}/${input.applicationId}/${randomUUID()}`
+
+    let storedRef: string | undefined
+    try {
+      return await this.sql.begin(async (tx) => {
+        assertAuthorized() // runtime backstop: no mutation without a recorded decision
+
+        // Step 1: store the signed form, capturing the ref.
+        storedRef = await this.storage.putObject({
+          key,
+          body: input.signedForm.body,
+          contentType: input.signedForm.contentType ?? this.config.signedFormContentType,
+        })
+
+        // Step 2: the enrollment record, linked to the accepted application.
+        const [enr] = await tx`
+          insert into enrollment_record (
+            application_id, student_account_id, chapter_id, term_id,
+            signed_form_ref, guardian_name_on_form, created_by
+          ) values (
+            ${input.applicationId}, ${input.studentAccountId}, ${input.chapterId}, ${input.termId},
+            ${storedRef}, ${input.guardianNameOnForm}, ${ctx.account.id}
+          ) returning id
+        `
+        const enrollmentRecordId = enr!.id as string
+
+        // Step 3: the two form-sourced consents (granted_by backfilled later).
+        const consentIds = {} as Record<FormSourcedConsentType, string>
+        for (const type of this.config.formSourcedConsentTypes) {
+          const [c] = await tx`
+            insert into consent (
+              student_account_id, type, action, source, source_ref,
+              enrollment_record_id, granted_by, effective_at, reason
+            ) values (
+              ${input.studentAccountId}, ${type}, 'grant', 'signed_form', ${storedRef},
+              ${enrollmentRecordId}, ${null}, ${input.signatureDate}, ${this.config.formSourcedConsentReason}
+            ) returning id
+          `
+          consentIds[type] = c!.id as string
+        }
+
+        return { enrollmentRecordId, signedFormRef: storedRef, consentIds }
+      })
+    } catch (err) {
+      // The DB transaction rolled back; compensate the (now orphaned) upload so
+      // coupling D leaves nothing dangling. Best-effort: a backend without
+      // delete relies on a storage lifecycle rule instead.
+      if (storedRef !== undefined && this.storage.deleteObject) {
+        try {
+          await this.storage.deleteObject(storedRef)
+        } catch {
+          /* swallow: compensation is best-effort, the original error wins */
+        }
+      }
+      throw err
+    }
+  }
+}
