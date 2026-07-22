@@ -27,6 +27,7 @@ import {
   applicationInC1,
   enrollmentInC1,
   inviteInC1,
+  membershipInC1,
   guardianshipInC1,
   dobCorrectInC1,
   safetyReport,
@@ -360,6 +361,13 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectAllow(actors.comms_associate_c1, 'member.invite', inviteInC1)
     expectDeny(actors.chapter_director_c2, 'member.invite', inviteInC1, 'out_of_scope')
     expectDeny(actors.lead_instructor_c1, 'member.invite', inviteInC1, 'role_not_permitted')
+  })
+
+  test('member.activate (Flow B step 3, couplings A+F, chapter-scoped write; chapter_director only)', () => {
+    expectAllow(actors.chapter_director_c1, 'member.activate', membershipInC1)
+    expectDeny(actors.chapter_director_c2, 'member.activate', membershipInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'member.activate', membershipInC1, 'role_not_permitted')
+    expectDeny(actors.comms_associate_c1, 'member.activate', membershipInC1, 'role_not_permitted')
   })
 
   test('guardianship.verify (Flow A step 6, chapter-scoped write; chapter_director only)', () => {

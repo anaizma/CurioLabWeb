@@ -45,6 +45,13 @@ export type {
   VerifyGuardianshipOptions,
   VerifyGuardianshipResult,
 } from './guardianship.js'
+export { MembershipActivationService } from './membership-activation.js'
+export type {
+  MembershipActivationServiceDeps,
+  MembershipActivationAuthorizeFn,
+  ActivateStudentOptions,
+  ActivateStudentResult,
+} from './membership-activation.js'
 export { DobCorrectionService } from './dob-correction.js'
 export type {
   DobCorrectionServiceDeps,
@@ -132,6 +139,10 @@ export {
   GuardianshipNotFoundError,
   DobCorrectionSubjectNotFoundError,
   IllegalGuardianshipTransitionError,
+  MembershipNotFoundError,
+  MembershipActivationConsentError,
+  MembershipActivationEvidenceError,
+  IllegalMembershipTransitionError,
   ConsentNotDigitallyGrantableError,
   ConsentScopeRefRequiredError,
   ConsentEnrollmentNotFoundError,

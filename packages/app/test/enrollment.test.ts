@@ -343,6 +343,41 @@ describe('RETURNING createEnrollment (secondary): existing account, coupling D c
 })
 
 // ===========================================================================
+describe('form_signed_at capture on the enrollment record (coupling D, both cases)', () => {
+  test('seeding: the signature date is recorded on the enrollment record', async () => {
+    const f = await acceptedApplication()
+    const ctx = baseCtx(f.director, new Date(), [mem('chapter_director', f.chapter)])
+    const svc = new EnrollmentService({ sql: h.sql, authorize, storage: new InMemoryStorageAdapter() })
+
+    let result!: Awaited<ReturnType<EnrollmentService['createEnrollment']>>
+    await withRequest(async () => {
+      result = await svc.createEnrollment(seedingInput(f), ctx)
+    })
+
+    const [enr] = await h.sql`
+      select form_signed_at::text as fsa from enrollment_record where id = ${result.enrollmentRecordId}
+    `
+    expect(enr!.fsa).toBe('2026-06-15')
+  })
+
+  test('returning: the signature date is recorded on the enrollment record', async () => {
+    const f = await acceptedApplication()
+    const ctx = baseCtx(f.director, new Date(), [mem('chapter_director', f.chapter)])
+    const svc = new EnrollmentService({ sql: h.sql, authorize, storage: new InMemoryStorageAdapter() })
+
+    let result!: Awaited<ReturnType<EnrollmentService['createEnrollment']>>
+    await withRequest(async () => {
+      result = await svc.createEnrollment(returningInput(f), ctx)
+    })
+
+    const [enr] = await h.sql`
+      select form_signed_at::text as fsa from enrollment_record where id = ${result.enrollmentRecordId}
+    `
+    expect(enr!.fsa).toBe('2026-06-15')
+  })
+})
+
+// ===========================================================================
 describe('authorization is enforced through authorize', () => {
   test('a director in another chapter is denied: opaque Forbidden, one permission.denied row, nothing persists', async () => {
     const f = await acceptedApplication()

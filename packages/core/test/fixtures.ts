@@ -368,6 +368,12 @@ export const enrollmentInC1: Resource = { id: 'enrollment-1', chapter_id: C1 }
 // is the chapter the invite is issued into; no subject snapshot.
 export const inviteInC1: Resource = { chapter_id: C1 }
 
+// membership activation (member.activate; Flow B step 3, couplings A + F) —
+// chapter-scoped ops write, Chapter Director. The resource is the membership
+// being activated, scoped to its chapter; no subject consent snapshot (the
+// enrollment-consent gate is a DB read in the service, not part of `can`).
+export const membershipInC1: Resource = { id: 'membership-1', chapter_id: C1 }
+
 // guardianship verify (Flow A step 6, the name-match authority floor) —
 // chapter-scoped ops write, resolved against the enrolling chapter; no subject
 // consent snapshot (verification precedes any digital consent).

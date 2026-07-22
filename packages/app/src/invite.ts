@@ -317,13 +317,21 @@ export class InviteService {
         // that later holds an active student membership (02-data-model.md;
         // decision-log.md "DOB on the enrollment record, reversed and refined").
         const [enr] = await tx`
-          select date_of_birth::text as date_of_birth, signed_form_ref
+          select date_of_birth::text as date_of_birth, signed_form_ref,
+                 form_signed_at::text as form_signed_at
           from enrollment_record where id = ${invite.enrollment_record_id}
         `
         const dob = enr?.date_of_birth as string | null | undefined
         const signedFormRef = enr?.signed_form_ref as string | null | undefined
-        if (invite.enrollment_record_id == null || dob == null || signedFormRef == null) {
-          // A student accept must bind a seeding enrollment carrying the form DOB.
+        const formSignedAt = enr?.form_signed_at as string | null | undefined
+        if (
+          invite.enrollment_record_id == null ||
+          dob == null ||
+          signedFormRef == null ||
+          formSignedAt == null
+        ) {
+          // A student accept must bind a seeding enrollment carrying the form DOB
+          // and the signature date (the anchor for the form-sourced consents).
           throw new InvalidInviteError()
         }
         const [acct] = await tx`
@@ -345,6 +353,39 @@ export class InviteService {
           update enrollment_record set student_account_id = ${accountId}
           where id = ${invite.enrollment_record_id}
         `
+
+        // The seeding form-sourced consents (coupling D, deferred to here). At
+        // enrollment there was no student account to key them on
+        // (consent.student_account_id is NOT NULL), so the two ratifying rows for
+        // the signed paper form are written NOW that the account exists: the
+        // "paper form is the consent, the digital rows are its ratification"
+        // model, with ratification landing when the student exists
+        // (06-onboarding-flows Flow B; 04-state-machines coupling D / the consent
+        // machine's form-sourced grant). granted_by is null — a paper grant, per
+        // the earlier ruling; the provenance is carried on the guardianship edge
+        // at verification, not backfilled here (consent is append-only).
+        // effective_at is the signature date carried on the enrollment record;
+        // the DB temporal trigger floors it at the application submission date and
+        // consent_current is maintained by its own trigger. Returning students
+        // already hold these from a prior enrollment, so this is seeding-only —
+        // which the username/student accept path exactly is.
+        // The signature date is a calendar date; anchor each consent at UTC
+        // midnight of it, so the stored instant is deterministic regardless of
+        // the DB session timezone (matching how EnrollmentService writes the
+        // returning-case consents from the signature instant).
+        const effectiveAt = new Date(`${formSignedAt}T00:00:00Z`)
+        for (const type of this.config.formSourcedConsentTypes) {
+          await tx`
+            insert into consent (
+              student_account_id, type, action, source, source_ref,
+              enrollment_record_id, granted_by, effective_at, reason
+            ) values (
+              ${accountId}, ${type}, 'grant', 'signed_form', ${signedFormRef},
+              ${invite.enrollment_record_id}, ${null}, ${effectiveAt},
+              ${this.config.formSourcedConsentReason}
+            )
+          `
+        }
       }
 
       let guardianshipId: string | null = null

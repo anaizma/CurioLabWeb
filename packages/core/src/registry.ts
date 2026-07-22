@@ -182,6 +182,19 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director', 'comms_associate'],
     writes: true,
   },
+  // membership activation (Flow B step 3; 04-state-machines account/membership
+  // `pending -> active`, actor chapter_director; couplings A + F). The Chapter
+  // Director activates a pending membership: the membership and its account move
+  // `pending -> active` together (coupling A) and the initial tier_transition is
+  // written (coupling F), all in one transaction (packages/app
+  // MembershipActivationService). Chapter-scoped to the membership's chapter; the
+  // write is the whole activation. The active-`enrollment`-consent precondition
+  // is a database read in the service, not part of `can`.
+  'member.activate': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
   // guardianship verify (Flow A step 6; 04-state-machines guardianship
   // "pending -> verified" / "pending -> rejected", both triggered by
   // `guardianship.verify`, actor chapter_director). The name-on-account /

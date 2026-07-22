@@ -89,24 +89,30 @@ async function seedingStudentSetup() {
   `
   const director = await makeAdult(h.sql)
   const guardianEmail = `parent-${randomUUID().slice(0, 8)}@example.test`
+  // The application is submitted in the past so a signature date (below) can sit
+  // legitimately on/after the submission — the floor the form-sourced consents'
+  // temporal trigger checks when accept-student creates them.
   const [app] = await h.sql`
     insert into application (
       kind, chapter_id, status, applicant_name, applicant_contact_email,
-      guardian_name, guardian_email
+      guardian_name, guardian_email, created_at
     ) values (
       'student', ${chapter}, 'accepted', 'Minor Testchild',
-      ${guardianEmail}, 'Parent Testperson', ${guardianEmail}
+      ${guardianEmail}, 'Parent Testperson', ${guardianEmail}, '2013-01-01T00:00:00Z'
     ) returning id
   `
   const signedFormRef = randomUUID()
   const formDob = '2014-04-04'
+  // The signature date: on/after submission, before now. accept-student uses it
+  // as the effective_at for the two form-sourced consents it creates.
+  const formSignedAt = '2014-05-05'
   const [enr] = await h.sql`
     insert into enrollment_record (
       application_id, student_account_id, chapter_id, term_id,
-      signed_form_ref, guardian_name_on_form, date_of_birth, created_by
+      signed_form_ref, guardian_name_on_form, date_of_birth, form_signed_at, created_by
     ) values (
       ${app!.id}, ${null}, ${chapter}, ${term!.id},
-      ${signedFormRef}, 'Parent Testperson', ${formDob}, ${director}
+      ${signedFormRef}, 'Parent Testperson', ${formDob}, ${formSignedAt}, ${director}
     ) returning id
   `
   return {
@@ -117,6 +123,7 @@ async function seedingStudentSetup() {
     enrollmentRecordId: enr!.id as string,
     signedFormRef,
     formDob,
+    formSignedAt,
   }
 }
 
@@ -393,6 +400,75 @@ describe('acceptInvite', () => {
       values (${res.accountId}, ${f.chapter}, 'student', 'active') returning id
     `
     expect(m!.id).toBeTruthy()
+  })
+
+  test('accept-student creates the two form-sourced consents (enrollment, data_collection) once the account exists, and consent_current shows both active', async () => {
+    const f = await seedingStudentSetup()
+    const ctx = directorCtx(f)
+    let issued!: Awaited<ReturnType<InviteService['issueInvite']>>
+    await withRequest(async () => {
+      issued = await svc().issueInvite({ kind: 'student', chapterId: f.chapter, enrollmentRecordId: f.enrollmentRecordId }, ctx)
+    })
+    const username = `curio-${randomUUID().slice(0, 8)}`
+    const res = await svc().acceptInvite(issued.token, usernameCreds(username))
+
+    // Exactly the two form-sourced consents, with the coupling-D field shape:
+    // signed_form, source_ref = the signed-form scan, the enrollment anchor, and
+    // granted_by null (a paper grant; backfilled — as a fact on the guardianship
+    // edge — at verification).
+    const consents = await h.sql`
+      select * from consent where student_account_id = ${res.accountId} order by type::text
+    `
+    expect(consents.map((c) => c.type)).toEqual(['data_collection', 'enrollment'])
+    for (const c of consents) {
+      expect(c.action).toBe('grant')
+      expect(c.source).toBe('signed_form')
+      expect(c.source_ref).toBe(f.signedFormRef)
+      expect(c.enrollment_record_id).toBe(f.enrollmentRecordId)
+      expect(c.granted_by).toBeNull()
+      // effective_at is anchored at the enrollment record's form_signed_at.
+      expect(new Date(c.effective_at as string).toISOString()).toBe(`${f.formSignedAt}T00:00:00.000Z`)
+    }
+
+    const current = await h.sql`
+      select type, active from consent_current
+      where student_account_id = ${res.accountId} and type in ('enrollment', 'data_collection')
+      order by type::text
+    `
+    expect(current).toEqual([
+      { type: 'data_collection', active: true },
+      { type: 'enrollment', active: true },
+    ])
+  })
+
+  test('a signature date before the application submission is rejected by the temporal trigger; the whole accept rolls back', async () => {
+    const f = await seedingStudentSetup()
+    // Doctor the signature date to BEFORE the application submission (2013-01-01):
+    // the consent insert at accept-student is then rejected by the temporal trigger.
+    await h.sql`update enrollment_record set form_signed_at = '2012-01-01' where id = ${f.enrollmentRecordId}`
+    const ctx = directorCtx(f)
+    let issued!: Awaited<ReturnType<InviteService['issueInvite']>>
+    await withRequest(async () => {
+      issued = await svc().issueInvite({ kind: 'student', chapterId: f.chapter, enrollmentRecordId: f.enrollmentRecordId }, ctx)
+    })
+    const username = `curio-${randomUUID().slice(0, 8)}`
+
+    let caught: unknown
+    try {
+      await svc().acceptInvite(issued.token, usernameCreds(username))
+    } catch (e) {
+      caught = e
+    }
+    expect((caught as Error).message).toMatch(/submission|precede/i)
+
+    // Nothing persisted: no account, no consents, and the invite claim rolled
+    // back so the invite is still issued, and the enrollment is unlinked.
+    const [acct] = await h.sql`select count(*)::int as n from account where username = ${username}`
+    expect(acct!.n).toBe(0)
+    const [inv] = await h.sql`select status from invite where id = ${issued.inviteId}`
+    expect(inv!.status).toBe('issued')
+    const [enr] = await h.sql`select student_account_id from enrollment_record where id = ${f.enrollmentRecordId}`
+    expect(enr!.student_account_id).toBeNull()
   })
 
   test('single-use: the second accept with the same token fails and no second account is created', async () => {

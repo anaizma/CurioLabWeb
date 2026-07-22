@@ -240,6 +240,12 @@ export const enrollmentRecord = pgTable('enrollment_record', {
   // student_account_id is null, and write-once — both enforced in the SQL
   // migrations (0005_enrollment_dob.sql / 0006_dob_write_once.sql), not here.
   dateOfBirth: date('date_of_birth'),
+  // The date the guardian signed the paper enrollment/consent form. Set at
+  // coupling D in both the seeding and returning cases; it is the effective_at
+  // source for the two form-sourced consents. In the seeding case those consents
+  // are created later (accept-student), so this value carries the temporal anchor
+  // until then. Nullable, not write-once (0007_enrollment_form_signed_at.sql).
+  formSignedAt: date('form_signed_at'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => account.id),

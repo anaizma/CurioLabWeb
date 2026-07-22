@@ -130,6 +130,13 @@ export class EnrollmentService {
     const resource: Resource = { id: input.applicationId, chapter_id: input.chapterId }
     await this.authorize(ctx, 'enrollment.create', resource, { sql: this.sql })
 
+    // The calendar date the form was signed (the signature date). Derived once
+    // from the instant so it is deterministic regardless of the DB session
+    // timezone, and recorded on the enrollment record in both cases; it is the
+    // effective_at source for the form-sourced consents (here in the returning
+    // case, and later at accept-student in the seeding case).
+    const formSignedAt = input.signatureDate.toISOString().slice(0, 10)
+
     const key =
       input.signedForm.key ??
       `${this.config.signedFormKeyPrefix}/${input.applicationId}/${randomUUID()}`
@@ -152,10 +159,11 @@ export class EnrollmentService {
         const [enr] = await tx`
           insert into enrollment_record (
             application_id, student_account_id, chapter_id, term_id,
-            signed_form_ref, guardian_name_on_form, date_of_birth, created_by
+            signed_form_ref, guardian_name_on_form, date_of_birth, form_signed_at, created_by
           ) values (
             ${input.applicationId}, ${studentAccountId}, ${input.chapterId}, ${input.termId},
-            ${storedRef}, ${input.guardianNameOnForm}, ${seeding ? input.dateOfBirth! : null}, ${ctx.account.id}
+            ${storedRef}, ${input.guardianNameOnForm}, ${seeding ? input.dateOfBirth! : null},
+            ${formSignedAt}, ${ctx.account.id}
           ) returning id
         `
         const enrollmentRecordId = enr!.id as string

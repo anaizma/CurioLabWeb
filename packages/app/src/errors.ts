@@ -166,6 +166,67 @@ export class ConsentEnrollmentNotFoundError extends Error {
   }
 }
 
+/** The referenced membership does not exist (activation of an unknown id). */
+export class MembershipNotFoundError extends Error {
+  readonly membershipId: string
+  constructor(membershipId: string) {
+    super(`membership not found: ${membershipId}`)
+    this.name = 'MembershipNotFoundError'
+    this.membershipId = membershipId
+  }
+}
+
+/**
+ * Student activation was attempted without an active `enrollment` consent
+ * (04-state-machines membership `pending -> active`: "requires active
+ * `enrollment` consent for a student"; 06-onboarding-flows Flow B step 3). The
+ * form-sourced `enrollment` consent is the ratification of the signed paper form;
+ * a student cannot be activated until it is active.
+ */
+export class MembershipActivationConsentError extends Error {
+  readonly membershipId: string
+  constructor(membershipId: string) {
+    super(`student activation requires an active enrollment consent (membership ${membershipId})`)
+    this.name = 'MembershipActivationConsentError'
+    this.membershipId = membershipId
+  }
+}
+
+/**
+ * A student activation could not resolve the enrollment record that is the
+ * initial tier_transition's `evidence_ref` (admission is the entry evidence for
+ * the Explorer grant; tier_transition.evidence_ref is NOT NULL). A properly
+ * seeded student always has a linked enrollment record; this guards a misuse.
+ */
+export class MembershipActivationEvidenceError extends Error {
+  readonly membershipId: string
+  constructor(membershipId: string) {
+    super(`no enrollment record to evidence the initial tier grant (membership ${membershipId})`)
+    this.name = 'MembershipActivationEvidenceError'
+    this.membershipId = membershipId
+  }
+}
+
+/**
+ * The requested membership state change is not a legal edge of the membership
+ * lifecycle (04-state-machines). Activation only ever fires on a `pending`
+ * membership (and its `pending` account); anything else is rejected. Carries the
+ * structured reason from `canTransition` so a route can map it to a 409, distinct
+ * from a Forbidden (an authorization failure that leaks no reason).
+ */
+export class IllegalMembershipTransitionError extends Error {
+  readonly from: string | null
+  readonly to: string
+  readonly reason: TransitionResult['reason']
+  constructor(from: string | null, to: string, reason: TransitionResult['reason']) {
+    super(`illegal membership transition ${from ?? '(none)'} -> ${to}${reason ? ` (${reason})` : ''}`)
+    this.name = 'IllegalMembershipTransitionError'
+    this.from = from
+    this.to = to
+    this.reason = reason
+  }
+}
+
 /**
  * The requested guardianship state change is not a legal edge of the
  * guardianship lifecycle (04-state-machines). Verification only ever fires on a

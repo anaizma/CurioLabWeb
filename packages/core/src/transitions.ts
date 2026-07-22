@@ -33,8 +33,9 @@ import type { Capability } from './types.js'
 // -------------------------------------------------------------------------
 export type TransitionCapability =
   | Capability
+  // 'member.activate' is now a first-class Capability (added in M1 step 6), so it
+  // arrives via `Capability` above and is not redeclared here.
   | 'member.invite'
-  | 'member.activate'
   | 'account.suspend'
   | 'account.reinstate'
   | 'account.close'
