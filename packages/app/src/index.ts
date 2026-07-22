@@ -45,6 +45,13 @@ export type {
   VerifyGuardianshipOptions,
   VerifyGuardianshipResult,
 } from './guardianship.js'
+export { DobCorrectionService } from './dob-correction.js'
+export type {
+  DobCorrectionServiceDeps,
+  DobCorrectionAuthorizeFn,
+  DobCorrectionSubject,
+  DobCorrectionResult,
+} from './dob-correction.js'
 export {
   InMemoryStorageAdapter,
   R2StorageAdapter,
@@ -117,11 +124,13 @@ export {
 export {
   IllegalTransitionError,
   ApplicationNotFoundError,
+  EnrollmentDobRequiredError,
   InviteNotFoundError,
   InvalidInviteError,
   InviteCredentialMismatchError,
   GuardianInviteEmailMismatchError,
   GuardianshipNotFoundError,
+  DobCorrectionSubjectNotFoundError,
   IllegalGuardianshipTransitionError,
   ConsentNotDigitallyGrantableError,
   ConsentScopeRefRequiredError,

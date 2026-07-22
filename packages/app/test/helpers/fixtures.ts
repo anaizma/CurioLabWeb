@@ -6,4 +6,7 @@ export {
   makeChapter,
   makeMinor,
   makeMembership,
+  makeTerm,
+  makeApplication,
+  makeEnrollment,
 } from '../../../db/test/helpers/fixtures.js'

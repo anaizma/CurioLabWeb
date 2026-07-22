@@ -209,11 +209,15 @@ describe('sweepUnconsentedApplications (§ 312.4(c)(1)(vii))', () => {
       values (${app.chapterId}, 'Fall Term 2099', '2099-09-01', '2099-12-15') returning id
     `
     const director = await makeAdult(h.sql)
+    // A seeding-shaped enrollment (no student account yet) must carry the form
+    // DOB under the ruled DOB-provenance change (enrollment_dob_required_when_seeding).
     await h.sql`
       insert into enrollment_record (
-        application_id, chapter_id, term_id, signed_form_ref, guardian_name_on_form, created_by
+        application_id, chapter_id, term_id, signed_form_ref, guardian_name_on_form,
+        date_of_birth, created_by
       ) values (
-        ${app.id}, ${app.chapterId}, ${term!.id}, ${randomUUID()}, 'Parent Testperson', ${director}
+        ${app.id}, ${app.chapterId}, ${term!.id}, ${randomUUID()}, 'Parent Testperson',
+        '2015-06-01', ${director}
       )
     `
 

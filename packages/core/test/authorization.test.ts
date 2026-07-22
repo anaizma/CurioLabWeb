@@ -28,6 +28,7 @@ import {
   enrollmentInC1,
   inviteInC1,
   guardianshipInC1,
+  dobCorrectInC1,
   safetyReport,
   ordinaryReport,
   childRecordOfS,
@@ -365,6 +366,13 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectAllow(actors.chapter_director_c1, 'guardianship.verify', guardianshipInC1)
     expectDeny(actors.chapter_director_c2, 'guardianship.verify', guardianshipInC1, 'out_of_scope')
     expectDeny(actors.lead_instructor_c1, 'guardianship.verify', guardianshipInC1, 'role_not_permitted')
+  })
+
+  test('dob.correct (audited correction, chapter-scoped write; director, or admin via platformGrant)', () => {
+    expectAllow(actors.chapter_director_c1, 'dob.correct', dobCorrectInC1)
+    expectAllow(actors.platform_admin, 'dob.correct', dobCorrectInC1) // platformGrant
+    expectDeny(actors.chapter_director_c2, 'dob.correct', dobCorrectInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'dob.correct', dobCorrectInC1, 'role_not_permitted')
   })
 
   test('platform override does not clear subject consent (admin) but grants scope+role (staff read)', () => {

@@ -29,6 +29,21 @@ export class ApplicationNotFoundError extends Error {
   }
 }
 
+/**
+ * A SEEDING enrollment (a brand-new student with no account yet) was created
+ * without the form's date of birth. The DOB must live on the seeding enrollment
+ * record until the account is created at accept-student (02-data-model.md
+ * "enrollment_record"; decision-log.md "DOB on the enrollment record, reversed
+ * and refined"); the database CHECK enforces the same, this is the service-layer
+ * pre-check that fails cleanly before any storage upload.
+ */
+export class EnrollmentDobRequiredError extends Error {
+  constructor() {
+    super('a seeding enrollment (no student account yet) requires the form date of birth')
+    this.name = 'EnrollmentDobRequiredError'
+  }
+}
+
 /** The referenced invite does not exist (ops resend of an unknown id). */
 export class InviteNotFoundError extends Error {
   readonly inviteId: string
@@ -76,6 +91,20 @@ export class GuardianInviteEmailMismatchError extends Error {
   constructor() {
     super('guardian invite target_email must equal the bound enrollment guardian email')
     this.name = 'GuardianInviteEmailMismatchError'
+  }
+}
+
+/**
+ * A `dob.correct` names an account with no enrollment record, so the enrolling
+ * chapter cannot be resolved and the correction cannot be scoped or authorized.
+ * A student always has a seeding enrollment record; this guards a misuse.
+ */
+export class DobCorrectionSubjectNotFoundError extends Error {
+  readonly accountId: string
+  constructor(accountId: string) {
+    super(`no enrollment record found to scope a DOB correction for account: ${accountId}`)
+    this.name = 'DobCorrectionSubjectNotFoundError'
+    this.accountId = accountId
   }
 }
 

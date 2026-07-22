@@ -210,6 +210,7 @@ export type Capability =
   | 'enrollment.create'
   | 'member.invite'
   | 'guardianship.verify'
+  | 'dob.correct'
   | 'profile.edit_narrative'
   | 'narrative.review'
   | 'verification.regenerate'

@@ -123,15 +123,35 @@ export async function makeApplication(
 
 export async function makeEnrollment(
   sql: Sql,
-  args: { applicationId: string; chapterId: string; termId: string; createdBy: string },
+  args: {
+    applicationId: string
+    chapterId: string
+    termId: string
+    createdBy: string
+    /** Present for a returning student's enrollment; absent = a seeding one. */
+    studentAccountId?: string | null
+    /**
+     * The form's DOB. Defaults to a seeding value so the NOT-NULL-when-seeding
+     * check is satisfied; pass null explicitly for a returning enrollment (which
+     * carries an account and no second DOB copy).
+     */
+    dateOfBirth?: string | null
+  },
 ): Promise<string> {
+  const studentAccountId = def(args.studentAccountId, null)
+  // Seeding enrollment (no account yet) must carry the DOB; a returning one
+  // (account present) leaves it null. Default to the seeding shape.
+  const dateOfBirth = def(
+    args.dateOfBirth,
+    studentAccountId === null ? '2015-06-01' : null,
+  )
   const [row] = await sql`
     insert into enrollment_record (
-      application_id, chapter_id, term_id, signed_form_ref,
-      guardian_name_on_form, created_by
+      application_id, student_account_id, chapter_id, term_id, signed_form_ref,
+      guardian_name_on_form, date_of_birth, created_by
     ) values (
-      ${args.applicationId}, ${args.chapterId}, ${args.termId}, ${randomUUID()},
-      'Parent Testperson', ${args.createdBy}
+      ${args.applicationId}, ${studentAccountId}, ${args.chapterId}, ${args.termId}, ${randomUUID()},
+      'Parent Testperson', ${dateOfBirth}, ${args.createdBy}
     ) returning id
   `
   return row!.id as string

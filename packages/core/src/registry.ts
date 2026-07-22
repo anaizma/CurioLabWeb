@@ -193,6 +193,18 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+  // DOB correction (the mistyped-scan case; 02-data-model.md, decision-log.md
+  // "DOB on the enrollment record, reversed and refined"). The ONLY sanctioned
+  // updater of an account's (and its seeding enrollment record's) write-once
+  // date_of_birth. Chapter-scoped to the enrolling chapter, Chapter Director;
+  // platform_admin is covered by platformGrant (writes:true, admin gets
+  // scope+role). Every use is audited by the app-layer DobCorrectionService,
+  // which is the single write path that trips the database's correction bypass.
+  'dob.correct': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
 
   // ---- profile / narrative -------------------------------------------------
   'profile.edit_narrative': {

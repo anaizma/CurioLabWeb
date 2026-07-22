@@ -101,7 +101,14 @@ export interface UsernameCredentials {
   password: string
   legalName: string
   displayName: string
-  dateOfBirth: string
+  /**
+   * IGNORED for the student path. The canonical DOB is copied from the bound
+   * seeding enrollment record with `dob_provenance='enrollment_record'`, never
+   * self-reported at setup (02-data-model.md; decision-log.md "DOB on the
+   * enrollment record, reversed and refined"). Kept optional for callers that
+   * still pass it; the value is not read.
+   */
+  dateOfBirth?: string
 }
 
 export type AcceptCredentials = EmailCredentials | UsernameCredentials
@@ -302,6 +309,23 @@ export class InviteService {
       } else {
         // student (guardian-mediated): a username-identified minor account, no
         // email, pending. The `email XOR username` constraint is respected.
+        //
+        // The DOB is NOT taken from caller input. It is copied from the bound
+        // SEEDING enrollment record (the form's DOB, living there until now) with
+        // dob_provenance='enrollment_record' and dob_source_ref=signed_form_ref,
+        // which is exactly what the decision-4 trigger requires of any account
+        // that later holds an active student membership (02-data-model.md;
+        // decision-log.md "DOB on the enrollment record, reversed and refined").
+        const [enr] = await tx`
+          select date_of_birth::text as date_of_birth, signed_form_ref
+          from enrollment_record where id = ${invite.enrollment_record_id}
+        `
+        const dob = enr?.date_of_birth as string | null | undefined
+        const signedFormRef = enr?.signed_form_ref as string | null | undefined
+        if (invite.enrollment_record_id == null || dob == null || signedFormRef == null) {
+          // A student accept must bind a seeding enrollment carrying the form DOB.
+          throw new InvalidInviteError()
+        }
         const [acct] = await tx`
           insert into account (
             email, username, legal_name, display_name, date_of_birth,
@@ -309,11 +333,18 @@ export class InviteService {
             status, maturation_state
           ) values (
             ${null}, ${credentials.username}, ${credentials.legalName}, ${credentials.displayName},
-            ${credentials.dateOfBirth}, 'self_reported', ${null}, ${passwordHash},
+            ${dob}, 'enrollment_record', ${signedFormRef}, ${passwordHash},
             'guardian_provisioned', 'pending', 'minor'
           ) returning id
         `
         accountId = acct!.id as string
+        // Linkage backfill: bind the seeding enrollment to the new account. This
+        // touches only student_account_id — the enrollment's write-once DOB is
+        // left equal, so its write-once trigger is not tripped.
+        await tx`
+          update enrollment_record set student_account_id = ${accountId}
+          where id = ${invite.enrollment_record_id}
+        `
       }
 
       let guardianshipId: string | null = null

@@ -227,6 +227,115 @@ describe('Consent enrollment link and temporal rule (ruled change)', () => {
 })
 
 // ---------------------------------------------------------------------------
+describe('Enrollment DOB provenance (ruled): seeding requirement and write-once', () => {
+  // A fresh application + term + issuer to hang enrollment records off.
+  async function funnel(): Promise<{
+    chapter: string
+    term: string
+    issuer: string
+    application: string
+  }> {
+    const chapter = await makeChapter(h.sql)
+    const term = await makeTerm(h.sql, chapter)
+    const issuer = await makeAdult(h.sql)
+    const application = await makeApplication(h.sql, chapter, 'parent@example.test')
+    return { chapter, term, issuer, application }
+  }
+
+  async function insertEnrollment(opts: {
+    application: string
+    chapter: string
+    term: string
+    issuer: string
+    studentAccountId: string | null
+    dateOfBirth: string | null
+  }) {
+    return h.sql`
+      insert into enrollment_record (
+        application_id, student_account_id, chapter_id, term_id, signed_form_ref,
+        guardian_name_on_form, date_of_birth, created_by
+      ) values (
+        ${opts.application}, ${opts.studentAccountId}, ${opts.chapter}, ${opts.term}, ${randomUUID()},
+        'Parent Testperson', ${opts.dateOfBirth}, ${opts.issuer}
+      ) returning id
+    `
+  }
+
+  test('a seeding enrollment (student_account_id null) with a null DOB is rejected', async () => {
+    const f = await funnel()
+    await expect(
+      insertEnrollment({ ...f, studentAccountId: null, dateOfBirth: null }),
+    ).rejects.toThrow(/date_of_birth|dob|check/i)
+  })
+
+  test('a seeding enrollment with a DOB is accepted (control)', async () => {
+    const f = await funnel()
+    const rows = await insertEnrollment({
+      ...f,
+      studentAccountId: null,
+      dateOfBirth: '2015-06-01',
+    })
+    expect(rows.length).toBe(1)
+  })
+
+  test('a returning enrollment (student_account_id present) with a null DOB is accepted (control)', async () => {
+    const f = await funnel()
+    const student = await makeMinor(h.sql)
+    const rows = await insertEnrollment({
+      ...f,
+      studentAccountId: student,
+      dateOfBirth: null,
+    })
+    expect(rows.length).toBe(1)
+  })
+
+  test('an ordinary UPDATE of enrollment_record.date_of_birth is rejected (write-once)', async () => {
+    const f = await funnel()
+    const [enr] = await insertEnrollment({
+      ...f,
+      studentAccountId: null,
+      dateOfBirth: '2015-06-01',
+    })
+    await expect(
+      h.sql`update enrollment_record set date_of_birth = '2016-06-01' where id = ${enr!.id}`,
+    ).rejects.toThrow(/write.?once|date_of_birth|dob/i)
+  })
+
+  test('an ordinary UPDATE of account.date_of_birth is rejected (write-once)', async () => {
+    const student = await makeMinor(h.sql)
+    await expect(
+      h.sql`update account set date_of_birth = '2016-06-01' where id = ${student}`,
+    ).rejects.toThrow(/write.?once|date_of_birth|dob/i)
+  })
+
+  test('a correction transaction (app.dob_correction=on) may update the enrollment record DOB', async () => {
+    const f = await funnel()
+    const [enr] = await insertEnrollment({
+      ...f,
+      studentAccountId: null,
+      dateOfBirth: '2015-06-01',
+    })
+    const id = enr!.id as string
+    await h.sql.begin(async (tx) => {
+      await tx`set local app.dob_correction = 'on'`
+      await tx`update enrollment_record set date_of_birth = '2016-06-01' where id = ${id}`
+    })
+    const [row] = await h.sql`select date_of_birth from enrollment_record where id = ${id}`
+    expect(new Date(row!.date_of_birth as string).getUTCFullYear()).toBe(2016)
+  })
+
+  test('a correction transaction (app.dob_correction=on) may update the account DOB', async () => {
+    const student = await makeMinor(h.sql)
+    await h.sql.begin(async (tx) => {
+      await tx`set local app.dob_correction = 'on'`
+      await tx`update account set date_of_birth = '2016-06-01' where id = ${student}`
+    })
+    const [row] = await h.sql`select date_of_birth from account where id = ${student}`
+    expect(new Date(row!.date_of_birth as string).getUTCFullYear()).toBe(2016)
+  })
+})
+
+// ---------------------------------------------------------------------------
 describe('Single active membership', () => {
   test('two active memberships for the same (account, chapter, role) collide', async () => {
     const chapter = await makeChapter(h.sql)

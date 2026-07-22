@@ -373,6 +373,11 @@ export const inviteInC1: Resource = { chapter_id: C1 }
 // consent snapshot (verification precedes any digital consent).
 export const guardianshipInC1: Resource = { id: 'guardianship-1', chapter_id: C1 }
 
+// dob.correct (the audited mistyped-scan correction) — chapter-scoped ops write,
+// resolved against the subject's enrolling chapter; the subject account is the
+// resource. No consent snapshot (a factual correction, not a consent decision).
+export const dobCorrectInC1: Resource = { id: 'acct-child-in-pod', chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,

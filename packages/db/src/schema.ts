@@ -235,6 +235,11 @@ export const enrollmentRecord = pgTable('enrollment_record', {
     .references(() => term.id),
   signedFormRef: uuid('signed_form_ref').notNull(),
   guardianNameOnForm: text('guardian_name_on_form').notNull(),
+  // The form's DOB, carried on the seeding enrollment (student_account_id null)
+  // until the account is created at accept-student. Nullable; NOT NULL only when
+  // student_account_id is null, and write-once — both enforced in the SQL
+  // migrations (0005_enrollment_dob.sql / 0006_dob_write_once.sql), not here.
+  dateOfBirth: date('date_of_birth'),
   createdBy: uuid('created_by')
     .notNull()
     .references(() => account.id),

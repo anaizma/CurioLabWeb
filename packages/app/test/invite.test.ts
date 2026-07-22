@@ -75,6 +75,51 @@ async function guardianSetup(guardianEmail = `parent-${randomUUID().slice(0, 8)}
   }
 }
 
+// A SEEDING enrollment for the student accept path: the enrollment record
+// carries the form DOB with student_account_id NULL (the brand-new student whose
+// account does not exist yet). accept-student copies the DOB with
+// dob_provenance='enrollment_record' + dob_source_ref=signed_form_ref, then
+// backfills student_account_id. The signed_form_ref is captured so the test can
+// assert it lands on the account.
+async function seedingStudentSetup() {
+  const chapter = await makeChapter(h.sql)
+  const [term] = await h.sql`
+    insert into term (chapter_id, name, starts_on, ends_on)
+    values (${chapter}, 'Fall Term 2099', '2099-09-01', '2099-12-15') returning id
+  `
+  const director = await makeAdult(h.sql)
+  const guardianEmail = `parent-${randomUUID().slice(0, 8)}@example.test`
+  const [app] = await h.sql`
+    insert into application (
+      kind, chapter_id, status, applicant_name, applicant_contact_email,
+      guardian_name, guardian_email
+    ) values (
+      'student', ${chapter}, 'accepted', 'Minor Testchild',
+      ${guardianEmail}, 'Parent Testperson', ${guardianEmail}
+    ) returning id
+  `
+  const signedFormRef = randomUUID()
+  const formDob = '2014-04-04'
+  const [enr] = await h.sql`
+    insert into enrollment_record (
+      application_id, student_account_id, chapter_id, term_id,
+      signed_form_ref, guardian_name_on_form, date_of_birth, created_by
+    ) values (
+      ${app!.id}, ${null}, ${chapter}, ${term!.id},
+      ${signedFormRef}, 'Parent Testperson', ${formDob}, ${director}
+    ) returning id
+  `
+  return {
+    chapter,
+    term: term!.id as string,
+    director,
+    applicationId: app!.id as string,
+    enrollmentRecordId: enr!.id as string,
+    signedFormRef,
+    formDob,
+  }
+}
+
 function svc() {
   return new InviteService({ sql: h.sql, authorize })
 }
@@ -287,7 +332,7 @@ describe('acceptInvite', () => {
   })
 
   test('username accept creates a pending student account with a username and NULL email — no membership, no edge', async () => {
-    const f = await guardianSetup()
+    const f = await seedingStudentSetup()
     const ctx = directorCtx(f)
     let issued!: Awaited<ReturnType<InviteService['issueInvite']>>
     await withRequest(async () => {
@@ -304,6 +349,50 @@ describe('acceptInvite', () => {
     expect(acct!.maturation_state).toBe('minor')
     expect(res.guardianshipId).toBeNull()
     expect(await memberCount(res.accountId)).toBe(0)
+  })
+
+  test('accept-student copies the DOB from the seeding enrollment with enrollment_record provenance + dob_source_ref, NOT from caller input, and backfills student_account_id', async () => {
+    const f = await seedingStudentSetup()
+    const ctx = directorCtx(f)
+    let issued!: Awaited<ReturnType<InviteService['issueInvite']>>
+    await withRequest(async () => {
+      issued = await svc().issueInvite({ kind: 'student', chapterId: f.chapter, enrollmentRecordId: f.enrollmentRecordId }, ctx)
+    })
+    const username = `curio-${randomUUID().slice(0, 8)}`
+    // The caller supplies a DIFFERENT DOB; it must be ignored in favour of the
+    // form DOB on the enrollment record.
+    const res = await svc().acceptInvite(issued.token, {
+      username,
+      password: 'correct horse battery staple',
+      legalName: 'Minor Testchild',
+      displayName: 'Minor T.',
+      dateOfBirth: '2000-01-01', // decoy; must NOT be used
+    })
+
+    const [acct] = await h.sql`
+      select date_of_birth::text as dob, dob_provenance, dob_source_ref
+      from account where id = ${res.accountId}
+    `
+    // DOB comes from the enrollment record, not the caller.
+    expect(acct!.dob).toBe(f.formDob)
+    expect(acct!.dob_provenance).toBe('enrollment_record')
+    expect(acct!.dob_source_ref).toBe(f.signedFormRef)
+
+    // The linkage backfill: the seeding enrollment now points at the new account,
+    // and its own DOB is untouched (write-once).
+    const [enr] = await h.sql`
+      select student_account_id, date_of_birth::text as dob from enrollment_record where id = ${f.enrollmentRecordId}
+    `
+    expect(enr!.student_account_id).toBe(res.accountId)
+    expect(enr!.dob).toBe(f.formDob)
+
+    // The resulting account satisfies the decision-4 trigger: an active student
+    // membership is accepted (provenance=enrollment_record, dob_source_ref set).
+    const [m] = await h.sql`
+      insert into membership (account_id, chapter_id, role, status)
+      values (${res.accountId}, ${f.chapter}, 'student', 'active') returning id
+    `
+    expect(m!.id).toBeTruthy()
   })
 
   test('single-use: the second accept with the same token fails and no second account is created', async () => {
