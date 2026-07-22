@@ -1,6 +1,6 @@
 # Open questions register
 
-Each item names its owner and what it blocks. Legal items gate Milestone 1 going live with real data (see [08-build-phasing.md](08-build-phasing.md)).
+Each item names its owner and what it blocks. Legal items gate Milestone 1 going live with real data (see [08-build-phasing.md](08-build-phasing.md)). They do **not** gate building or testing Milestone 1 against synthetic data — the funnel and its flows are built now and exercised on synthetic fixtures; only real-family data in production waits on the review.
 
 ## Awaiting legal review
 
@@ -42,6 +42,8 @@ FERPA is not built for now. It may apply later if CurioLab partners with a schoo
 - **Retention is tiered by data class**, not a blanket seven years, per § 312.10. Contact details, DOB, and community content age out at active enrollment plus one year; only the verification skeleton and consent evidence keep the longer window.
 - **The signed-form consent method is valid** under § 312.5(b)(2)(i), scan or in-person. `email_plus` and `text_plus` are unavailable because CurioLab discloses.
 - **Public visibility requires separate consent** (§ 312.5(a)(2)) and cannot gate participation (§ 312.7). Already designed; now enforced as a check.
+- **The application funnel supersedes the single-row application model.** The public write creates an `application_lead` (parent email only, no child data). Child facts and the student's own section are collected in Stage 2 and submitted by the parent at 2C. See [plans/milestone-1-application-funnel.md](plans/milestone-1-application-funnel.md).
+- **The § 312.4(c)(1)(vii) delete-if-no-consent job is the 30-day `application_lead` expiry.** Unconverted leads (no submitted application) are swept 30 days after collection.
 
 ## Documents to write (not code), tracked in [compliance-coppa.md](compliance-coppa.md)
 
