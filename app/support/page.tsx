@@ -104,7 +104,7 @@ export default function SupportPage() {
       </section>
 
       {/* Other ways to get involved */}
-      <section className="mx-auto max-w-6xl px-6 py-20">
+      <section id="get-involved" className="mx-auto max-w-6xl px-6 py-20 scroll-mt-24">
         <p className="label-blue mb-3">Get involved</p>
         <h2 className="text-2xl md:text-4xl font-bold mb-12">
           Other ways to back student builders
