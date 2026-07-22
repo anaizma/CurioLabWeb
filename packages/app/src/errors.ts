@@ -90,6 +90,54 @@ export class GuardianshipNotFoundError extends Error {
 }
 
 /**
+ * A digital consent grant named a type captured only on the signed form
+ * (Block A: `enrollment`, `data_collection`; compliance-coppa.md Part 2 Stage 2).
+ * Those are written form-sourced by the enrollment upload (coupling D), never by
+ * the digital grant flow. Which types are digitally grantable is config-driven
+ * (see consent-blocks.ts).
+ */
+export class ConsentNotDigitallyGrantableError extends Error {
+  readonly consentType: string
+  constructor(consentType: string) {
+    super(`consent type is form-sourced, not digitally grantable: ${consentType}`)
+    this.name = 'ConsentNotDigitallyGrantableError'
+    this.consentType = consentType
+  }
+}
+
+/**
+ * A digital grant of a scoped consent type (`external_publication`) omitted its
+ * required `scope_ref`. That consent is per-item, never blanket
+ * (compliance-coppa.md Part 2 Stage 2; enforced at the DB by
+ * `consent_external_pub_scope_ref`). This is the service-layer pre-check that
+ * fails cleanly before the transaction rather than as a DB check violation.
+ */
+export class ConsentScopeRefRequiredError extends Error {
+  readonly consentType: string
+  constructor(consentType: string) {
+    super(`consent type requires a scope_ref: ${consentType}`)
+    this.name = 'ConsentScopeRefRequiredError'
+    this.consentType = consentType
+  }
+}
+
+/**
+ * A digital consent grant/revoke could not resolve the student's enrollment
+ * anchor (`enrollment_record_id`) — either the student account or any enrollment
+ * record for it is absent. A digital consent decision is anchored to the
+ * enrollment it concerns (02-data-model consent `enrollment_record_id`, the
+ * temporal anchor), so with no enrollment there is nothing to anchor to.
+ */
+export class ConsentEnrollmentNotFoundError extends Error {
+  readonly studentAccountId: string
+  constructor(studentAccountId: string) {
+    super(`no enrollment record found for student: ${studentAccountId}`)
+    this.name = 'ConsentEnrollmentNotFoundError'
+    this.studentAccountId = studentAccountId
+  }
+}
+
+/**
  * The requested guardianship state change is not a legal edge of the
  * guardianship lifecycle (04-state-machines). Verification only ever fires on a
  * `pending` edge; an already `verified`, `rejected`, `revoked`, or `lapsed` edge

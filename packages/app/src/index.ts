@@ -77,6 +77,27 @@ export {
   type Db,
 } from './events.js'
 export {
+  CONSENT_BLOCKS,
+  SCOPED_CONSENT_TYPES,
+  blockOf,
+  isDigitallyGrantable,
+  consentTypeRequiresScopeRef,
+  type ConsentBlockId,
+  type ConsentBlockDef,
+} from './consent-blocks.js'
+export {
+  TIER_PROGRESSION_CAPABILITIES,
+  publicProfileGatesAnyTierProgression,
+} from './tier-progression.js'
+export { ConsentService } from './consent.js'
+export type {
+  ConsentServiceDeps,
+  ConsentAuthorizeFn,
+  GrantConsentOptions,
+  ConsentResult,
+  RevokeCascade,
+} from './consent.js'
+export {
   IllegalTransitionError,
   ApplicationNotFoundError,
   InviteNotFoundError,
@@ -85,4 +106,7 @@ export {
   GuardianInviteEmailMismatchError,
   GuardianshipNotFoundError,
   IllegalGuardianshipTransitionError,
+  ConsentNotDigitallyGrantableError,
+  ConsentScopeRefRequiredError,
+  ConsentEnrollmentNotFoundError,
 } from './errors.js'
