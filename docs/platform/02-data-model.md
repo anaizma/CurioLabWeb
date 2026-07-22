@@ -104,9 +104,9 @@ A guardian invite's `target_email` must equal the email on the bound enrollment 
 Type-specific columns are constrained by a check keyed on `kind`. `application_event` records `(application_id, from_status, to_status, actor_id, note, at)`. Reopen mints a successor row in `submitted` with `reopened_from_id`; the declined row stays immutable.
 
 ### enrollment_record (mutable)
-`id`, `application_id` fk, `student_account_id` fk null, `chapter_id` fk, `term_id` fk, `signed_form_ref` fk, `guardian_name_on_form` text, `created_by` fk.
+`id`, `application_id` fk, `student_account_id` fk null, `chapter_id` fk, `term_id` fk, `signed_form_ref` fk, `guardian_name_on_form` text, `date_of_birth` date null, `created_by` fk.
 
-No `date_of_birth` column. DOB lives once on `account`, with `dob_source_ref` pointing at the signed form. A student may have several enrollment records across terms.
+**DOB provenance (ruled):** `date_of_birth` is nullable and is NOT NULL only when `student_account_id IS NULL`, which is the seeding enrollment for a brand-new student whose account does not exist yet. A returning student's later-term enrollment already has an account, so its `date_of_birth` stays null and there is no second copy to drift. The value is **write-once**: a trigger forbids updating `enrollment_record.date_of_birth` once set. At `accept-student`, the new account copies this DOB with `dob_provenance = 'enrollment_record'` and `dob_source_ref = signed_form_ref`, then the enrollment record is linked by setting `student_account_id`. `account.date_of_birth` is likewise write-once (a trigger forbids ordinary updates). Two immutable values copied once cannot diverge, which is why this replaces the earlier "no DOB on enrollment_record" ruling (see [decision-log.md](decision-log.md)). The only sanctioned updater of either DOB is the explicit, audited `dob.correct` capability, for the mistyped-scan case.
 
 ## Standing and progression
 

@@ -66,6 +66,8 @@ For a team that turns over every semester, the reasoning matters more than the c
 
 **The deletion-versus-retention conflict was not a standoff.** It was flagged as needing a legal opinion. § 312.6(a)(2) gives the parent's deletion right priority and § 312.6(c) permits terminating participation as the consequence, so it resolves in the parent's favor by reading the rule. Deletion ends participation and the verification record, stated in the consent form. See [compliance-coppa.md](compliance-coppa.md) 1.6.
 
+**DOB on the enrollment record, reversed and refined.** The original ruling dropped `date_of_birth` from `enrollment_record` to avoid drift, keeping it only on `account`. Implementation revealed the gap: the student account is created after enrollment, so the form's DOB had nowhere to live in between, and the decision-4 trigger would reject activation. The refined ruling: `enrollment_record.date_of_birth` returns, nullable and required only for the seeding enrollment (when `student_account_id IS NULL`); a returning student's later enrollment carries no DOB, so there is no duplicate. Both the enrollment record's value and the account's copy are write-once (triggers forbid ordinary updates), so two immutable values copied once cannot diverge, which was the original worry. Corrections go through an explicit, audited `dob.correct` capability, never an ordinary update. See [02-data-model.md](02-data-model.md).
+
 ## Documentation corrections to carry into the vision document
 
 - The vision document says grades 7 through 12 in several places. The ruling is **6 through 12**. Update the document and the site copy.
