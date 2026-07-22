@@ -125,3 +125,24 @@ export const verificationMethodEnum = pgEnum('verification_method', [
 export const consentActionEnum = pgEnum('consent_action', ['grant', 'revoke'])
 export const consentSourceEnum = pgEnum('consent_source', ['signed_form', 'digital'])
 export const consentReasonEnum = pgEnum('consent_reason', ['standard', 'safeguarding'])
+
+// --- guardian-portal request and fee tables (Milestone 1 step 7) ---
+export const paymentStatusEnum = pgEnum('payment_status', [
+  'none',
+  'active',
+  'past_due',
+  'waived',
+])
+export const deletionScopeEnum = pgEnum('deletion_scope', ['full', 'redaction'])
+export const deletionRequestStatusEnum = pgEnum('deletion_request_status', [
+  'requested',
+  'under_review',
+  'fulfilled_full',
+  'fulfilled_redaction',
+  'partially_fulfilled',
+  'refused',
+])
+export const exportRequestStatusEnum = pgEnum('export_request_status', [
+  'requested',
+  'fulfilled',
+])

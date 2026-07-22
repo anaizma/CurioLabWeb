@@ -166,6 +166,22 @@ export class ConsentEnrollmentNotFoundError extends Error {
   }
 }
 
+/**
+ * A guardian-portal read/request named a child account that does not exist, so
+ * the subject's age (the guardian-scope age bound) cannot be resolved. Mirrors
+ * ConsentService.loadAnchor: the subject facts are loaded before `authorize`
+ * (which needs the subject age), so an unknown subject is a typed not-found, not
+ * a Forbidden. A guardian's verified child always exists; this guards a misuse.
+ */
+export class GuardianChildNotFoundError extends Error {
+  readonly childAccountId: string
+  constructor(childAccountId: string) {
+    super(`no child account found: ${childAccountId}`)
+    this.name = 'GuardianChildNotFoundError'
+    this.childAccountId = childAccountId
+  }
+}
+
 /** The referenced membership does not exist (activation of an unknown id). */
 export class MembershipNotFoundError extends Error {
   readonly membershipId: string

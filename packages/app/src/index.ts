@@ -111,6 +111,19 @@ export type {
   ConsentResult,
   RevokeCascade,
 } from './consent.js'
+export { GuardianPortalService } from './guardian-portal.js'
+export type {
+  GuardianPortalServiceDeps,
+  GuardianPortalAuthorizeFn,
+  DeletionScope,
+  ChildRecord,
+  ChildMembershipView,
+  FeeStatus,
+  ScholarshipView,
+  ExportRequestResult,
+  DeletionRequestResult,
+  ChapterDigest,
+} from './guardian-portal.js'
 export {
   SEVEN_YEARS_MS,
   ONE_YEAR_MS,
@@ -146,4 +159,5 @@ export {
   ConsentNotDigitallyGrantableError,
   ConsentScopeRefRequiredError,
   ConsentEnrollmentNotFoundError,
+  GuardianChildNotFoundError,
 } from './errors.js'

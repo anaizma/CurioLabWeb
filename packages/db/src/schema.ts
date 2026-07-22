@@ -20,6 +20,7 @@ import {
   customType,
   date,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -40,13 +41,17 @@ import {
   consentSourceEnum,
   consentTypeEnum,
   credentialOwnerEnum,
+  deletionRequestStatusEnum,
+  deletionScopeEnum,
   deliveryStatusEnum,
   dobProvenanceEnum,
+  exportRequestStatusEnum,
   guardianshipStatusEnum,
   inviteKindEnum,
   inviteStatusEnum,
   maturationStateEnum,
   membershipStatusEnum,
+  paymentStatusEnum,
   relationshipEnum,
   roleEnum,
   sessionModeEnum,
@@ -386,5 +391,74 @@ export const auditEntry = pgTable(
   (t) => [
     index('audit_subject_idx').on(t.subjectType, t.subjectId, t.at),
     index('audit_actor_idx').on(t.actorAccountId, t.at),
+  ],
+)
+
+// --- Guardian-portal request and fee tables (Milestone 1 step 7) -----------
+// Money is never a source of truth here (02-data-model.md): payment_ref holds a
+// coarse status and a Stripe reference, no amount; scholarship holds a
+// percentage. The compliance guarantee (a refused deletion carries a documented
+// reason) lives in migration 0008 as a CHECK, not expressible here.
+
+export const paymentRef = pgTable('payment_ref', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  enrollmentRecordId: uuid('enrollment_record_id')
+    .notNull()
+    .references(() => enrollmentRecord.id),
+  stripeCustomerRef: text('stripe_customer_ref'),
+  status: paymentStatusEnum('status').notNull(),
+  tierPaidFor: text('tier_paid_for'),
+  createdAt: createdAt(),
+})
+
+export const scholarship = pgTable('scholarship', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  enrollmentRecordId: uuid('enrollment_record_id')
+    .notNull()
+    .references(() => enrollmentRecord.id),
+  awardedBy: uuid('awarded_by')
+    .notNull()
+    .references(() => account.id),
+  percentage: integer('percentage').notNull(),
+  note: text('note'),
+  createdAt: createdAt(),
+})
+
+export const exportRequest = pgTable('export_request', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  subjectAccountId: uuid('subject_account_id')
+    .notNull()
+    .references(() => account.id),
+  requestedBy: uuid('requested_by')
+    .notNull()
+    .references(() => account.id),
+  status: exportRequestStatusEnum('status').notNull(),
+  fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
+  createdAt: createdAt(),
+})
+
+export const deletionRequest = pgTable(
+  'deletion_request',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    subjectAccountId: uuid('subject_account_id')
+      .notNull()
+      .references(() => account.id),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => account.id),
+    scopeRequested: deletionScopeEnum('scope_requested').notNull(),
+    status: deletionRequestStatusEnum('status').notNull(),
+    reviewedBy: uuid('reviewed_by').references(() => account.id),
+    decisionReason: text('decision_reason'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // A refused decision must carry a documented reason (02-data-model.md).
+    check(
+      'deletion_request_refusal_reason',
+      sql`${t.status} <> 'refused' OR ${t.decisionReason} IS NOT NULL`,
+    ),
   ],
 )
