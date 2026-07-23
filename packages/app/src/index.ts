@@ -60,6 +60,13 @@ export {
   tierMilestoneBody,
 } from './milestone.js'
 export type { EmitMilestoneParams, EmitMilestoneResult } from './milestone.js'
+export { CredentialTokenService } from './credential-token.js'
+export type {
+  CredentialTokenServiceDeps,
+  PasswordResetRoute as CredentialPasswordResetRoute,
+  IssuePasswordResetResult,
+  ConsumePasswordResetResult,
+} from './credential-token.js'
 export { MaturationService, passwordResetRoute } from './maturation.js'
 export type {
   MaturationServiceDeps,
@@ -67,6 +74,7 @@ export type {
   AddEmailResult,
   ConfirmMaturationResult,
   ReissueSetupResult,
+  ConsumeAccountRecoveryResult,
   PrivatizeCredentialResult,
   MaturationLapseNotice,
   SweepMaturationDeps,
@@ -113,6 +121,7 @@ export {
   SIGNED_FORM_CONTENT_TYPE,
   type FormSourcedConsentType,
   INVITE_TTL_MS,
+  PASSWORD_RESET_TTL_MS,
   INVITE_INITIAL_DELIVERY_STATUS,
   GUARDIAN_RELATIONSHIP_DEFAULT,
   GUARDIAN_VERIFICATION_METHOD,
@@ -373,4 +382,5 @@ export {
   CredentialWitnessRequiredError,
   CredentialWitnessInvalidError,
   CredentialWitnessIsGuardianError,
+  InvalidCredentialTokenError,
 } from './errors.js'

@@ -21,7 +21,7 @@ import {
   validateSession,
   verifyPassword,
 } from '@curiolab/runtime'
-import { passwordResetRoute } from '@curiolab/app'
+import { CredentialTokenService } from '@curiolab/app'
 import { resolveAuthContext } from '../context.js'
 import { runAuthed, runPublic } from '../run.js'
 import { reqStr } from '../respond.js'
@@ -161,12 +161,15 @@ export interface RequestPasswordResetInput extends PublicInputBase {
 }
 
 /**
- * POST /api/auth/password/reset-request — inert, uniform, no account-existence
- * oracle. The response is byte-identical whether or not the identifier resolves.
- * When it does, the route is computed (an adult -> their own email; a minor ->
- * their verified guardians, or the Chapter Director for a `self_private`
- * account) and handed to the delivery seam. NO token is persisted here — that,
- * and the send, are deferred mailer seams.
+ * POST /api/auth/password/reset-request — uniform, no account-existence oracle.
+ * The response is byte-identical whether or not the identifier resolves. When it
+ * does, `CredentialTokenService.issuePasswordReset` PERSISTS a token (a regenerate
+ * revokes the prior) and returns the computed delivery route (an adult -> their
+ * own email; a minor -> their verified guardians, or the Chapter Director for a
+ * `self_private` account), which is handed to the delivery seam. When it does not,
+ * nothing is persisted and the seam never fires — but the response is identical,
+ * so the persisted-token side effect is not an existence oracle. The actual SEND
+ * is the deferred mailer seam (the returned token + route).
  *
  * SEAM: rate limiting (05-api-surface) is edge/middleware, not wired here.
  */
@@ -176,20 +179,39 @@ export function requestPasswordReset(
   return runPublic(async () => {
     const identifier = reqStr(input.body?.identifier, 'identifier')
     const now = input.now ?? new Date()
-    const [acct] = await input.sql`
-      select id, date_of_birth::text as dob, credential_owner
-      from account where (email = ${identifier} or username = ${identifier})
-      limit 1
-    `
-    if (acct !== undefined) {
-      const age = ageFromDob(acct.dob as string, now)
-      const route: PasswordResetRoute =
-        age >= 18 ? 'self_email' : passwordResetRoute(acct.credential_owner as 'guardian_provisioned' | 'self_private')
+    const issued = await new CredentialTokenService({ sql: input.sql }).issuePasswordReset(identifier, {
+      now,
+    })
+    if (issued !== null) {
       const deliver = input.deliver
-      if (deliver !== undefined) await deliver({ accountId: acct.id as string, route })
+      if (deliver !== undefined) await deliver({ accountId: issued.accountId, route: issued.route })
     }
     // Uniform response in every branch — the entire security property.
     return { status: 202, body: { requested: true } }
+  })
+}
+
+// ---- password reset consume (POST /api/auth/password/reset) -----------------
+
+export interface ResetPasswordInput extends PublicInputBase {
+  body: { token?: unknown; newPassword?: unknown }
+}
+
+/**
+ * POST /api/auth/password/reset — token-gated, unauthenticated (an enumerated
+ * actor-less endpoint, 05-api-surface.md). Consumes the reset token: sets the
+ * account's argon2id password, marks the token consumed, and revokes the account's
+ * prior sessions. An expired, consumed, or unknown token is one opaque 401
+ * (InvalidCredentialTokenError -> invalid_token), revealing nothing.
+ */
+export function resetPassword(input: ResetPasswordInput): Promise<ControllerResult<{ reset: true }>> {
+  return runPublic(async () => {
+    const token = reqStr(input.body?.token, 'token')
+    const newPassword = reqStr(input.body?.newPassword, 'newPassword')
+    await new CredentialTokenService({ sql: input.sql }).consumePasswordReset(token, newPassword, {
+      now: input.now,
+    })
+    return { status: 200, body: { reset: true } }
   })
 }
 

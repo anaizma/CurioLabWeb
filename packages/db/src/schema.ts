@@ -46,6 +46,7 @@ import {
   consentTypeEnum,
   contentStatusEnum,
   credentialOwnerEnum,
+  credentialTokenPurposeEnum,
   deletionRequestStatusEnum,
   deletionScopeEnum,
   deliveryStatusEnum,
@@ -862,5 +863,38 @@ export const verificationToken = pgTable(
     uniqueIndex('verification_token_one_live_per_subject')
       .on(t.subjectAccountId)
       .where(sql`${t.revokedAt} is null`),
+  ],
+)
+
+// --- Credential token (M1: password reset + account recovery) --------------
+// The store that backs password reset (05-api-surface POST /auth/password/reset)
+// and account recovery (06-onboarding-flows Flow D reissueSetup / account.recover
+// — an adult former student's fresh setup token). A token is minted CSPRNG and
+// only its hash lands here; it is consumed once (consumed_at). At most one LIVE
+// (consumed_at IS NULL) token per (account, purpose) — a regenerate supersedes
+// the prior — enforced by the partial unique index below. token_hash is globally
+// unique so consumption resolves exactly one row. The guarantees and the
+// Mechanism-A grants (app DML; analytics default-deny) live in migration
+// 0019_credential_token.sql, not here.
+export const credentialToken = pgTable(
+  'credential_token',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => account.id),
+    tokenHash: text('token_hash').notNull(),
+    purpose: credentialTokenPurposeEnum('purpose').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('credential_token_hash_unique').on(t.tokenHash),
+    index('credential_token_account_idx').on(t.accountId),
+    // At most one LIVE token per (account, purpose); a consumed token frees the slot.
+    uniqueIndex('credential_token_one_live_per_purpose')
+      .on(t.accountId, t.purpose)
+      .where(sql`${t.consumedAt} is null`),
   ],
 )

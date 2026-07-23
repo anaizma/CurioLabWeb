@@ -43,3 +43,33 @@ test('POST /api/auth/password/reset-request adapter returns a uniform 202 Respon
   const body = (await res.json()) as { requested: boolean }
   expect(body).toEqual({ requested: true })
 })
+
+test('POST /api/auth/password/reset adapter returns an opaque 401 for an unknown token', async () => {
+  const { POST } = await import('../../../app/api/auth/password/reset/route.js')
+  const req = new Request('http://localhost/api/auth/password/reset', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: `forged-${randomUUID()}`, newPassword: 'SmokePass!12' }),
+  })
+  const res = await POST(req)
+
+  expect(res).toBeInstanceOf(Response)
+  expect(res.status).toBe(401)
+})
+
+test('POST /api/auth/account-recovery adapter returns an opaque 401 for an unknown token', async () => {
+  const { POST } = await import('../../../app/api/auth/account-recovery/route.js')
+  const req = new Request('http://localhost/api/auth/account-recovery', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      token: `forged-${randomUUID()}`,
+      email: `x-${randomUUID().slice(0, 8)}@example.test`,
+      newPassword: 'SmokePass!34',
+    }),
+  })
+  const res = await POST(req)
+
+  expect(res).toBeInstanceOf(Response)
+  expect(res.status).toBe(401)
+})

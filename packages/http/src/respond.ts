@@ -91,6 +91,8 @@ const INVALID_TOKEN = new Set([
   'InvalidInviteError',
   // The newsletter confirm/unsubscribe token surface reveals nothing (M3.6).
   'InvalidSubscriberTokenError',
+  // The password-reset / account-recovery consume token surface reveals nothing.
+  'InvalidCredentialTokenError',
 ])
 
 /** Known input / precondition violations -> 400. */

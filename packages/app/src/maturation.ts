@@ -29,6 +29,9 @@ import { canTransition } from '@curiolab/core'
 import {
   assertAuthorized,
   generateSessionToken,
+  hashPassword,
+  hashToken,
+  revokeAllSessionsForAccount,
   writeAudit,
   type AuthorizeDeps,
 } from '@curiolab/runtime'
@@ -38,6 +41,7 @@ import {
   CredentialWitnessIsGuardianError,
   CredentialWitnessRequiredError,
   IllegalMaturationTransitionError,
+  InvalidCredentialTokenError,
   MaturationAccountNotFoundError,
   MaturationAgeError,
   MaturationChapterNotFoundError,
@@ -102,6 +106,11 @@ export interface ReissueSetupResult {
   /** The opaque setup token, returned ONCE (the mailer seam). */
   token: string
   expiresAt: Date
+}
+
+export interface ConsumeAccountRecoveryResult {
+  accountId: string
+  email: string
 }
 
 export interface PrivatizeCredentialResult {
@@ -327,8 +336,9 @@ export class MaturationService {
    * scoped, Chapter Director). For a LOCKED-OUT adult FORMER student — one with NO
    * active membership — mint a fresh setup token (they add an email and set a new
    * password) returned once (the mailer seam), and audit the recovery. REJECTED
-   * against any account that still holds an active membership. The token store /
-   * consumption (the setup endpoint) is a deferred seam, like the mailer.
+   * against any account that still holds an active membership. The token is now
+   * PERSISTED as a `credential_token` with purpose 'account_recovery' (a regenerate
+   * revokes the prior live one), consumed later by `consumeAccountRecovery`.
    */
   async reissueSetup(accountId: string, ctx: AuthContext): Promise<ReissueSetupResult> {
     const [row] = await this.sql`
@@ -355,10 +365,22 @@ export class MaturationService {
     if ((active?.n as number) > 0) throw new ReissueActiveMembershipError(accountId)
 
     const token = generateSessionToken()
+    const tokenHash = hashToken(token)
     const expiresAt = new Date(Date.now() + this.config.inviteTtlMs)
 
     await this.sql.begin(async (tx) => {
       assertAuthorized() // runtime backstop: no mutation without a recorded decision
+      // Persist the setup token as an account_recovery credential_token. A
+      // regenerate revokes the prior: supersede any live account_recovery token
+      // for this account so the one-live-per-purpose index admits the fresh insert.
+      await tx`
+        update credential_token set consumed_at = now()
+        where account_id = ${accountId} and purpose = 'account_recovery' and consumed_at is null
+      `
+      await tx`
+        insert into credential_token (account_id, token_hash, purpose, expires_at)
+        values (${accountId}, ${tokenHash}, 'account_recovery', ${expiresAt})
+      `
       // Record the recovery (references only, never PII).
       await writeAudit(tx, {
         action: 'account.recover',
@@ -372,6 +394,57 @@ export class MaturationService {
     })
 
     return { accountId, chapterId, token, expiresAt }
+  }
+
+  // ---- consumeAccountRecovery (the reissue-setup token consume; token-gated) --
+  /**
+   * Consume an `account_recovery` credential_token (minted by `reissueSetup`) for a
+   * locked-out adult former student: set the account's email + a fresh argon2id
+   * password and mark the token consumed. Token-gated and actor-less (like invite
+   * accept), so it goes through NO `authorize` — the gate is the opaque token. The
+   * account moves from username-only to email-identified: the email is set and the
+   * username cleared (the `email XOR username` account constraint), mirroring
+   * `addEmail`. Validity (live/unexpired/unconsumed) is evaluated at REQUEST time;
+   * an expired, consumed, or unknown token is one opaque InvalidCredentialTokenError.
+   * Any existing sessions are revoked (the credential just changed).
+   */
+  async consumeAccountRecovery(
+    token: string,
+    args: { email: string; newPassword: string },
+    opts: { now?: Date } = {},
+  ): Promise<ConsumeAccountRecoveryResult> {
+    const now = opts.now ?? new Date()
+    const tokenHash = hashToken(token)
+    const [row] = await this.sql`
+      select id, account_id from credential_token
+      where token_hash = ${tokenHash} and purpose = 'account_recovery'
+        and consumed_at is null and expires_at > ${now}
+    `
+    if (row === undefined) throw new InvalidCredentialTokenError()
+
+    const accountId = row.account_id as string
+    const passwordHash = await hashPassword(args.newPassword)
+
+    return this.sql.begin(async (tx) => {
+      // Claim atomically: single-use, rejects a token consumed/expired since the read.
+      const claimed = await tx`
+        update credential_token set consumed_at = ${now}
+        where id = ${row.id} and consumed_at is null and expires_at > ${now}
+        returning account_id
+      `
+      if (claimed.length === 0) throw new InvalidCredentialTokenError()
+
+      // Add the email and set the new password; clear the former username identity
+      // (the account becomes email-identified — email XOR username, as in addEmail).
+      await tx`
+        update account set email = ${args.email}, username = ${null}, password_hash = ${passwordHash}
+        where id = ${accountId}
+      `
+      // The credential just changed: revoke any existing sessions for the account.
+      await revokeAllSessionsForAccount(tx, accountId, now)
+
+      return { accountId, email: args.email }
+    }) as Promise<ConsumeAccountRecoveryResult>
   }
 
   // ---- privatizeCredential (the 16+ self_private transition; SELF) ----------

@@ -245,6 +245,16 @@ export const newsletterIssueStatusEnum = pgEnum('newsletter_issue_status', [
   'blocked',
 ])
 
+// --- Credential token (M1: password reset + account recovery) ---
+// The purpose of a credential_token row: a password reset (05-api-surface.md
+// /auth/password/reset) or an account recovery setup token (06-onboarding-flows
+// Flow D reissueSetup / account.recover). Only its hash is stored; it is consumed
+// once. Not modeled in the pure core (a persistence concern).
+export const credentialTokenPurposeEnum = pgEnum('credential_token_purpose', [
+  'password_reset',
+  'account_recovery',
+])
+
 // --- Newsletter subscriber (Milestone 3.6) ---
 // The subscriber delivery axis (02-data-model.md newsletter_subscriber): fed by
 // the Resend webhook, distinct from the invite `delivery_status` enum.

@@ -600,6 +600,22 @@ export class CredentialWitnessIsGuardianError extends Error {
   }
 }
 
+/**
+ * A password-reset or account-recovery consume presented a credential_token that
+ * is not usable — never issued, forged, expired, or already consumed. Deliberately
+ * ONE opaque error for every not-usable cause, mirroring InvalidInviteError: the
+ * token surface for the actor-less /auth/password/reset and /auth/account-recovery
+ * endpoints reveals nothing (05-api-surface.md the actor-less set, "no enumeration
+ * signal"). Validity (live/unexpired/unconsumed) is evaluated at REQUEST time
+ * against `now`, consistent with the sessions/invites decision-time pattern.
+ */
+export class InvalidCredentialTokenError extends Error {
+  constructor() {
+    super('credential token is not usable')
+    this.name = 'InvalidCredentialTokenError'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Feed (Milestone 2.2: The Lab — posts, comments, reactions).
 // ---------------------------------------------------------------------------

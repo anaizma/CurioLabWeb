@@ -23,13 +23,14 @@ import {
   MaturationService,
   type AddEmailResult,
   type ConfirmMaturationResult,
+  type ConsumeAccountRecoveryResult,
   type PrivatizeCredentialResult,
   type ReissueSetupResult,
 } from '@curiolab/app'
 import { authorize } from '@curiolab/runtime'
-import { runAuthed } from '../run.js'
+import { runAuthed, runPublic } from '../run.js'
 import { reqStr } from '../respond.js'
-import type { AuthedInputBase, ControllerResult } from '../types.js'
+import type { AuthedInputBase, ControllerResult, PublicInputBase } from '../types.js'
 
 function maturationService(sql: AuthedInputBase['sql']): MaturationService {
   return new MaturationService({ sql, authorize })
@@ -72,6 +73,33 @@ export function reissueSetup(input: ReissueSetupInput): Promise<ControllerResult
   return runAuthed(input, async (ctx, sql) => {
     const accountId = reqStr(input.params?.id, 'id')
     const result = await maturationService(sql).reissueSetup(accountId, ctx)
+    return { status: 200, body: result }
+  })
+}
+
+export interface ConsumeAccountRecoveryInput extends PublicInputBase {
+  body: { token?: unknown; email?: unknown; newPassword?: unknown }
+}
+
+/**
+ * POST /api/auth/account-recovery — token-gated, unauthenticated (like invite
+ * accept). Consumes an account_recovery setup token (minted by reissueSetup) for
+ * a locked-out adult former student: sets email + a fresh password and marks the
+ * token consumed. An expired, consumed, or unknown token is one opaque 401
+ * (InvalidCredentialTokenError -> invalid_token).
+ */
+export function consumeAccountRecovery(
+  input: ConsumeAccountRecoveryInput,
+): Promise<ControllerResult<ConsumeAccountRecoveryResult>> {
+  return runPublic(async () => {
+    const token = reqStr(input.body?.token, 'token')
+    const email = reqStr(input.body?.email, 'email')
+    const newPassword = reqStr(input.body?.newPassword, 'newPassword')
+    const result = await new MaturationService({ sql: input.sql, authorize }).consumeAccountRecovery(
+      token,
+      { email, newPassword },
+      { now: input.now },
+    )
     return { status: 200, body: result }
   })
 }

@@ -57,6 +57,16 @@ export const SIGNED_FORM_CONTENT_TYPE = 'application/pdf'
 export const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000 // 14 days
 
 /**
+ * Password-reset token lifetime (05-api-surface POST /auth/password/reset). A
+ * reset token is short-lived — long enough to reach the recipient and be used,
+ * short enough that a leaked-but-unused link goes stale quickly. Validity is
+ * evaluated at DECISION TIME against `now` (like sessions/invites), never a
+ * sweeper. A value, not a literal, so a policy change is a config edit, never a
+ * code change (compliance-coppa.md Part 3 "Configuration, not code").
+ */
+export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000 // 1 hour
+
+/**
  * The `delivery_status` a freshly issued invite carries. Email delivery is
  * deferred this milestone (no Resend), and the enum has no "queued" value, so a
  * new invite is recorded `sent`; the real mailer (the future seam that consumes
@@ -167,6 +177,8 @@ export interface AppConfig {
   signedFormContentType: string
   /** Invite token lifetime in ms (14 days), evaluated at decision time. */
   inviteTtlMs: number
+  /** Password-reset token lifetime in ms (1 hour), evaluated at decision time. */
+  passwordResetTtlMs: number
   /** delivery_status stamped on a freshly issued invite (delivery deferred). */
   inviteInitialDeliveryStatus: InviteInitialDeliveryStatus
   /** relationship recorded on a guardian-accept guardianship edge. */
@@ -187,6 +199,7 @@ export const defaultConfig: AppConfig = {
   signedFormKeyPrefix: SIGNED_FORM_KEY_PREFIX,
   signedFormContentType: SIGNED_FORM_CONTENT_TYPE,
   inviteTtlMs: INVITE_TTL_MS,
+  passwordResetTtlMs: PASSWORD_RESET_TTL_MS,
   inviteInitialDeliveryStatus: INVITE_INITIAL_DELIVERY_STATUS,
   guardianRelationshipDefault: GUARDIAN_RELATIONSHIP_DEFAULT,
   guardianVerificationMethod: GUARDIAN_VERIFICATION_METHOD,

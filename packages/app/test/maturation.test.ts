@@ -20,7 +20,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { Forbidden, authorize, withRequest } from '@curiolab/runtime'
+import { Forbidden, authorize, withRequest, verifyPassword, hashToken } from '@curiolab/runtime'
 import { can, type AuthContext } from '@curiolab/core'
 import { startHarness, type Harness } from './helpers/pg.js'
 import { makeAdult, makeChapter } from './helpers/fixtures.js'
@@ -35,6 +35,7 @@ import {
   CredentialWitnessRequiredError,
   CredentialWitnessInvalidError,
   CredentialWitnessIsGuardianError,
+  InvalidCredentialTokenError,
 } from '../src/index.js'
 
 let h: Harness
@@ -390,6 +391,79 @@ describe('reissueSetup (Flow D step 4: account.recover for a locked-out adult ex
     `
     expect(denied).toHaveLength(1)
     expect(denied[0]!.detail).toMatchObject({ capability: 'account.recover', reason: 'role_not_permitted' })
+  })
+})
+
+// ===========================================================================
+describe('reissueSetup persists an account_recovery token; consumeAccountRecovery consumes it', () => {
+  /** Issue a recovery token for a locked-out adult ex-student (offboarded membership). */
+  async function issueRecovery(f: Seed): Promise<string> {
+    await h.sql`insert into membership (account_id, chapter_id, role, status) values (${f.student}, ${f.chapter}, 'student', 'offboarded')`
+    const ctx = directorCtx(f.director, f.chapter)
+    let token!: string
+    await withRequest(async () => {
+      const r = await svc().reissueSetup(f.student, ctx)
+      token = r.token
+    })
+    return token
+  }
+
+  test('reissueSetup persists a purpose=account_recovery token (hash matches, live)', async () => {
+    const f = await seedMaturingStudent({ dateOfBirth: '2004-01-01' })
+    const token = await issueRecovery(f)
+
+    const [row] = await h.sql`
+      select token_hash, purpose, consumed_at from credential_token where account_id = ${f.student}
+    `
+    expect(row).toBeDefined()
+    expect(row!.purpose).toBe('account_recovery')
+    expect(row!.token_hash).toBe(hashToken(token))
+    expect(row!.consumed_at).toBeNull()
+  })
+
+  test('consumeAccountRecovery sets email + password and consumes the token', async () => {
+    const f = await seedMaturingStudent({ dateOfBirth: '2004-01-01' })
+    const token = await issueRecovery(f)
+    const email = `recovered-${randomUUID().slice(0, 8)}@example.test`
+    const newPassword = 'RecoveredSecret!77'
+
+    const res = await svc().consumeAccountRecovery(token, { email, newPassword })
+    expect(res.accountId).toBe(f.student)
+
+    const a = await accountRow(f.student)
+    expect((a.email as string).toLowerCase()).toBe(email.toLowerCase())
+    // The former username identity is cleared (email XOR username).
+    expect(a.username).toBeNull()
+    const [pw] = await h.sql`select password_hash from account where id = ${f.student}`
+    expect(await verifyPassword(pw!.password_hash as string, newPassword)).toBe(true)
+
+    // The token is consumed.
+    const [t] = await h.sql`select consumed_at from credential_token where account_id = ${f.student}`
+    expect(t!.consumed_at).not.toBeNull()
+  })
+
+  test('a second consume of the same recovery token is rejected', async () => {
+    const f = await seedMaturingStudent({ dateOfBirth: '2004-01-01' })
+    const token = await issueRecovery(f)
+    await svc().consumeAccountRecovery(token, {
+      email: `first-${randomUUID().slice(0, 8)}@example.test`,
+      newPassword: 'FirstRecover!11',
+    })
+    await expect(
+      svc().consumeAccountRecovery(token, {
+        email: `second-${randomUUID().slice(0, 8)}@example.test`,
+        newPassword: 'SecondRecover!22',
+      }),
+    ).rejects.toBeInstanceOf(InvalidCredentialTokenError)
+  })
+
+  test('an unknown recovery token is rejected', async () => {
+    await expect(
+      svc().consumeAccountRecovery(`forged-${randomUUID()}`, {
+        email: `x-${randomUUID().slice(0, 8)}@example.test`,
+        newPassword: 'AnyRecover!33',
+      }),
+    ).rejects.toBeInstanceOf(InvalidCredentialTokenError)
   })
 })
 

@@ -36,6 +36,7 @@ export {
   logout,
   getSession,
   requestPasswordReset,
+  resetPassword,
   startImpersonation,
   endImpersonation,
 } from './controllers/auth.js'
@@ -45,6 +46,7 @@ export type {
   PasswordResetRoute,
   PasswordResetDelivery,
   RequestPasswordResetInput,
+  ResetPasswordInput,
   StartImpersonationInput,
   StartImpersonationResult,
 } from './controllers/auth.js'
@@ -62,12 +64,14 @@ export {
   addEmail,
   confirmMaturation,
   reissueSetup,
+  consumeAccountRecovery,
   selfPrivate,
 } from './controllers/account-lifecycle.js'
 export type {
   AddEmailInput,
   ConfirmMaturationInput,
   ReissueSetupInput,
+  ConsumeAccountRecoveryInput,
   SelfPrivateInput,
 } from './controllers/account-lifecycle.js'
 

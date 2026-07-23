@@ -13,6 +13,7 @@
 
 import type { Sql } from 'postgres'
 import type { SessionMode } from '@curiolab/core'
+import type { Db } from './db.js'
 import { generateSessionToken, hashToken } from './tokens.js'
 
 /** The impersonation window from 02-data-model.md: 30 minutes. */
@@ -142,10 +143,13 @@ export async function revokeSession(
 /**
  * Revoke every live session for an account: both sessions the account holds and
  * any impersonation session targeting it. Used at offboarding and suspension so
- * access dies immediately, not at next expiry (must-not #30).
+ * access dies immediately, not at next expiry (must-not #30). Accepts a `Db`
+ * (pool OR an open transaction), so a caller can revoke atomically inside its own
+ * transaction — e.g. a password reset / account recovery consume that must set the
+ * new credential and drop old sessions in one commit.
  */
 export async function revokeAllSessionsForAccount(
-  sql: Sql,
+  sql: Db,
   accountId: string,
   at: Date = new Date(),
 ): Promise<void> {
