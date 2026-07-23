@@ -182,6 +182,7 @@ export {
   LeadNotFoundError,
   Stage2AlreadyStartedError,
   InvalidStage2TokenError,
+  Stage2LeadExpiredError,
   Stage2NotInPhaseError,
   StudentSectionIdentifyingFieldError,
   StudentSectionFieldNotAllowedError,

@@ -85,6 +85,25 @@ export class InvalidStage2TokenError extends Error {
 }
 
 /**
+ * A Stage 2 token-gated op was attempted against a lead whose 30-day window has
+ * closed (`application_lead.expires_at < now`). The token itself resolves — this
+ * is NOT a forged/wrong-kind token (that is InvalidStage2TokenError) — it is a
+ * once-valid link the parent let lapse. Expiry is evaluated at REQUEST time
+ * against `now` (design §8: "30-day expiry evaluated at request time"),
+ * consistent with the rest of the codebase's decision-time expiry pattern
+ * (sessions, invites, the unconverted-lead retention sweep). Carries the leadId
+ * internally, like Stage2AlreadyStartedError; a route maps it to a 410/409.
+ */
+export class Stage2LeadExpiredError extends Error {
+  readonly leadId: string
+  constructor(leadId: string) {
+    super(`Stage 2 lead has expired: ${leadId}`)
+    this.name = 'Stage2LeadExpiredError'
+    this.leadId = leadId
+  }
+}
+
+/**
  * A Stage 2 op was attempted while the draft was in the wrong phase (e.g. submit
  * before the student has finished 2B, or a student re-save after submission).
  * Carries the expected and actual phase so a route can map it to a 409.

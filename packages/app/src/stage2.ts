@@ -39,6 +39,7 @@ import {
   InvalidStage2TokenError,
   Stage2AlreadyStartedError,
   Stage2LeadChapterRequiredError,
+  Stage2LeadExpiredError,
   Stage2NotInPhaseError,
   Stage2ParentFactsIncompleteError,
   StudentSectionFieldNotAllowedError,
@@ -93,6 +94,12 @@ interface DraftRow {
   student_answers: Answers | null
   lead_chapter_id: string | null
   lead_status: string
+  lead_expires_at: Date
+}
+
+/** True when the lead's 30-day window has closed as of `now` (request time). */
+function leadExpired(expiresAt: Date, now: Date): boolean {
+  return expiresAt.getTime() <= now.getTime()
 }
 
 export class Stage2Service {
@@ -117,13 +124,16 @@ export class Stage2Service {
   async startStage2(parentToken: string): Promise<StartStage2Result> {
     const parentHash = hashToken(parentToken)
     const [lead] = await this.sql`
-      select id, status, token_hash from application_lead where token_hash = ${parentHash}
+      select id, status, token_hash, expires_at from application_lead where token_hash = ${parentHash}
     `
     // Reveal nothing: an unknown token and a hash mismatch look identical.
     if (lead === undefined || !hashesEqual(lead.token_hash as string, parentHash)) {
       throw new InvalidStage2TokenError()
     }
     const leadId = lead.id as string
+    // The 30-day window is evaluated at REQUEST time (design §8): a lapsed lead
+    // is rejected even though its token still resolves.
+    if (leadExpired(lead.expires_at as Date, new Date())) throw new Stage2LeadExpiredError(leadId)
     if (lead.status !== 'new') throw new Stage2AlreadyStartedError(leadId)
 
     const draftId = await this.sql.begin(async (tx) => {
@@ -306,7 +316,8 @@ export class Stage2Service {
     const [row] = await this.sql`
       select d.id, d.lead_id, d.parent_token_hash, d.student_token_hash, d.phase,
              d.status, d.parent_answers, d.student_answers,
-             l.chapter_id as lead_chapter_id, l.status as lead_status
+             l.chapter_id as lead_chapter_id, l.status as lead_status,
+             l.expires_at as lead_expires_at
       from application_draft d
       join application_lead l on l.id = d.lead_id
       where ${this.sql(column)} = ${tokenHash}
@@ -317,7 +328,12 @@ export class Stage2Service {
       | null
     // Defensive constant-time compare of the stored hash against the computed one.
     if (stored === null || !hashesEqual(stored, tokenHash)) throw new InvalidStage2TokenError()
-    return row as unknown as DraftRow
+    const draft = row as unknown as DraftRow
+    // Every token-gated Stage 2 op re-checks the bound lead's 30-day window at
+    // REQUEST time (design §8): a lapsed lead is rejected across 2A/2B/2C, not
+    // only at start.
+    if (leadExpired(draft.lead_expires_at, new Date())) throw new Stage2LeadExpiredError(draft.lead_id)
+    return draft
   }
 
   /** Assert the draft is in one of the phases the requested op permits. */

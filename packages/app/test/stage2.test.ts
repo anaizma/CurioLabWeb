@@ -24,6 +24,7 @@ import {
   Stage2Service,
   InvalidStage2TokenError,
   Stage2AlreadyStartedError,
+  Stage2LeadExpiredError,
   StudentSectionIdentifyingFieldError,
   StudentSectionFieldNotAllowedError,
 } from '../src/index.js'
@@ -84,6 +85,11 @@ const studentAnswers = {
 async function countApps(): Promise<number> {
   const [row] = await h.sql`select count(*)::int as n from application`
   return row!.n as number
+}
+
+/** Push a lead's 30-day window into the past so it is expired at request time. */
+async function expireLead(leadId: string): Promise<void> {
+  await h.sql`update application_lead set expires_at = now() - interval '1 second' where id = ${leadId}`
 }
 
 // ===========================================================================
@@ -369,5 +375,91 @@ describe('sendBack (2C -> 2B)', () => {
     const service = svc() as unknown as Record<string, unknown>
     expect(service.editStudentSection).toBeUndefined()
     expect(service.saveStudentAnswersAsParent).toBeUndefined()
+  })
+})
+
+// ===========================================================================
+// Request-time lead expiry (design §8: the Stage-2 token's 30-day expiry is
+// evaluated at request time). A once-valid token whose bound lead has lapsed is
+// rejected with the typed Stage2LeadExpiredError — distinct from a forged token.
+describe('request-time lead expiry', () => {
+  test('startStage2 rejects an expired lead and creates no draft', async () => {
+    const f = await setup()
+    await expireLead(f.leadId)
+
+    let caught: unknown
+    try {
+      await svc().startStage2(f.parentToken)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(Stage2LeadExpiredError)
+
+    const [d] = await h.sql`select count(*)::int as n from application_draft where lead_id = ${f.leadId}`
+    expect(d!.n).toBe(0)
+    // And the lead was not advanced out of `new`.
+    const [l] = await h.sql`select status from application_lead where id = ${f.leadId}`
+    expect(l!.status).toBe('new')
+  })
+
+  test('a lead one second inside the window still starts (evaluated against now)', async () => {
+    const f = await setup()
+    await h.sql`update application_lead set expires_at = now() + interval '1 second' where id = ${f.leadId}`
+    const s = await svc().startStage2(f.parentToken)
+    expect(s.leadId).toBe(f.leadId)
+  })
+
+  test('a parent-token op (saveParentSection) rejects once the lead has expired mid-flow', async () => {
+    const f = await setup()
+    await svc().startStage2(f.parentToken)
+    await expireLead(f.leadId)
+
+    let caught: unknown
+    try {
+      await svc().saveParentSection(f.parentToken, parentAnswers)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(Stage2LeadExpiredError)
+  })
+
+  test('the student-token op (saveStudentSection) rejects once the lead has expired', async () => {
+    const f = await setup()
+    await svc().startStage2(f.parentToken)
+    const p = await svc().saveParentSection(f.parentToken, parentAnswers)
+    await expireLead(f.leadId)
+
+    let caught: unknown
+    try {
+      await svc().saveStudentSection(p.studentToken!, studentAnswers)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(Stage2LeadExpiredError)
+  })
+
+  test('submitStage2 rejects an expired lead; no application is minted, the lead stays unconverted', async () => {
+    const f = await setup()
+    const s = await svc().startStage2(f.parentToken)
+    const p = await svc().saveParentSection(f.parentToken, parentAnswers)
+    await svc().saveStudentSection(p.studentToken!, studentAnswers)
+    await expireLead(f.leadId)
+
+    const before = await countApps()
+    let caught: unknown
+    try {
+      await svc().submitStage2(f.parentToken)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(Stage2LeadExpiredError)
+    expect(await countApps()).toBe(before)
+
+    const [l] = await h.sql`select status, converted_at from application_lead where id = ${f.leadId}`
+    expect(l!.status).toBe('stage2_started')
+    expect(l!.converted_at).toBeNull()
+
+    const [d] = await h.sql`select status from application_draft where id = ${s.draftId}`
+    expect(d!.status).toBe('2b_saved')
   })
 })
