@@ -110,6 +110,22 @@ export async function POST(req: Request) {
 - **Response `200`:** `{ saved: true }`.
 - **Errors:** `400` missing fields, or a disallowed / identifying student field (`StudentSectionFieldNotAllowedError`, `StudentSectionIdentifyingFieldError`); `401` invalid token; `409` wrong phase.
 
+### `POST /api/public/stage2/draft` — read-only 2A prefill (resume)
+
+- **Auth:** token (**parent token**). Phase: any (`2a`/`2b`/`2c`). Read-only — mutates nothing, no phase change.
+- **Purpose:** prefill-on-resume. A returning parent reads their saved 2A answers so the resumed form is pre-filled rather than blank; without it, a blank still-saveable 2A form would let `saveParentSection`'s additive merge silently overwrite previously-saved answers.
+- **Request body:** `token` (string, required) — parent token.
+- **Response `200`:** `{ phase: string, parentAnswers: object }` — the saved 2A answers (empty object `{}` if none yet). Never includes the student's answers (those stay with `/review` at 2C).
+- **Errors:** `400` missing `token`; `401` invalid / student / forged token (`InvalidStage2TokenError`).
+
+### `POST /api/public/stage2/student-draft` — read-only 2B prefill (resume)
+
+- **Auth:** token (**student token**). Phase: any. Read-only — mutates nothing, no phase change.
+- **Purpose:** prefill-on-resume. A student who closes and reopens their section reads their saved 2B answers so they resume without losing work.
+- **Request body:** `token` (string, required) — student token.
+- **Response `200`:** `{ phase: string, studentAnswers: object }` — the saved 2B answers (empty object `{}` if none yet). Returns only the student's own section.
+- **Errors:** `400` missing `token`; `401` invalid / parent / forged token (`InvalidStage2TokenError`).
+
 ### `POST /api/public/stage2/review` — read-only 2C view
 
 - **Auth:** token (**parent token**). Phase: 2C.

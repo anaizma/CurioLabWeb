@@ -93,6 +93,18 @@ export interface SubmitStage2Result {
   leadId: string
 }
 
+export interface GetParentDraftResult {
+  phase: string
+  /** The draft's saved 2A parent answers; empty object if none saved yet. */
+  parentAnswers: Answers
+}
+
+export interface GetStudentDraftResult {
+  phase: string
+  /** The draft's saved 2B student answers; empty object if none saved yet. */
+  studentAnswers: Answers
+}
+
 /** The columns a token lookup needs; the draft joined to its lead. */
 interface DraftRow {
   id: string
@@ -272,6 +284,33 @@ export class Stage2Service {
       parentAnswers: draft.parent_answers,
       studentAnswers: draft.student_answers,
     }
+  }
+
+  // ---- draft resume reads (READ-ONLY, token-gated) -------------------------
+  /**
+   * READ-ONLY prefill for a returning parent: the draft's saved 2A `parentAnswers`
+   * (empty object if none yet) plus the current phase, so a resumed 2A form can be
+   * pre-filled instead of shown blank (which would let saveParentSection's additive
+   * merge silently OVERWRITE prior answers). Parent-token-gated (a forged/expired or
+   * student token is rejected the same opaque way as the other ops), works at ANY
+   * phase (2a/2b/2c), mutates NOTHING, and never returns the student's answers — the
+   * 2B section stays with reviewStage2 at 2c.
+   */
+  async getParentDraft(parentToken: string): Promise<GetParentDraftResult> {
+    const draft = await this.loadDraftByParentToken(parentToken)
+    return { phase: draft.phase, parentAnswers: draft.parent_answers ?? {} }
+  }
+
+  /**
+   * READ-ONLY prefill for a returning student: the draft's saved 2B `studentAnswers`
+   * (empty object if none yet) plus the current phase, so a student who closes and
+   * reopens their section resumes without losing work. Student-token-gated (a
+   * forged/expired or parent token is rejected the same opaque way), returns ONLY the
+   * student's own section, and mutates nothing.
+   */
+  async getStudentDraft(studentToken: string): Promise<GetStudentDraftResult> {
+    const draft = await this.loadDraftByStudentToken(studentToken)
+    return { phase: draft.phase, studentAnswers: draft.student_answers ?? {} }
   }
 
   // ---- 2C submit (parent token ONLY, UNAUTHENTICATED) ----------------------

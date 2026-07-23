@@ -20,6 +20,8 @@ import {
   Stage2Service,
   type Answers,
   type CreateStudentLinkResult,
+  type GetParentDraftResult,
+  type GetStudentDraftResult,
   type ReviewStage2Result,
   type StartStage2Result,
   type SubmitStage2Result,
@@ -97,6 +99,36 @@ export function reviewStage2(
   return runPublic(async () => {
     const token = reqStr(input.body?.token, 'token')
     const result = await new Stage2Service({ sql: input.sql }).reviewStage2(token)
+    return { status: 200, body: result }
+  })
+}
+
+/**
+ * POST /api/public/stage2/draft — read-only 2A prefill (parent token). Returns the
+ * draft's saved parent answers so a returning parent resumes without a blank form
+ * silently overwriting prior answers. Mutates nothing; never returns student answers.
+ */
+export function getParentDraft(
+  input: Stage2ReviewInput,
+): Promise<ControllerResult<GetParentDraftResult>> {
+  return runPublic(async () => {
+    const token = reqStr(input.body?.token, 'token')
+    const result = await new Stage2Service({ sql: input.sql }).getParentDraft(token)
+    return { status: 200, body: result }
+  })
+}
+
+/**
+ * POST /api/public/stage2/student-draft — read-only 2B prefill (student token). Returns
+ * the draft's saved student answers so a student who reopens their section resumes
+ * without losing work. Mutates nothing; returns only the student's own section.
+ */
+export function getStudentDraft(
+  input: Stage2ReviewInput,
+): Promise<ControllerResult<GetStudentDraftResult>> {
+  return runPublic(async () => {
+    const token = reqStr(input.body?.token, 'token')
+    const result = await new Stage2Service({ sql: input.sql }).getStudentDraft(token)
     return { status: 200, body: result }
   })
 }

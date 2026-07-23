@@ -115,6 +115,8 @@ export type {
   CreateStudentLinkResult,
   ReviewStage2Result,
   SubmitStage2Result,
+  GetParentDraftResult,
+  GetStudentDraftResult,
 } from './stage2.js'
 export {
   LEAD_DEDUPE_WINDOW_MS,

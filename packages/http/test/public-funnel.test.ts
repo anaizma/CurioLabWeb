@@ -23,6 +23,8 @@ import {
   saveParentSection,
   createStudentLink,
   saveStudentSection,
+  getParentDraft,
+  getStudentDraft,
   reviewStage2,
   submitStage2,
   sendBack,
@@ -146,6 +148,36 @@ describe('the Stage 2 three-phase chain against tokens', () => {
   test('a forged Stage 2 token is a 401 (opaque), not a 500', async () => {
     const res = await reviewStage2({ sql: h.sql, body: { token: 'not-a-real-token' } })
     expect(res.status).toBe(401)
+  })
+
+  test('draft resume reads prefill saved answers (200) and reject the wrong/forged token (401)', async () => {
+    const chapter = await makeChapter(h.sql)
+    const { token: parentToken } = await seedLead(chapter)
+    await startStage2({ sql: h.sql, body: { token: parentToken } })
+    await saveParentSection({
+      sql: h.sql,
+      body: { token: parentToken, answers: { childName: 'Minor Testchild', guardianName: 'P', guardianEmail: 'parent-e@example.test' } },
+    })
+    const linked = await createStudentLink({ sql: h.sql, body: { token: parentToken } })
+    const studentToken = linked.body.studentToken
+    await saveStudentSection({ sql: h.sql, body: { token: studentToken, answers: { motivation: 'I like robots' } } })
+
+    // Parent draft: saved 2A answers, current phase, no student answers leaked.
+    const parentDraft = await getParentDraft({ sql: h.sql, body: { token: parentToken } })
+    expect(parentDraft.status).toBe(200)
+    expect(parentDraft.body.phase).toBe('2c')
+    expect(parentDraft.body.parentAnswers).toMatchObject({ childName: 'Minor Testchild' })
+    expect(parentDraft.body).not.toHaveProperty('studentAnswers')
+
+    // Student draft: saved 2B answers only.
+    const studentDraft = await getStudentDraft({ sql: h.sql, body: { token: studentToken } })
+    expect(studentDraft.status).toBe(200)
+    expect(studentDraft.body.studentAnswers).toMatchObject({ motivation: 'I like robots' })
+
+    // Wrong token for each read is a 401 (opaque); missing token is a 400.
+    expect((await getParentDraft({ sql: h.sql, body: { token: studentToken } })).status).toBe(401)
+    expect((await getStudentDraft({ sql: h.sql, body: { token: parentToken } })).status).toBe(401)
+    expect((await getParentDraft({ sql: h.sql, body: {} })).status).toBe(400)
   })
 
   test('a 2B save of an identifying field is a 400 (loud), not a 500', async () => {

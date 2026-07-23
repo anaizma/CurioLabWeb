@@ -478,6 +478,135 @@ describe('sendBack (2C -> 2B)', () => {
 })
 
 // ===========================================================================
+// Draft resume reads (getParentDraft / getStudentDraft): READ-ONLY, token-gated
+// prefill so a returning applicant resumes without losing saved answers. Neither
+// mutates the draft nor changes its phase, and each works at ANY phase.
+describe('getParentDraft (read-only 2A prefill, parent token)', () => {
+  test('returns the saved parentAnswers and current phase after a 2A save; changes nothing', async () => {
+    const f = await setup()
+    const started = await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parentAnswers)
+
+    const draft = await svc().getParentDraft(f.parentToken)
+    expect(draft.phase).toBe('2b')
+    expect(draft.parentAnswers).toMatchObject({
+      childName: 'Minor Testchild',
+      school: 'Test Middle School',
+    })
+
+    // Read is stable (idempotent) and mutates nothing: phase and answers unchanged,
+    // and a subsequent save still merges additively.
+    const again = await svc().getParentDraft(f.parentToken)
+    expect(again).toEqual(draft)
+
+    const [d] = await h.sql`select phase, status, parent_answers from application_draft where id = ${started.draftId}`
+    expect(d!.phase).toBe('2b')
+    expect(d!.status).toBe('in_progress')
+
+    await svc().saveParentSection(f.parentToken, { grade: '8' })
+    const after = await svc().getParentDraft(f.parentToken)
+    expect(after.parentAnswers).toMatchObject({ childName: 'Minor Testchild', grade: '8' })
+  })
+
+  test('works at phase 2a (just started, no answers yet) — empty object', async () => {
+    const f = await setup()
+    await svc().startStage2(f.parentToken)
+
+    const draft = await svc().getParentDraft(f.parentToken)
+    expect(draft.phase).toBe('2a')
+    expect(draft.parentAnswers).toEqual({})
+  })
+
+  test('works at phase 2b (after create-student-link)', async () => {
+    const f = await setup()
+    await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parentAnswers)
+    await svc().createStudentLink(f.parentToken)
+
+    const draft = await svc().getParentDraft(f.parentToken)
+    expect(draft.phase).toBe('2b')
+    expect(draft.parentAnswers).toMatchObject({ childName: 'Minor Testchild' })
+  })
+
+  test('works at phase 2c (after the student finishes) and does NOT leak the student answers', async () => {
+    const f = await setup()
+    await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parentAnswers)
+    const { studentToken } = await svc().createStudentLink(f.parentToken)
+    await svc().saveStudentSection(studentToken, studentAnswers)
+
+    const draft = await svc().getParentDraft(f.parentToken)
+    expect(draft.phase).toBe('2c')
+    expect(draft.parentAnswers).toMatchObject({ childName: 'Minor Testchild' })
+    // The 2A read carries no student answers — those stay with reviewStage2 at 2c.
+    expect(draft).not.toHaveProperty('studentAnswers')
+    expect(JSON.stringify(draft)).not.toContain('I like building robots')
+  })
+
+  test('a student token (or forged) is rejected', async () => {
+    const f = await setup()
+    await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parentAnswers)
+    const { studentToken } = await svc().createStudentLink(f.parentToken)
+
+    for (const bad of [studentToken, 'never-issued-token']) {
+      let caught: unknown
+      try {
+        await svc().getParentDraft(bad)
+      } catch (e) {
+        caught = e
+      }
+      expect(caught).toBeInstanceOf(InvalidStage2TokenError)
+    }
+  })
+})
+
+describe('getStudentDraft (read-only 2B prefill, student token)', () => {
+  async function toStudent(f: Setup) {
+    await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parentAnswers)
+    return svc().createStudentLink(f.parentToken)
+  }
+
+  test('returns the saved studentAnswers and phase after a 2B save; changes nothing', async () => {
+    const f = await setup()
+    const { studentToken } = await toStudent(f)
+    await svc().saveStudentSection(studentToken, studentAnswers)
+
+    const draft = await svc().getStudentDraft(studentToken)
+    expect(draft.phase).toBe('2c')
+    expect(draft.studentAnswers).toMatchObject({ motivation: 'I like building robots' })
+
+    const again = await svc().getStudentDraft(studentToken)
+    expect(again).toEqual(draft)
+  })
+
+  test('returns an empty object before the student has saved anything (phase 2b)', async () => {
+    const f = await setup()
+    const { studentToken } = await toStudent(f)
+
+    const draft = await svc().getStudentDraft(studentToken)
+    expect(draft.phase).toBe('2b')
+    expect(draft.studentAnswers).toEqual({})
+  })
+
+  test('a parent token (or forged) is rejected', async () => {
+    const f = await setup()
+    await toStudent(f)
+
+    for (const bad of [f.parentToken, 'never-issued-token']) {
+      let caught: unknown
+      try {
+        await svc().getStudentDraft(bad)
+      } catch (e) {
+        caught = e
+      }
+      expect(caught).toBeInstanceOf(InvalidStage2TokenError)
+    }
+  })
+})
+
+// ===========================================================================
 // Request-time lead expiry (design §8: the Stage-2 token's 30-day expiry is
 // evaluated at request time). A once-valid token whose bound lead has lapsed is
 // rejected with the typed Stage2LeadExpiredError — distinct from a forged token.

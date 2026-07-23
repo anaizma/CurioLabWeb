@@ -444,6 +444,18 @@ export const ROUTE_MANIFEST: RouteManifest = [
   },
   {
     method: 'POST',
+    path: '/api/public/stage2/draft',
+    inert: 'unauthenticated, parent-token-gated (timing-safe); READ-ONLY 2A prefill on resume (reads saved parent answers, mutates nothing, no phase change), runPublic — no actor. POST only because the token travels in the body, not the URL',
+    specEnumerated: false,
+  },
+  {
+    method: 'POST',
+    path: '/api/public/stage2/student-draft',
+    inert: 'unauthenticated, student-token-gated (timing-safe); READ-ONLY 2B prefill on resume (reads saved student answers, mutates nothing, no phase change), runPublic — no actor. POST only because the token travels in the body, not the URL',
+    specEnumerated: false,
+  },
+  {
+    method: 'POST',
     path: '/api/public/stage2/review',
     inert: 'unauthenticated, parent-token-gated; read-only 2C view, runPublic — no actor',
     specEnumerated: false,
