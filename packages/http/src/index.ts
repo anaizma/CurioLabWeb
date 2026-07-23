@@ -20,6 +20,29 @@ export { ValidationError, mapError, FORBIDDEN_BODY, readJson } from './respond.j
 export { resolveAuthContext } from './context.js'
 export { runAuthed, runPublic } from './run.js'
 
+// The build-time route-manifest guard (07-test-plan "two invariant guards").
+export {
+  ROUTE_MANIFEST,
+  SPEC_ENUMERATED_INERT,
+  MUTATING_METHODS,
+  isAuthorized,
+  entryCapabilities,
+  routeKey,
+  routePathFromFile,
+  parseExportedMethods,
+  missingManifestEntries,
+  staleManifestEntries,
+  unknownCapabilities,
+  assertManifestComplete,
+} from './route-manifest.js'
+export type {
+  RouteManifest,
+  RouteManifestEntry,
+  AuthorizedEntry,
+  InertEntry,
+  DiscoveredRoute,
+} from './route-manifest.js'
+
 // Public funnel (Stage 2 token-gated chain; Stage 1 /api/apply is frontend-owned)
 export {
   startStage2,
