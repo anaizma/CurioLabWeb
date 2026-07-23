@@ -71,7 +71,7 @@ export default function Home() {
 
             </p>
             <div className="flex flex-wrap gap-4 mb-11 opacity-0 animate-[fade-in_0.8s_ease_420ms_forwards]">
-              <Link href="/students" className="bg-coral text-white px-6 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
+              <Link href="/apply" className="bg-coral text-white px-6 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
                 Apply to join →
               </Link>
               <Link href="/support" className="border border-ink/20 px-6 py-3 rounded-md font-medium hover:bg-ink/5 transition-colors">
@@ -204,7 +204,7 @@ export default function Home() {
           required — just curiosity.
         </p>
         <div className="flex flex-wrap justify-center gap-4">
-          <Link href="/students" className="bg-coral text-white px-6 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
+          <Link href="/apply" className="bg-coral text-white px-6 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
             Start an application →
           </Link>
           <Link href="/support" className="border border-ink/20 px-6 py-3 rounded-md font-medium hover:bg-ink/5 transition-colors">

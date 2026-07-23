@@ -17,8 +17,8 @@ export default function StudentsPage() {
 
 
       <div className="mt-16 text-center">
-        <a href="mailto:aizma@curiolab.org" className="inline-block bg-coral text-white px-8 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
-          Application →
+        <a href="/apply" className="inline-block bg-coral text-white px-8 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
+          Apply →
         </a>
       </div>
     </div>
