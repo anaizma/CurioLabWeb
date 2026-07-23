@@ -260,6 +260,14 @@ export const ROUTE_MANIFEST: RouteManifest = [
     specEnumerated: false,
   },
 
+  // ---- Apply funnel Stage 1 (frontend-owned adapter over LeadService.createLead) ----
+  {
+    method: 'POST',
+    path: '/api/apply',
+    inert: 'public Stage-1 lead capture; creates only an application_lead (parent email, chapter, source, filler_role — no child data, no account or edge). Returns the parent Stage-2 token only for a parent-filler',
+    specEnumerated: false,
+  },
+
   // ---- Invite onboarding entry (05 inert table; actor-less, inert rows) ----
   {
     method: 'POST',
