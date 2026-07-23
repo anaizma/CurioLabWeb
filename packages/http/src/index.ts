@@ -58,3 +58,33 @@ export {
   requestChildDeletion,
   viewDigest,
 } from './controllers/guardian.js'
+
+// The Lab (internal feed)
+export {
+  viewFeed,
+  createPost,
+  editPost,
+  removePost,
+  hidePost,
+  createComment,
+  addReaction,
+  removeReaction,
+  fileReport,
+  moderationQueue,
+  transitionReport,
+} from './controllers/lab.js'
+export type {
+  ViewFeedInput,
+  CreatePostInputHttp,
+  EditPostInput,
+  PostIdInput,
+  HidePostInput,
+  CreateCommentInputHttp,
+  ReactionInput,
+  FileReportInputHttp,
+  ModerationQueueInput,
+  ModerationQueueRow,
+  ModerationQueueResult,
+  TransitionReportInput,
+  ReportAction,
+} from './controllers/lab.js'

@@ -33,6 +33,11 @@ const NOT_FOUND = new Set([
   'DobCorrectionSubjectNotFoundError',
   'ConsentEnrollmentNotFoundError',
   'DeletionSubjectChapterNotFoundError',
+  // The Lab (M2.6)
+  'PostNotFoundError',
+  'CommentNotFoundError',
+  'ModerationReportNotFoundError',
+  'FeedAuthorMembershipNotFoundError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */
@@ -43,6 +48,9 @@ const CONFLICT = new Set([
   'IllegalGuardianshipTransitionError',
   'Stage2AlreadyStartedError',
   'Stage2NotInPhaseError',
+  // The Lab (M2.6): illegal feed-content / moderation-report lifecycle edges.
+  'IllegalFeedContentTransitionError',
+  'IllegalModerationTransitionError',
 ])
 
 /** Opaque, single-signal token failures -> 401 (reveals nothing; 05-api-surface). */
@@ -63,6 +71,8 @@ const BAD_REQUEST = new Set([
   'MembershipActivationConsentError',
   'MembershipActivationEvidenceError',
   'DeletionReasonRequiredError',
+  // The Lab (M2.6): the member create path rejects a milestone / system post.
+  'PostMilestoneForbiddenError',
 ])
 
 /**
