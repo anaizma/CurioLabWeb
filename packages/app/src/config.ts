@@ -137,13 +137,13 @@ export function guardianNamesMatch(a: string, b: string): boolean {
  * questions the 2B form asks this season, so a form change is a config edit.
  */
 export const STAGE2_STUDENT_ALLOWED_FIELDS: readonly string[] = [
-  'motivation',
-  'interests',
-  'project_idea',
-  'favorite_subject',
-  'prior_experience',
-  'availability',
-  'goals',
+  'interests', // What do you like doing when you're not in school?
+  'motivation', // Why do you want to join CurioLab?
+  'curiosity', // What are you curious about right now?
+  'proud_build', // Something you built/made/fixed and were proud of?
+  'problem_to_fix', // A problem you wish someone would fix?
+  'goals', // What do you hope to learn or make by your first semester?
+  'prior_experience', // Any coding/building/making before? (optional)
 ] as const
 
 /**
