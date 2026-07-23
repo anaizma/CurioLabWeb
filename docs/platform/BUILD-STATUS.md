@@ -4,7 +4,9 @@ Current snapshot of the overnight build. Everything below I ran and verified mys
 
 ## Verified state
 
-**743 tests green** across five packages: core 131, db 157, runtime 29, app 329, http 97. Full workspace run ~1m45s on the shared-Postgres-per-package harness. Root `next typegen && tsc --noEmit` clean across all `app/api` route handlers.
+**819 tests green** across five packages: core 135, db 167, runtime 29, app 350, http 138. Full workspace run ~1m50s on the shared-Postgres-per-package harness. Root `next typegen && tsc --noEmit` clean across all `app/api` route handlers.
+
+Post-M4 hardening also landed: the deferred auth/onboarding/account-lifecycle/audit HTTP routes (invite accept, impersonation, maturation confirm, account recover, self-private, audit views); `impersonation.start` and `audit.view` made first-class registry capabilities (restoring the single-code-path invariant); `guardianship.revoke` and the safeguarding consent suspension built; a fix so the guardian portal's own consent-revoke fires the C1/C2 cascades; and a `credential_token` store making password reset and account recovery actually functional (persisted, consumable, session-revoking, no-oracle).
 
 | Milestone | State |
 |---|---|
