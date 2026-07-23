@@ -17,6 +17,9 @@
 import {
   ConsentService,
   GuardianPortalService,
+  composeRevokeCascades,
+  mediaPhotoMediaRevokeCascade,
+  projectExternalPublicationRevokeCascade,
   type ChapterDigest,
   type ChildRecord,
   type ConsentResult,
@@ -97,7 +100,14 @@ export function revokeChildConsent(
     const childId = reqStr(input.params?.id, 'id')
     const type = reqStr(input.params?.type, 'type') as ConsentType
     if (!CONSENT_TYPES.includes(type)) throw new ValidationError(`unknown consent type: ${type}`)
-    const result = await new ConsentService({ sql, authorize }).revokeConsent(childId, type, ctx)
+    const result = await new ConsentService({
+      sql,
+      authorize,
+      onRevoke: composeRevokeCascades(
+        projectExternalPublicationRevokeCascade,
+        mediaPhotoMediaRevokeCascade,
+      ),
+    }).revokeConsent(childId, type, ctx)
     return { status: 200, body: result }
   })
 }
