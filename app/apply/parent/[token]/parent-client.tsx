@@ -69,6 +69,10 @@ export default function ParentClient({ token }: { token: string }) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveErrorMessage, setSaveErrorMessage] = useState("");
   const [showStudentLink, setShowStudentLink] = useState(false);
+  // On reopen we can't yet prefill saved answers (no draft-read endpoint), so the
+  // form stays hidden behind a warned opt-in — otherwise re-saving a blank form
+  // would overwrite the parent's saved answers via the backend's additive merge.
+  const [editing, setEditing] = useState(false);
 
   const [linkStatus, setLinkStatus] = useState<LinkStatus>("idle");
   const [linkErrorMessage, setLinkErrorMessage] = useState("");
@@ -247,17 +251,45 @@ export default function ParentClient({ token }: { token: string }) {
     <div className="mx-auto max-w-2xl px-6 py-20">
       <p className="label-blue mb-3">Apply · Parent/guardian section</p>
       <h1 className="text-3xl md:text-4xl font-bold mb-8">
-        Tell us about your student
+        {alreadyStarted && !editing
+          ? "Your section is saved"
+          : "Tell us about your student"}
       </h1>
 
-      {alreadyStarted && (
-        <div className="border border-sage rounded-md bg-sage/10 px-4 py-3 mb-8 text-sm text-ink">
-          Welcome back. If you&apos;ve already saved this section, re-saving
-          may not be available — your student link tool is below.
+      {alreadyStarted && !editing ? (
+        <div className="mb-4">
+          <p className="text-muted mb-6">
+            We&apos;ve got the details you entered for this application. Create
+            your student&apos;s link below, or head to review and submit once
+            they&apos;re done. We don&apos;t re-display your saved answers here
+            yet, so there&apos;s nothing to accidentally overwrite.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Re-entering replaces the answers you saved before — you'll need to fill in the whole section again. Continue?",
+                )
+              ) {
+                setEditing(true);
+              }
+            }}
+            className="text-sm text-coral font-medium hover:underline"
+          >
+            Need to change what you entered? Re-enter this section &rarr;
+          </button>
         </div>
-      )}
+      ) : (
+        <>
+          {alreadyStarted && editing && (
+            <div className="border border-coral/40 rounded-md bg-coral/5 px-4 py-3 mb-8 text-sm text-ink">
+              Heads up: saving replaces the answers you entered before, so please
+              fill in the whole section again before you save.
+            </div>
+          )}
 
-      <form className="space-y-8" onSubmit={handleSave}>
+          <form className="space-y-8" onSubmit={handleSave}>
         <div className="space-y-6">
           <h2 className="text-xl font-bold">Student</h2>
 
@@ -511,7 +543,9 @@ export default function ParentClient({ token }: { token: string }) {
         >
           {saveStatus === "submitting" ? "Saving…" : "Save"}
         </button>
-      </form>
+          </form>
+        </>
+      )}
 
       {showStudentLink && (
         <div className="mt-12 border-t border-black/10 pt-8">
