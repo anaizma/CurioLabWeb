@@ -1,0 +1,36 @@
+{
+  "name": "@curiolab/http",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CurioLab platform HTTP layer: framework-agnostic controllers (one per endpoint) that resolve a session to an AuthContext, run under withRequest, call a service under authorize, and map results/errors to { status, body }. The Next route.ts adapters are thin wrappers over these.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@curiolab/app": "*",
+    "@curiolab/core": "*",
+    "@curiolab/db": "*",
+    "@curiolab/runtime": "*",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "embedded-postgres": "17.10.0-beta.17",
+    "eslint": "^9",
+    "typescript": "^5",
+    "typescript-eslint": "^8",
+    "vitest": "^3"
+  }
+}
