@@ -19,6 +19,7 @@ Ordered, hand-authored SQL applied in filename order by the test harness
 | `0011_stage2_student_section.sql` | Carries the Stage 2B student section on the `application` — adds the nullable `student_section jsonb`, written only by a Stage-2-minted application at 2C submit. |
 | `0012_application_lead_stage1.sql` | Aligns `application_lead` to the approved Stage-1 design (`docs/superpowers/specs/2026-07-22-application-funnel-stage-1-design.md` §7.1). ADDITIVE ALTERs (not a rewrite of 0010): renames `referral_source` → nullable `source`; adds the NOT-NULL `chapter` TEXT CODE (chapter_id kept as the optional 2C linkage fk, so "interested in another school" is expressible); adds `filler_role` enum(parent,student) NOT NULL (drives the confirmation copy), `expires_at` timestamptz NOT NULL (created_at + 30 days — the § 312.4(c)(1)(vii) deletion floor), and the `converted_at` marker. `CURIOLAB_MIGRATE_UPTO=0011` witnesses the red state (the new columns do not exist). |
 | `0013_feed_content.sql` | Milestone 2.1: the feed content schema (The Lab). Adds the enums (`post_type`, the shared `content_status` for post+comment, `reaction_target_type`) and four tables — `post`, `comment`, `reaction`, and the append-only `timeline_entry` — with the feed indexes (post by `(chapter_id, created_at)` and `(pod_id, created_at)`, comment by `(post_id, created_at)`, timeline_entry by `(account_id, occurred_at)`), the `reaction` uniqueness index on `(target_type, target_id, membership_id, kind)`, and the `timeline_entry` append-only discipline (the shared `reject_append_only_mutation()` trigger backstop plus the role-level `REVOKE UPDATE, DELETE`, mirroring consent/audit_entry). Extends the 0002 Mechanism-A grants: full DML to `curiolab_app` on all four tables (append-only revoke on `timeline_entry`), analytics left ungranted (default-deny). Additive/structural; no service, HTTP route, `moderation_report` (M2.4), or project/media (M3). `CURIOLAB_MIGRATE_UPTO=0012` witnesses the red state (the relations do not exist). |
+| `0018_rls.sql` | Milestone 4.1, **Mechanism B**: per-request row-level security on the highest-risk tables (`membership`, `consent`, `enrollment_record`, `guardianship`, `audit_entry`). Creates a NEW restricted role `curiolab_rls` (LOGIN, NO BYPASSRLS) with the same high-risk-table DML as `curiolab_app`, and grants `BYPASSRLS` to the pre-existing `curiolab_app`/`curiolab_analytics` roles so the whole existing suite is unaffected (the owner is a superuser and bypasses inherently). `ENABLE` (not `FORCE`) RLS + one `FOR ALL` policy per table, keyed on two transaction-local GUCs — `app.current_account_id` (uuid) and `app.actor_is_platform` ('on'/'off') — via the documented `SECURITY DEFINER` predicate helpers (`rls_visible`… family). Fail-closed when unset. Proven by `test/rls.test.ts` connecting AS `curiolab_rls`; the runtime seam is `withRlsContext` (packages/runtime). Activating RLS on the main app connection (connecting the app as `curiolab_rls` and threading the GUC through every service read) is deferred go-live wiring, documented in the migration header. |
 
 ## Why the guarantees are separate from the base tables
 
@@ -54,6 +55,27 @@ REVOKE SELECT ON scholarship   FROM curiolab_analytics;
 
 and add the mirror-image test: the analytics role's `SELECT` is rejected while
 the app role's succeeds.
+
+## Mechanism B (RLS), and how it stays off the existing app path
+
+`0018_rls.sql` adds per-request row-level security as defense-in-depth: on the
+highest-risk tables a row is visible only when it belongs to the caller's scope,
+computed from two transaction-local settings (`app.current_account_id`,
+`app.actor_is_platform`). The predicates mirror `can`'s scoping — own account,
+guardianed children, and the chapters where the actor holds an active staff
+membership — and are kept as documented `SECURITY DEFINER` SQL functions (so a
+policy that reads `membership`/`guardianship` to decide visibility is not itself
+RLS-filtered). Unset GUC => the policy denies (fail-closed).
+
+Crucially, this ships WITHOUT touching how the current services/tests connect.
+RLS is `ENABLE` (not `FORCE`) and applies only to the NEW `curiolab_rls` role;
+`curiolab_app`, `curiolab_analytics`, and the superuser owner all bypass, so the
+whole pre-existing suite reads exactly as before. The filtering is proven by
+`test/rls.test.ts` connecting AS `curiolab_rls`, and the runtime seam production
+will use once the app connects as `curiolab_rls` is `withRlsContext` in
+`packages/runtime`. Threading that context through every service read (the
+broad app-layer refactor that actually activates RLS on the main connection) is
+deferred go-live wiring, called out in the migration header.
 
 ## Deferred within Milestone 0 (documented, not silently skipped)
 
