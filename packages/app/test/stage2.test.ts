@@ -22,6 +22,7 @@ import { startHarness, type Harness } from './helpers/pg.js'
 import { makeChapter } from './helpers/fixtures.js'
 import {
   Stage2Service,
+  FakeMailer,
   InvalidStage2TokenError,
   Stage2AlreadyStartedError,
   Stage2LeadExpiredError,
@@ -691,5 +692,185 @@ describe('request-time lead expiry', () => {
 
     const [d] = await h.sql`select status from application_draft where id = ${s.draftId}`
     expect(d!.status).toBe('2b_saved')
+  })
+})
+
+// ===========================================================================
+// The emailed 2C REVIEW token. When the student finishes 2B, saveStudentSection
+// mints a fresh CSPRNG review token, stores ONLY its hash on the draft, and puts
+// the RAW token in the "ready to review" email as a "Review and submit" button.
+// The three 2C ops (review/submit/send-back) accept a token matching the parent
+// token OR the review token, so BOTH the parent's original link and the emailed
+// button reach 2C. Send-back clears the review token; the next finish mints a new
+// one. The review token inherits the lead's 30-day expiry (no separate expiry).
+describe('review token (the emailed 2C "Review and submit" button)', () => {
+  /** The raw review token the email carries — parsed from a FakeMailer send. */
+  function reviewTokenFrom(mailer: FakeMailer): string {
+    const msg = mailer.sent.at(-1)!
+    const body = `${msg.html ?? ''}\n${msg.text ?? ''}`
+    const match = body.match(/\/apply\/review\/([A-Za-z0-9_-]+)/)
+    expect(match).not.toBeNull()
+    return match![1]!
+  }
+
+  /** Drive start -> parent -> student-link -> student-finish with a FakeMailer. */
+  async function toReviewWithMail(f: Setup) {
+    const mailer = new FakeMailer()
+    const service = svc({ mailer })
+    const s = await service.startStage2(f.parentToken)
+    await service.saveParentSection(f.parentToken, parentAnswers)
+    const { studentToken } = await service.createStudentLink(f.parentToken)
+    await service.saveStudentSection(studentToken, studentAnswers)
+    return { s, service, mailer, studentToken, reviewToken: reviewTokenFrom(mailer) }
+  }
+
+  test('saveStudentSection mints review_token_hash and the email carries a live /apply/review/ link', async () => {
+    const f = await setup()
+    const { s, mailer, reviewToken } = await toReviewWithMail(f)
+
+    // The email carries the review link and a token.
+    const msg = mailer.sent.at(-1)!
+    const body = `${msg.html ?? ''}\n${msg.text ?? ''}`
+    expect(body).toContain('/apply/review/')
+    expect(reviewToken.length).toBeGreaterThan(0)
+
+    // The hash is stored on the draft (raw token never lands in the DB).
+    const [d] = await h.sql`select review_token_hash from application_draft where id = ${s.draftId}`
+    expect(d!.review_token_hash).toBe(hashToken(reviewToken))
+    expect(d!.review_token_hash).not.toBe(reviewToken)
+  })
+
+  test('the emailed review token drives reviewStage2, submitStage2, and sendBack (a REAL link)', async () => {
+    // sendBack path
+    {
+      const f = await setup()
+      const { service, reviewToken } = await toReviewWithMail(f)
+      await service.sendBack(reviewToken)
+      const [d] = await h.sql`select phase, status from application_draft where lead_id = ${f.leadId}`
+      expect(d!.phase).toBe('2b')
+      expect(d!.status).toBe('sent_back')
+    }
+    // review + submit path
+    {
+      const f = await setup()
+      const { service, reviewToken } = await toReviewWithMail(f)
+      const review = await service.reviewStage2(reviewToken)
+      expect(review.phase).toBe('2c')
+      expect(review.parentAnswers).toMatchObject({ childName: 'Minor Testchild' })
+      const submit = await service.submitStage2(reviewToken)
+      expect(submit.leadId).toBe(f.leadId)
+      const [app] = await h.sql`select applicant_name from application where id = ${submit.applicationId}`
+      expect(app!.applicant_name).toBe('Minor Testchild')
+    }
+  })
+
+  test('the parent ORIGINAL token still drives all three 2C ops (both tokens work)', async () => {
+    for (const op of ['review', 'submit', 'sendBack'] as const) {
+      const f = await setup()
+      const { service } = await toReviewWithMail(f)
+      if (op === 'review') {
+        const r = await service.reviewStage2(f.parentToken)
+        expect(r.phase).toBe('2c')
+      } else if (op === 'submit') {
+        const sub = await service.submitStage2(f.parentToken)
+        expect(sub.leadId).toBe(f.leadId)
+      } else {
+        await service.sendBack(f.parentToken)
+        const [d] = await h.sql`select phase from application_draft where lead_id = ${f.leadId}`
+        expect(d!.phase).toBe('2b')
+      }
+    }
+  })
+
+  test('a STUDENT token does NOT open the 2C ops; the review token does NOT open 2A / the student ops', async () => {
+    const f = await setup()
+    const { service, studentToken, reviewToken } = await toReviewWithMail(f)
+
+    // A student token is rejected by every 2C op (unchanged narrowing).
+    for (const call of [
+      () => service.reviewStage2(studentToken),
+      () => service.submitStage2(studentToken),
+      () => service.sendBack(studentToken),
+    ]) {
+      let caught: unknown
+      try {
+        await call()
+      } catch (e) {
+        caught = e
+      }
+      expect(caught).toBeInstanceOf(InvalidStage2TokenError)
+    }
+
+    // The review token does NOT broaden the parent-2A op nor the student ops.
+    for (const call of [
+      () => service.saveParentSection(reviewToken, parentAnswers),
+      () => service.getParentDraft(reviewToken),
+      () => service.getStudentDraft(reviewToken),
+      () => service.saveStudentSection(reviewToken, studentAnswers),
+    ]) {
+      let caught: unknown
+      try {
+        await call()
+      } catch (e) {
+        caught = e
+      }
+      expect(caught).toBeInstanceOf(InvalidStage2TokenError)
+    }
+  })
+
+  test('sendBack clears review_token_hash; the next finish mints a NEW token (old dead, new works)', async () => {
+    const f = await setup()
+    const { s, service, mailer, studentToken, reviewToken: firstReview } = await toReviewWithMail(f)
+
+    await service.sendBack(f.parentToken)
+    // The stale review link is cleared, not left lingering.
+    const [cleared] = await h.sql`select review_token_hash from application_draft where id = ${s.draftId}`
+    expect(cleared!.review_token_hash).toBeNull()
+
+    // The old review token no longer resolves any 2C op.
+    let caught: unknown
+    try {
+      await service.reviewStage2(firstReview)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(InvalidStage2TokenError)
+
+    // The student finishes again -> a fresh review token is minted and emailed.
+    await service.saveStudentSection(studentToken, { motivation: 'revised' })
+    const secondReview = reviewTokenFrom(mailer)
+    expect(secondReview).not.toBe(firstReview)
+    const [d] = await h.sql`select review_token_hash from application_draft where id = ${s.draftId}`
+    expect(d!.review_token_hash).toBe(hashToken(secondReview))
+
+    // The old token stays dead; the new one drives 2C.
+    let stillDead: unknown
+    try {
+      await service.reviewStage2(firstReview)
+    } catch (e) {
+      stillDead = e
+    }
+    expect(stillDead).toBeInstanceOf(InvalidStage2TokenError)
+    const review = await service.reviewStage2(secondReview)
+    expect(review.phase).toBe('2c')
+  })
+
+  test('with the default mailer (NoopMailer, no RESEND key) the review token is still minted/stored', async () => {
+    const f = await setup()
+    // svc() uses defaultMailer() -> NoopMailer when RESEND_API_KEY is unset.
+    const prev = process.env.RESEND_API_KEY
+    delete process.env.RESEND_API_KEY
+    try {
+      const service = svc()
+      const s = await service.startStage2(f.parentToken)
+      await service.saveParentSection(f.parentToken, parentAnswers)
+      const { studentToken } = await service.createStudentLink(f.parentToken)
+      // Nothing throws even though no email is delivered.
+      await service.saveStudentSection(studentToken, studentAnswers)
+      const [d] = await h.sql`select review_token_hash from application_draft where id = ${s.draftId}`
+      expect(d!.review_token_hash).not.toBeNull()
+    } finally {
+      if (prev !== undefined) process.env.RESEND_API_KEY = prev
+    }
   })
 })

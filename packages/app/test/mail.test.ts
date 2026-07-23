@@ -8,10 +8,11 @@
 //      fillerRole === 'student'): the parent never receives the Stage-2 token in
 //      the API response, so the backend emails them the Stage-2 continue link,
 //      built from the RAW token captured before it is hashed.
-//   2. "Your child finished, ready to review" note (from
-//      Stage2Service.saveStudentSection): a NOTIFICATION to the parent — the
-//      backend holds only the parent-token HASH here, so it cannot build a fresh
-//      clickable review link; the parent uses the link they already hold.
+//   2. "Your child finished, ready to review" email (from
+//      Stage2Service.saveStudentSection): the parent gets a working "Review and
+//      submit" button. saveStudentSection mints a fresh review token, stores its
+//      HASH on the draft, and puts the RAW token in the email link, so the button
+//      drives the 2C ops directly (the parent no longer needs the link they hold).
 //
 // Embedded Postgres, synthetic data only, with a FakeMailer (no real send).
 // -------------------------------------------------------------------------
@@ -105,8 +106,8 @@ describe('createLead — email 1: the student-filler -> parent Stage-2 link', ()
 })
 
 // ===========================================================================
-describe('saveStudentSection — email 2: the ready-to-review parent notification', () => {
-  test('records one email to the parent (a notification; no working review token required)', async () => {
+describe('saveStudentSection — email 2: the ready-to-review parent email carries a working review button', () => {
+  test('records one email to the parent whose /apply/review/ link drives reviewStage2', async () => {
     const mailer = new FakeMailer()
     const svc = new Stage2Service({ sql: h.sql, mailer })
 
@@ -134,9 +135,19 @@ describe('saveStudentSection — email 2: the ready-to-review parent notificatio
     expect(mailer.sent).toHaveLength(1)
     const msg = mailer.sent[0]!
     expect(msg.to).toBe(parentEmail)
-    // It is a notification: it has a subject and a body; it need not carry a live link.
     expect(msg.subject.length).toBeGreaterThan(0)
-    expect(bodyOf(msg).trim().length).toBeGreaterThan(0)
+
+    // The body carries the 2C review link and a token.
+    const body = bodyOf(msg)
+    expect(body).toContain('/apply/review/')
+    const match = body.match(/\/apply\/review\/([A-Za-z0-9_-]+)/)
+    expect(match).not.toBeNull()
+    const reviewToken = match![1]!
+
+    // The link is REAL, not a dead string: the token drives the 2C review op.
+    const review = await svc.reviewStage2(reviewToken)
+    expect(review.phase).toBe('2c')
+    expect(review.parentAnswers).toMatchObject({ childName: 'Minor Testchild' })
   })
 })
 

@@ -205,6 +205,24 @@ describe('application_draft — the Stage 2 persistence table (populated by part
     }
   })
 
+  test('a draft carries a nullable review_token_hash (the emailed 2C review-button token), default null', async () => {
+    const leadId = await makeLead()
+    // Omitted -> null: a fresh draft holds no review token until the student finishes 2B.
+    const [a] = await h.sql`
+      insert into application_draft (lead_id, parent_token_hash, phase, status)
+      values (${leadId}, 'h', '2c', '2b_saved')
+      returning review_token_hash
+    `
+    expect(a!.review_token_hash).toBeNull()
+    // Accepts a hash and reads it back (the raw token lives only in the email).
+    const [b] = await h.sql`
+      insert into application_draft (lead_id, parent_token_hash, review_token_hash, phase, status)
+      values (${leadId}, 'h', ${'review-hash'}, '2c', '2b_saved')
+      returning review_token_hash
+    `
+    expect(b!.review_token_hash).toBe('review-hash')
+  })
+
   test('a draft with a dangling lead_id is rejected by the FK', async () => {
     await expect(
       h.sql`

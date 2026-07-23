@@ -108,6 +108,7 @@ export async function POST(req: Request) {
 - **Auth:** token (**student token**). Phase: `2b`. Saves; does not submit.
 - **Request body:** `token` (string, required) — student token; `answers` (object, required) — 2B answers (an allowlist governs which fields are accepted; identifying fields are rejected `400`).
 - **Response `200`:** `{ saved: true }`.
+- **Side effect:** mints a fresh **review token** (stores its hash on the draft; supersedes any prior one) and emails the parent a "ready to review" note with a working **"Review and submit" button** (`${APP_URL}/apply/review/{reviewToken}`) that drives the 2C ops. Best-effort — a mail failure is logged, not fatal (the save already committed).
 - **Errors:** `400` missing fields, or a disallowed / identifying student field (`StudentSectionFieldNotAllowedError`, `StudentSectionIdentifyingFieldError`); `401` invalid token; `409` wrong phase.
 
 ### `POST /api/public/stage2/draft` — read-only 2A prefill (resume)
@@ -126,24 +127,26 @@ export async function POST(req: Request) {
 - **Response `200`:** `{ phase: string, studentAnswers: object }` — the saved 2B answers (empty object `{}` if none yet). Returns only the student's own section.
 - **Errors:** `400` missing `token`; `401` invalid / parent / forged token (`InvalidStage2TokenError`).
 
+> **The 2C ops accept two tokens.** `review`, `submit`, and `send-back` accept a token matching the draft's **parent token** OR the **review token** — a fresh token minted when the student finishes 2B and delivered to the parent as the "Review and submit" button in the ready-to-review email (see `/student` below). Both are the parent's own credentials, so either reaches 2C; a **student token** matches neither and is rejected. The review token has no separate expiry (it inherits the lead's 30-day request-time window). `send-back` clears the review token, so the stale button stops working; the next student finish mints a new one. No other op is broadened.
+
 ### `POST /api/public/stage2/review` — read-only 2C view
 
-- **Auth:** token (**parent token**). Phase: 2C.
-- **Request body:** `token` (string, required) — parent token.
+- **Auth:** token (**parent token OR review token**). Phase: 2C.
+- **Request body:** `token` (string, required) — parent token or the emailed review token.
 - **Response `200`:** `{ phase: string, status: string, parentAnswers: object|null, studentAnswers: object|null }` (student answers are read-only to the parent).
 - **Errors:** `400` missing `token`; `401` invalid token.
 
 ### `POST /api/public/stage2/submit` — submit 2C, mint the application
 
-- **Auth:** token (**parent token only**). Phase: 2C.
-- **Request body:** `token` (string, required) — parent token.
+- **Auth:** token (**parent token OR review token** — both are the parent's; a student token is rejected). Phase: 2C.
+- **Request body:** `token` (string, required) — parent token or the emailed review token.
 - **Response `201`:** `{ applicationId: string, leadId: string }`.
 - **Errors:** `400` missing `token` or incomplete parent facts (`Stage2ParentFactsIncompleteError`) / missing lead chapter (`Stage2LeadChapterRequiredError`); `401` invalid token; `409` wrong phase.
 
 ### `POST /api/public/stage2/send-back` — bounce 2C → 2B
 
-- **Auth:** token (**parent token**). Phase: 2C → 2B.
-- **Request body:** `token` (string, required) — parent token.
+- **Auth:** token (**parent token OR review token**). Phase: 2C → 2B. Clears the review token so the stale review button stops working.
+- **Request body:** `token` (string, required) — parent token or the emailed review token.
 - **Response `200`:** `{ sentBack: true }`.
 - **Errors:** `400` missing `token`; `401` invalid token; `409` wrong phase.
 

@@ -111,6 +111,7 @@ interface DraftRow {
   lead_id: string
   parent_token_hash: string
   student_token_hash: string | null
+  review_token_hash: string | null
   phase: string
   status: string
   parent_answers: Answers | null
@@ -233,35 +234,49 @@ export class Stage2Service {
     this.assertPhase(draft, ['2b'])
     this.assertNonIdentifying(answers)
 
+    // Mint a fresh CSPRNG REVIEW token so the ready-to-review email can carry a
+    // WORKING "Review and submit" button. Only its hash is stored on the draft
+    // (the raw token never lands in the DB) — the raw token goes solely into the
+    // email below. Each finish SUPERSEDES any prior review token (like
+    // createStudentLink does for the student token), so re-finishing after a
+    // send-back invalidates the previous review link. The review token has NO
+    // separate expiry: it inherits the lead's 30-day request-time expiry that the
+    // Stage-2 loaders (loadDraftByToken) already enforce.
+    const reviewToken = generateSessionToken()
+    const reviewHash = hashToken(reviewToken)
+
     await this.sql`
       update application_draft set
         student_answers = coalesce(student_answers, '{}'::jsonb) || ${this.sql.json(answers as unknown as JSONValue)},
         status = '2b_saved',
-        phase = '2c'
+        phase = '2c',
+        review_token_hash = ${reviewHash}
       where id = ${draft.id}
     `
 
-    // Email 2 (BACKEND-owned): notify the parent that the student finished 2B and
-    // the application is ready to review at 2C. Resolve the parent's email via the
-    // draft -> lead. IMPORTANT: at this point the backend holds only the parent
-    // token HASH, not the raw token, so it CANNOT build a fresh clickable review
-    // link — this is a NOTIFICATION only; the parent returns via the link they
-    // already hold. (A clickable link here would need a separate short-lived
-    // parent-review token — a follow-up, not built now.) Best-effort: the section
-    // is already saved, so a send failure is logged and swallowed, never rolled back.
+    // Email 2 (BACKEND-owned): tell the parent the student finished 2B and give
+    // them a clickable "Review and submit" button pointing at the 2C review page,
+    // built from the RAW review token minted above. The 2C ops accept this review
+    // token OR the parent's original token, so the button reaches review/submit/
+    // send-back directly. Resolve the parent's email via the draft -> lead.
+    // Best-effort: the section (and the review token) are already committed, so a
+    // send failure is logged and swallowed, never rolled back.
     try {
       const [lead] = await this.sql`select email from application_lead where id = ${draft.lead_id}`
       const parentEmail = lead?.email as string | undefined
       if (parentEmail !== undefined) {
+        const reviewLink = `${this.config.appUrl}/apply/review/${reviewToken}`
         await this.mailer.send({
           to: parentEmail,
           subject: 'Your child finished their part of the CurioLab application',
           text:
-            'Your child finished their part of the CurioLab application; return to your ' +
-            'application to review and submit.',
+            'Your child finished their part of the CurioLab application.\n\n' +
+            `Review and submit here:\n${reviewLink}\n\n` +
+            'This link is personal to you — please do not share it.',
           html:
-            '<p>Your child finished their part of the CurioLab application; return to your ' +
-            'application to review and submit.</p>',
+            '<p>Your child finished their part of the CurioLab application.</p>' +
+            `<p><a href="${reviewLink}">Review and submit</a></p>` +
+            '<p>This link is personal to you — please do not share it.</p>',
         })
       }
     } catch (err) {
@@ -269,14 +284,16 @@ export class Stage2Service {
     }
   }
 
-  // ---- 2C review (parent token, UNAUTHENTICATED) ---------------------------
+  // ---- 2C review (parent OR review token, UNAUTHENTICATED) -----------------
   /**
    * The 2C read-only view for the parent: the 2A parent facts and the 2B student
    * answers, returned together so the parent can review before submitting. Purely a
    * read — it never mutates the draft and offers no edit of the student's answers.
+   * Accepts the parent's original token OR the emailed review-button token (both
+   * open 2C); a student token still does not resolve and is rejected.
    */
-  async reviewStage2(parentToken: string): Promise<ReviewStage2Result> {
-    const draft = await this.loadDraftByParentToken(parentToken)
+  async reviewStage2(token: string): Promise<ReviewStage2Result> {
+    const draft = await this.loadDraftByParentOrReviewToken(token)
     this.assertPhase(draft, ['2c'])
     return {
       phase: draft.phase,
@@ -313,17 +330,19 @@ export class Stage2Service {
     return { phase: draft.phase, studentAnswers: draft.student_answers ?? {} }
   }
 
-  // ---- 2C submit (parent token ONLY, UNAUTHENTICATED) ----------------------
+  // ---- 2C submit (parent OR review token, UNAUTHENTICATED) -----------------
   /**
-   * The ONE submit path and the ONLY place an `application` is minted. Parent token
-   * only — a student token fails to resolve a parent-gated draft and is rejected,
-   * which is what makes "only the parent submits" hold. Creates the `application`
+   * The ONE submit path and the ONLY place an `application` is minted. Accepts the
+   * parent's original token OR the emailed review-button token — both are the
+   * parent's own credentials (the review token is delivered only to the parent's
+   * email). A STUDENT token resolves neither column and is rejected, which is what
+   * makes "only the parent submits" hold. Creates the `application`
    * (kind `student`) from the 2A facts (child name/guardian details -> the typed
    * applicant/guardian columns) plus the 2B `student_answers` (stored on
    * `student_section jsonb`), converts the lead, and submits the draft — atomically.
    */
-  async submitStage2(parentToken: string): Promise<SubmitStage2Result> {
-    const draft = await this.loadDraftByParentToken(parentToken)
+  async submitStage2(token: string): Promise<SubmitStage2Result> {
+    const draft = await this.loadDraftByParentOrReviewToken(token)
     this.assertPhase(draft, ['2c'])
 
     const chapterId = draft.lead_chapter_id
@@ -369,17 +388,24 @@ export class Stage2Service {
     return { applicationId, leadId: draft.lead_id }
   }
 
-  // ---- 2C send-back (parent token, UNAUTHENTICATED) ------------------------
+  // ---- 2C send-back (parent OR review token, UNAUTHENTICATED) --------------
   /**
    * Return the draft from 2C to 2B so the student can revise: status `sent_back`,
-   * phase `2b`. The parent CANNOT edit the student's answers — send-back is the
-   * only lever, and only the student (via the student token) writes 2B.
+   * phase `2b`, and the review token cleared. Accepts the parent's original token
+   * OR the emailed review-button token. The parent CANNOT edit the student's
+   * answers — send-back is the only lever, and only the student (via the student
+   * token) writes 2B.
    */
-  async sendBack(parentToken: string): Promise<void> {
-    const draft = await this.loadDraftByParentToken(parentToken)
+  async sendBack(token: string): Promise<void> {
+    const draft = await this.loadDraftByParentOrReviewToken(token)
     this.assertPhase(draft, ['2c'])
+    // Clear the review token: the stale "Review and submit" link must not linger
+    // once the draft is back in 2b. The next saveStudentSection mints a fresh one.
+    // (The phase check already blocks a 2c op on a 2b draft; this is hygiene +
+    // defence in depth.)
     await this.sql`
-      update application_draft set status = 'sent_back', phase = '2b' where id = ${draft.id}
+      update application_draft set status = 'sent_back', phase = '2b', review_token_hash = null
+      where id = ${draft.id}
     `
   }
 
@@ -395,14 +421,48 @@ export class Stage2Service {
     return this.loadDraftByToken(token, 'student_token_hash')
   }
 
+  /**
+   * Timing-safe load of the draft for the 2C ops (review/submit/send-back), which
+   * accept EITHER the parent's original token (parent_token_hash) OR the emailed
+   * review-button token (review_token_hash). Only these three ops are broadened;
+   * 2A (saveParentSection/getParentDraft), createStudentLink, and the student ops
+   * stay narrowed to their own token via loadDraftByToken. A student/forged token
+   * matches neither column and is rejected the same opaque way.
+   */
+  private async loadDraftByParentOrReviewToken(token: string): Promise<DraftRow> {
+    const tokenHash = hashToken(token)
+    const [row] = await this.sql`
+      select d.id, d.lead_id, d.parent_token_hash, d.student_token_hash, d.review_token_hash,
+             d.phase, d.status, d.parent_answers, d.student_answers,
+             l.chapter_id as lead_chapter_id, l.status as lead_status,
+             l.expires_at as lead_expires_at
+      from application_draft d
+      join application_lead l on l.id = d.lead_id
+      where d.parent_token_hash = ${tokenHash} or d.review_token_hash = ${tokenHash}
+    `
+    if (row === undefined) throw new InvalidStage2TokenError()
+    const parentStored = row.parent_token_hash as string
+    const reviewStored = row.review_token_hash as string | null
+    // Defensive constant-time compare against whichever column matched.
+    const ok =
+      hashesEqual(parentStored, tokenHash) ||
+      (reviewStored !== null && hashesEqual(reviewStored, tokenHash))
+    if (!ok) throw new InvalidStage2TokenError()
+    const draft = row as unknown as DraftRow
+    // The review token carries NO separate expiry — it inherits the lead's 30-day
+    // request-time window (design §8), enforced here exactly like the parent token.
+    if (leadExpired(draft.lead_expires_at, new Date())) throw new Stage2LeadExpiredError(draft.lead_id)
+    return draft
+  }
+
   private async loadDraftByToken(
     token: string,
     column: 'parent_token_hash' | 'student_token_hash',
   ): Promise<DraftRow> {
     const tokenHash = hashToken(token)
     const [row] = await this.sql`
-      select d.id, d.lead_id, d.parent_token_hash, d.student_token_hash, d.phase,
-             d.status, d.parent_answers, d.student_answers,
+      select d.id, d.lead_id, d.parent_token_hash, d.student_token_hash, d.review_token_hash,
+             d.phase, d.status, d.parent_answers, d.student_answers,
              l.chapter_id as lead_chapter_id, l.status as lead_status,
              l.expires_at as lead_expires_at
       from application_draft d

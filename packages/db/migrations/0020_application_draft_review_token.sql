@@ -1,0 +1,27 @@
+-- =========================================================================
+-- 0020_application_draft_review_token.sql — give the "your child finished,
+-- ready to review" email a WORKING review button (milestone-1 application
+-- funnel, Stage 2C). ADDITIVE: one nullable column on application_draft.
+--
+-- The ready-to-review email (Stage2Service.saveStudentSection) was a
+-- notification only: at that moment the backend holds just the parent token's
+-- HASH, so it could not rebuild a clickable review link. The fix mints a fresh
+-- CSPRNG REVIEW token when the student finishes 2B, stores only its SHA-256 hash
+-- here (the raw token rides in the email as the "Review and submit" button),
+-- and lets the three 2C ops (review / submit / send-back) accept a token
+-- matching parent_token_hash OR review_token_hash — so BOTH the parent's
+-- original link and the emailed button reach 2C.
+--
+-- Like the student token, a fresh review token SUPERSEDES any prior one (each
+-- saveStudentSection overwrites the hash); send-back clears it so the stale
+-- review link cannot linger. The review token has NO separate expiry — it
+-- inherits the lead's 30-day request-time expiry the Stage-2 loaders enforce.
+--
+-- Nullable: only a draft that has reached 2C carries a review token; every other
+-- draft leaves it null. No new grant is needed — application_draft was granted to
+-- curiolab_app in 0010, and adding a column inherits that. No compliance trigger:
+-- the review token gates the SAME parent-review ops the parent token already
+-- gates, so it introduces no new PII path.
+-- =========================================================================
+
+ALTER TABLE application_draft ADD COLUMN review_token_hash text;

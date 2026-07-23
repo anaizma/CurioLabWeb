@@ -290,6 +290,10 @@ export const applicationDraft = pgTable(
       .references(() => applicationLead.id),
     parentTokenHash: text('parent_token_hash').notNull(),
     studentTokenHash: text('student_token_hash'),
+    // The emailed 2C review-button token's hash (0020). Minted when the student
+    // finishes 2B, superseded on each re-finish, cleared on send-back. The 2C ops
+    // accept a token matching this OR parent_token_hash. Null until 2C is reached.
+    reviewTokenHash: text('review_token_hash'),
     phase: applicationDraftPhaseEnum('phase').notNull(),
     parentAnswers: jsonb('parent_answers'),
     studentAnswers: jsonb('student_answers'),
