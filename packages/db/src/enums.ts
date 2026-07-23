@@ -244,3 +244,11 @@ export const newsletterIssueStatusEnum = pgEnum('newsletter_issue_status', [
   'archived',
   'blocked',
 ])
+
+// --- Newsletter subscriber (Milestone 3.6) ---
+// The subscriber delivery axis (02-data-model.md newsletter_subscriber): fed by
+// the Resend webhook, distinct from the invite `delivery_status` enum.
+export const newsletterSubscriberDeliveryStatusEnum = pgEnum(
+  'newsletter_subscriber_delivery_status',
+  ['active', 'bounced', 'complained'],
+)

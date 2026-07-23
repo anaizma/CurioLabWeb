@@ -54,7 +54,12 @@ const CONFLICT = new Set([
 ])
 
 /** Opaque, single-signal token failures -> 401 (reveals nothing; 05-api-surface). */
-const INVALID_TOKEN = new Set(['InvalidStage2TokenError', 'InvalidInviteError'])
+const INVALID_TOKEN = new Set([
+  'InvalidStage2TokenError',
+  'InvalidInviteError',
+  // The newsletter confirm/unsubscribe token surface reveals nothing (M3.6).
+  'InvalidSubscriberTokenError',
+])
 
 /** Known input / precondition violations -> 400. */
 const BAD_REQUEST = new Set([

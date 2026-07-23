@@ -64,6 +64,7 @@ import {
   moderationTargetTypeEnum,
   narrativeStatusEnum,
   newsletterIssueStatusEnum,
+  newsletterSubscriberDeliveryStatusEnum,
   paymentStatusEnum,
   postTypeEnum,
   projectStatusEnum,
@@ -786,6 +787,58 @@ export const newsletterItem = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('newsletter_item_issue_idx').on(t.issueId)],
+)
+
+// --- Newsletter subscriber + webhook ledger (Milestone 3.6) ----------------
+// The subscriber list lives OUTSIDE the account graph (no fk to account,
+// 02-data-model.md). The one LIVE subscriber per email is the partial unique
+// index (email) WHERE unsubscribed_at IS NULL — a pending/confirmed subscriber
+// holds the slot, an unsubscribe frees it. The double-opt-in columns
+// (confirm_token_hash, confirmed_at) support 05-api-surface.md's "double opt-in";
+// delivery_status is a separate axis fed only by the Resend webhook. The
+// guarantees (the partial unique index, the token-hash indexes, and the
+// Mechanism-A grants) live in migration 0017_newsletter_subscriber.sql, not here.
+
+export const newsletterSubscriber = pgTable(
+  'newsletter_subscriber',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // citext, and NO fk to account — the list is outside the identity graph.
+    email: citext('email').notNull(),
+    unsubscribeTokenHash: text('unsubscribe_token_hash'),
+    // Double opt-in: a pending subscriber carries a confirm token; confirmed_at
+    // null = pending, set at confirm = active.
+    confirmTokenHash: text('confirm_token_hash'),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    subscribedAt: timestamp('subscribed_at', { withTimezone: true }).notNull().defaultNow(),
+    unsubscribedAt: timestamp('unsubscribed_at', { withTimezone: true }),
+    source: text('source'),
+    deliveryStatus: newsletterSubscriberDeliveryStatusEnum('delivery_status')
+      .notNull()
+      .default('active'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // One LIVE subscriber per email; an unsubscribed row frees the slot.
+    uniqueIndex('newsletter_subscriber_live_email_unique')
+      .on(t.email)
+      .where(sql`${t.unsubscribedAt} is null`),
+    index('newsletter_subscriber_unsub_token_idx').on(t.unsubscribeTokenHash),
+    index('newsletter_subscriber_confirm_token_idx').on(t.confirmTokenHash),
+  ],
+)
+
+// The provider-webhook idempotency ledger. PK (provider, event_id): a replayed
+// event is an ON CONFLICT DO NOTHING no-op in the same transaction as the status
+// mutation, so a replay mutates nothing.
+export const webhookEvent = pgTable(
+  'webhook_event',
+  {
+    provider: text('provider').notNull(),
+    eventId: text('event_id').notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.provider, t.eventId] })],
 )
 
 export const verificationToken = pgTable(

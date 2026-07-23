@@ -271,6 +271,14 @@ export type {
   RunScheduledNewslettersDeps,
   RunScheduledNewslettersResult,
 } from './newsletter.js'
+export { SubscriberService } from './subscriber.js'
+export type {
+  SubscriberServiceDeps,
+  SubscribeInput,
+  SubscribeResult,
+  ConfirmResult,
+  UnsubscribeResult,
+} from './subscriber.js'
 export { ModerationService, sweepOverdueReports } from './moderation.js'
 export type {
   ModerationServiceDeps,
@@ -341,4 +349,5 @@ export {
   NarrativeNotFoundError,
   IllegalNarrativeTransitionError,
   VerificationSubjectNotFoundError,
+  InvalidSubscriberTokenError,
 } from './errors.js'

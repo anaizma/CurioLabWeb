@@ -631,6 +631,20 @@ export class NewsletterPublishConsentChangedError extends Error {
   }
 }
 
+/**
+ * A confirm or unsubscribe token presented to the SubscriberService did not
+ * resolve a subscriber — never issued, forged, or already consumed. Deliberately
+ * ONE opaque error for every not-usable cause, mirroring InvalidInviteError /
+ * InvalidStage2TokenError: the token surface for the public double-opt-in and
+ * unsubscribe endpoints reveals nothing (05-api-surface.md the actor-less set).
+ */
+export class InvalidSubscriberTokenError extends Error {
+  constructor() {
+    super('newsletter subscriber token is not usable')
+    this.name = 'InvalidSubscriberTokenError'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Media (Milestone 3.4: project_media / media_depiction, the photo-review
 // policy, and coupling C1).

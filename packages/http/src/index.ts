@@ -59,6 +59,23 @@ export {
   viewDigest,
 } from './controllers/guardian.js'
 
+// Public newsletter subscribe/confirm/unsubscribe (Milestone 3.6).
+export {
+  subscribeNewsletter,
+  confirmNewsletter,
+  unsubscribeNewsletter,
+} from './controllers/newsletter.js'
+export type {
+  SubscribeNewsletterInput,
+  SubscribeNewsletterResult,
+  NewsletterTokenInput,
+} from './controllers/newsletter.js'
+
+// Provider webhooks (Milestone 3.6): actor-less, signature-verified, idempotent.
+export { resendWebhook, stripeWebhook } from './controllers/webhooks.js'
+export type { WebhookInput, WebhookResult } from './controllers/webhooks.js'
+export { signWebhookBody, verifyWebhookSignature } from './webhook-signature.js'
+
 // The Lab (internal feed)
 export {
   viewFeed,
