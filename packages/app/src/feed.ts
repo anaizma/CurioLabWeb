@@ -37,7 +37,13 @@
 import type { Sql, TransactionSql } from 'postgres'
 import type { AuthContext, Resource } from '@curiolab/core'
 import { canTransition } from '@curiolab/core'
-import { Forbidden, assertAuthorized, writeAudit, type AuthorizeDeps } from '@curiolab/runtime'
+import {
+  Forbidden,
+  assertAuthorized,
+  writeAudit,
+  type AuditEntryInput,
+  type AuthorizeDeps,
+} from '@curiolab/runtime'
 import {
   CommentNotFoundError,
   FeedAuthorMembershipNotFoundError,
@@ -53,14 +59,23 @@ import {
  */
 export type FeedAuthorizeFn = <T = void>(
   ctx: AuthContext,
-  capability: 'feed.post' | 'feed.comment' | 'feed.react' | 'feed.moderate',
+  capability: 'feed.view' | 'feed.post' | 'feed.comment' | 'feed.react' | 'feed.moderate',
   resource: Resource,
   deps: AuthorizeDeps<T>,
 ) => Promise<T | undefined>
 
+/** The audit writer seam (structurally the runtime `writeAudit`). Injected so
+ * the read-logging fails-closed path is testable with a throwing writer. */
+export type FeedAuditWriter = (
+  sql: Sql | TransactionSql,
+  entry: AuditEntryInput,
+) => Promise<string>
+
 export interface FeedServiceDeps {
   sql: Sql
   authorize: FeedAuthorizeFn
+  /** Defaults to the runtime `writeAudit`. */
+  auditWriter?: FeedAuditWriter
 }
 
 /** The member-authored post types; `milestone` is the system path only. */
@@ -576,5 +591,221 @@ export class ReactionService {
       `
       return { removed: rows.length > 0 }
     }) as Promise<RemoveReactionResult>
+  }
+}
+
+// ---------------------------------------------------------------------------
+// FeedService — the Lab feed READ + filters (Milestone 2.3).
+//
+// `view(ctx, filters)` is gated through the injected `authorize` under
+// `feed.view` (03-authorization.md), scoped to the actor's chapter or pod (the
+// scope resolution lives in `can`: any in-force participant membership in the
+// target chapter matches `chapter` scope; a pod membership matches `pod` scope;
+// a different chapter denies `out_of_scope`). Minors without
+// `platform_participation` are denied `feed.view` by the registry gate — this
+// service does not re-implement that.
+//
+// Visibility: ordinary viewers see only `published`. A `feed.moderate` holder
+// may opt into `hidden` via the `includeHidden` flag, which is enforced through
+// a SECOND `authorize(feed.moderate)` call (so a non-moderator who sets the flag
+// is denied, rather than silently seeing nothing). `removed` is NEVER returned.
+//
+// Read-logging (milestone-2.md §M2.3): the `can` `minor_record.read` obligation
+// is per single resource and does not fit a list. So this service handles it:
+// when a query SURFACES content authored by a minor from OUTSIDE the actor's
+// pod, it writes EXACTLY ONE `minor_record.read` audit entry FOR THE QUERY (not
+// one per post — the documented granularity choice; the `detail` carries the
+// scope and counts, never PII), inside the SAME transaction as the read. If that
+// audit write fails, the transaction rolls back and the read returns nothing —
+// the same fail-closed contract the runtime obligation path uses (must-not #25).
+// An in-pod read (the actor's pod equals the minor's pod) logs nothing.
+// ---------------------------------------------------------------------------
+
+/** The default page size and the hard cap on a single feed page. */
+export const FEED_DEFAULT_LIMIT = 50
+export const FEED_MAX_LIMIT = 100
+
+export interface FeedFilters {
+  /** The chapter whose feed to read (the scope target). */
+  chapterId: string
+  /** Narrow to a pod (also the scope target when the actor is pod-scoped). */
+  podId?: string | null
+  /** Filter by post type. */
+  type?: string
+  /** Filter by author membership. */
+  authorMembershipId?: string
+  /** Page size (defaults to FEED_DEFAULT_LIMIT, capped at FEED_MAX_LIMIT). */
+  limit?: number
+  /** Offset for pagination (stable newest-first order). */
+  offset?: number
+  /** Opt into `hidden` posts; requires `feed.moderate` (enforced). */
+  includeHidden?: boolean
+}
+
+export interface FeedPostView {
+  postId: string
+  chapterId: string
+  podId: string | null
+  authorMembershipId: string
+  type: string
+  body: string
+  status: string
+  systemGenerated: boolean
+  createdAt: Date
+  /** Published comments only. */
+  commentCount: number
+  /** Total reactions on the post. */
+  reactionCount: number
+}
+
+export interface FeedViewResult {
+  posts: FeedPostView[]
+  limit: number
+  offset: number
+}
+
+/** Internal read row (adds the author minor/pod facts used for read-logging). */
+interface FeedReadRow {
+  id: string
+  chapter_id: string
+  pod_id: string | null
+  author_membership_id: string
+  type: string
+  body: string
+  status: string
+  system_generated: boolean
+  created_at: Date
+  comment_count: number
+  reaction_count: number
+  author_pod: string | null
+  author_is_minor: boolean
+}
+
+/**
+ * The actor's pod for the target chapter, mirroring `can`'s scope match: prefer
+ * an in-force membership on the filtered pod, else any in-force membership in the
+ * chapter; its `pod_id` (possibly null for a chapter-wide role) is the pod the
+ * "minor outside the actor's pod" comparison is made against.
+ */
+function resolveActorPod(ctx: AuthContext, chapterId: string, podId: string | null): string | null {
+  const inForce = (m: (typeof ctx.memberships)[number]): boolean => {
+    if (m.status !== 'active') return false
+    if (m.active_from !== null && m.active_from > ctx.now) return false
+    if (m.active_until !== null && ctx.now >= m.active_until) return false
+    return true
+  }
+  if (podId !== null) {
+    const podMatch = ctx.memberships.find((m) => inForce(m) && m.chapter_id === chapterId && m.pod_id === podId)
+    if (podMatch) return podMatch.pod_id
+  }
+  const chapterMatch = ctx.memberships.find((m) => inForce(m) && m.chapter_id === chapterId)
+  return chapterMatch?.pod_id ?? null
+}
+
+export class FeedService {
+  private readonly sql: Sql
+  private readonly authorize: FeedAuthorizeFn
+  private readonly auditWriter: FeedAuditWriter
+
+  constructor(deps: FeedServiceDeps) {
+    this.sql = deps.sql
+    this.authorize = deps.authorize
+    this.auditWriter = deps.auditWriter ?? writeAudit
+  }
+
+  /**
+   * Read the Lab feed for `ctx`, scoped to `filters.chapterId` (and optionally a
+   * pod). Returns `published` posts (plus `hidden` for a moderator opting in via
+   * `includeHidden`); never `removed`. Supports type / pod / author filters and
+   * newest-first offset pagination. Surfacing a minor's out-of-pod content emits
+   * exactly one transactional `minor_record.read` audit entry for the query.
+   */
+  async view(ctx: AuthContext, filters: FeedFilters): Promise<FeedViewResult> {
+    const chapterId = filters.chapterId
+    const podId = filters.podId ?? null
+    const resource: Resource = { chapter_id: chapterId, pod_id: podId }
+
+    // 1. The scope + consent gate. Denies out_of_scope for a foreign chapter and
+    // actor_consent_missing for an unconsented minor (writes permission.denied,
+    // throws an opaque Forbidden).
+    await this.authorize(ctx, 'feed.view', resource, { sql: this.sql })
+
+    // 2. `hidden` is opt-in and moderator-only: a second gate under feed.moderate
+    // (an ordinary viewer who sets the flag is denied rather than silently empty).
+    if (filters.includeHidden === true) {
+      await this.authorize(ctx, 'feed.moderate', resource, { sql: this.sql })
+    }
+    const statuses = filters.includeHidden === true ? ['published', 'hidden'] : ['published']
+
+    const actorPod = resolveActorPod(ctx, chapterId, podId)
+    const limit = Math.min(Math.max(filters.limit ?? FEED_DEFAULT_LIMIT, 1), FEED_MAX_LIMIT)
+    const offset = Math.max(filters.offset ?? 0, 0)
+
+    const sql = this.sql
+    return sql.begin(async (tx) => {
+      const rows = (await tx`
+        select
+          p.id, p.chapter_id, p.pod_id, p.author_membership_id, p.type, p.body,
+          p.status, p.system_generated, p.created_at,
+          m.pod_id as author_pod,
+          (a.date_of_birth > ((now() at time zone ch.timezone)::date - interval '18 years')) as author_is_minor,
+          (select count(*)::int from comment c where c.post_id = p.id and c.status = 'published') as comment_count,
+          (select count(*)::int from reaction r where r.target_type = 'post' and r.target_id = p.id) as reaction_count
+        from post p
+        join membership m on m.id = p.author_membership_id
+        join account a on a.id = m.account_id
+        join chapter ch on ch.id = p.chapter_id
+        where p.chapter_id = ${chapterId}
+          and p.status in ${tx(statuses)}
+          ${podId !== null ? tx`and p.pod_id = ${podId}` : tx``}
+          ${filters.type !== undefined ? tx`and p.type = ${filters.type}` : tx``}
+          ${filters.authorMembershipId !== undefined ? tx`and p.author_membership_id = ${filters.authorMembershipId}` : tx``}
+        order by p.created_at desc, p.id desc
+        limit ${limit} offset ${offset}
+      `) as unknown as FeedReadRow[]
+
+      // Content authored by a minor whose pod differs from the actor's pod.
+      const outOfPodMinor = rows.filter(
+        (r) => r.author_is_minor && (r.author_pod ?? null) !== actorPod,
+      )
+      if (outOfPodMinor.length > 0) {
+        // Exactly ONE entry for the whole query (the granularity choice): a list
+        // read cannot use `can`'s per-resource obligation. detail carries scope
+        // and counts only — never a name, body, or other PII. Written inside this
+        // transaction so a failed audit rolls the read back (fail-closed).
+        assertAuthorized()
+        const distinctMinorAuthors = new Set(outOfPodMinor.map((r) => r.author_membership_id)).size
+        await this.auditWriter(tx, {
+          action: 'minor_record.read',
+          subjectType: 'feed_query',
+          subjectId: null,
+          actorAccountId: ctx.account.id,
+          realActorAccountId: ctx.session.impersonation?.real_actor_account_id ?? null,
+          chapterId,
+          detail: {
+            obligation: 'minor_record.read',
+            granularity: 'per_query',
+            scope: { chapterId, podId, includeHidden: filters.includeHidden === true },
+            outOfPodMinorPostCount: outOfPodMinor.length,
+            minorAuthorMembershipCount: distinctMinorAuthors,
+          },
+        })
+      }
+
+      const posts: FeedPostView[] = rows.map((r) => ({
+        postId: r.id,
+        chapterId: r.chapter_id,
+        podId: r.pod_id,
+        authorMembershipId: r.author_membership_id,
+        type: r.type,
+        body: r.body,
+        status: r.status,
+        systemGenerated: r.system_generated,
+        createdAt: r.created_at,
+        commentCount: r.comment_count,
+        reactionCount: r.reaction_count,
+      }))
+      return { posts, limit, offset }
+    }) as Promise<FeedViewResult>
   }
 }

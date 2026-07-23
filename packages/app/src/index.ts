@@ -175,10 +175,18 @@ export type {
   ExportTierTransitionView,
   FulfillExportResult,
 } from './export-fulfillment.js'
-export { PostService, CommentService, ReactionService } from './feed.js'
+export {
+  PostService,
+  CommentService,
+  ReactionService,
+  FeedService,
+  FEED_DEFAULT_LIMIT,
+  FEED_MAX_LIMIT,
+} from './feed.js'
 export type {
   FeedServiceDeps,
   FeedAuthorizeFn,
+  FeedAuditWriter,
   AuthoredPostType,
   CreatePostInput,
   CreatePostResult,
@@ -189,6 +197,9 @@ export type {
   AddReactionResult,
   RemoveReactionResult,
   ContentStatusResult,
+  FeedFilters,
+  FeedPostView,
+  FeedViewResult,
 } from './feed.js'
 export {
   IllegalTransitionError,
