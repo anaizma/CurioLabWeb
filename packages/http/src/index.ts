@@ -31,8 +31,54 @@ export {
 } from './controllers/public.js'
 
 // Auth
-export { login, logout, getSession } from './controllers/auth.js'
-export type { SessionSummary, MembershipSummary } from './controllers/auth.js'
+export {
+  login,
+  logout,
+  getSession,
+  requestPasswordReset,
+  startImpersonation,
+  endImpersonation,
+} from './controllers/auth.js'
+export type {
+  SessionSummary,
+  MembershipSummary,
+  PasswordResetRoute,
+  PasswordResetDelivery,
+  RequestPasswordResetInput,
+  StartImpersonationInput,
+  StartImpersonationResult,
+} from './controllers/auth.js'
+
+// Invite onboarding entry (unauthenticated, actor-less, inert)
+export { validateInviteToken, acceptInvite, acceptStudent } from './controllers/invites.js'
+export type {
+  ValidateInviteInput,
+  AcceptInviteInput,
+  AcceptStudentInput,
+} from './controllers/invites.js'
+
+// Account lifecycle (coming of age + 16+ self_private)
+export {
+  addEmail,
+  confirmMaturation,
+  reissueSetup,
+  selfPrivate,
+} from './controllers/account-lifecycle.js'
+export type {
+  AddEmailInput,
+  ConfirmMaturationInput,
+  ReissueSetupInput,
+  SelfPrivateInput,
+} from './controllers/account-lifecycle.js'
+
+// Audit readers (chapter-scoped ops + global admin)
+export { readOpsAudit, readAdminAudit } from './controllers/audit.js'
+export type {
+  AuditEntryView,
+  OpsAuditResult,
+  AdminAuditResult,
+  ReadAuditInput,
+} from './controllers/audit.js'
 
 // Ops back office
 export {
