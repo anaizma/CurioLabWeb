@@ -43,6 +43,14 @@ export interface CreateLeadResult {
   leadId: string
   /** True when an in-window duplicate suppressed the write; no new row created. */
   suppressed: boolean
+  /**
+   * The raw Stage-2 token, returned ONLY for a parent-filled Stage 1 (the person
+   * who submits Stage 1 receives the response). It is `null` for a student-filler
+   * (the parent gets the token by email later) and `null` for a suppressed
+   * duplicate (no new token is minted). This is the seam startStage2 consumes to
+   * enter the application funnel.
+   */
+  parentToken: string | null
 }
 
 export class LeadService {
@@ -59,8 +67,10 @@ export class LeadService {
    * configured window; on a fresh lead it issues a hashed Stage-2 token, resolves
    * the optional `chapter_id` fk when the chapter code maps to a real chapter,
    * stamps `expires_at = created_at + 30d`, inserts one `application_lead` in
-   * status `new`, and returns `{ leadId, suppressed }`. Creates NO account and NO
-   * application. Safe to call with no AuthContext.
+   * status `new`, and returns `{ leadId, suppressed, parentToken }` — where
+   * `parentToken` is the raw Stage-2 token for a parent-filler (so they can proceed
+   * straight into Stage 2) and `null` for a student-filler or a suppressed dupe.
+   * Creates NO account and NO application. Safe to call with no AuthContext.
    */
   async createLead(input: CreateLeadInput): Promise<CreateLeadResult> {
     const source = input.source ?? null
@@ -78,7 +88,8 @@ export class LeadService {
       limit 1
     `
     if (existing.length > 0) {
-      return { leadId: existing[0]!.id as string, suppressed: true }
+      // A suppressed duplicate mints no new token: nothing to return.
+      return { leadId: existing[0]!.id as string, suppressed: true, parentToken: null }
     }
 
     // Resolve the optional 2C linkage: a chapter code that matches a chapter slug
@@ -86,9 +97,12 @@ export class LeadService {
     const [mapped] = await this.sql`select id from chapter where slug = ${input.chapter} limit 1`
     const chapterId = (mapped?.id as string | undefined) ?? null
 
-    // Issue the Stage-2 token now (design §7.1). Only its hash is stored; the raw
-    // token is the Phase-2 mailer's seam and is not surfaced by this inert write.
-    const tokenHash = hashToken(generateSessionToken())
+    // Issue the Stage-2 token now (design §7.1). Its hash is stored on the lead;
+    // the raw token is captured so it can be surfaced to a PARENT-filler below. For
+    // a student-filler the hash is still stored (the parent receives the raw token
+    // by email later) but the raw token is NOT returned in the response.
+    const rawToken = generateSessionToken()
+    const tokenHash = hashToken(rawToken)
 
     // Set created_at and expires_at from one clock so the +30d invariant is exact.
     const now = new Date()
@@ -102,6 +116,12 @@ export class LeadService {
          'new', ${tokenHash}, ${now}, ${expiresAt})
       returning id
     `
-    return { leadId: row!.id as string, suppressed: false }
+    // Return the raw token ONLY to a parent-filler: the person who submits Stage 1
+    // receives the response, so returning it to a parent lets them continue directly
+    // into their 2A section, while a student-filler must not receive it (the parent
+    // gets it by email) — preserving "the parent proceeds and submits." This is the
+    // same safety line as the two-token 2A/2B split.
+    const parentToken = input.fillerRole === 'parent' ? rawToken : null
+    return { leadId: row!.id as string, suppressed: false, parentToken }
   }
 }

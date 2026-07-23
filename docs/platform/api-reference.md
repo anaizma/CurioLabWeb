@@ -45,8 +45,8 @@ The Stage-1 lead capture (`/api/apply`, owned by the frontend) then the token-ga
   - `chapter` (string, required) — chapter **code/slug** (may be "another school", which stays unmapped).
   - `source` (string, optional) — "how did you hear".
   - `fillerRole` (`"parent" | "student"`, required) — drives confirmation copy.
-- **Response `201`** (recommended, per the snippet): `{ leadId: string, suppressed: boolean }`. `suppressed:true` means an in-window duplicate email matched and no new row was written (still returns the existing `leadId`).
-- **Behavior:** creates exactly one `application_lead` (status `new`), issues a hashed Stage-2 token (stored as hash; not returned), stamps `expires_at = created_at + 30d`. Creates no account and no application. Dedupe window and expiry are config tunables. Rate-limiting / bot checks are the HTTP layer's job (not in the service).
+- **Response `201`** (recommended, per the snippet): `{ leadId: string, suppressed: boolean, parentToken: string|null }`. `suppressed:true` means an in-window duplicate email matched and no new row was written (still returns the existing `leadId`, with `parentToken:null`). **`parentToken`** is the raw Stage-2 token returned **only** for a parent-filler (`fillerRole:"parent"`) so they can continue straight into Stage 2; it is `null` for a student-filler (`fillerRole:"student"` — the parent receives the token by email later) and `null` for a suppressed duplicate. The frontend uses `parentToken` to build the "continue to the application" link for a parent-filler; for a student-filler it shows "we've emailed your parent".
+- **Behavior:** creates exactly one `application_lead` (status `new`), issues a hashed Stage-2 token (the hash is always stored on the lead; the raw token is returned **only** to a parent-filler — for a student-filler it is withheld for the future parent mailer), stamps `expires_at = created_at + 30d`. Creates no account and no application. Dedupe window and expiry are config tunables. Rate-limiting / bot checks are the HTTP layer's job (not in the service).
 
 **Ready-to-paste `app/api/apply/route.ts`** (mirrors the `/api/public/stage2/*` adapter pattern; uniform JSON response). Placing this file is the frontend's call:
 
@@ -70,7 +70,13 @@ export async function POST(req: Request) {
     source,
     fillerRole,
   })
-  return Response.json({ leadId: result.leadId, suppressed: result.suppressed }, { status: 201 })
+  // parentToken is the raw Stage-2 token for a parent-filler (the frontend builds
+  // the "continue to the application" link from it); it is null for a student-filler
+  // (show "we've emailed your parent") and null for a suppressed duplicate.
+  return Response.json(
+    { leadId: result.leadId, suppressed: result.suppressed, parentToken: result.parentToken },
+    { status: 201 },
+  )
 }
 ```
 

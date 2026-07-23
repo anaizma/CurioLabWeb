@@ -14,7 +14,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { startHarness, type Harness } from './helpers/pg.js'
 import { makeChapter } from './helpers/fixtures.js'
-import { LeadService } from '../src/index.js'
+import { LeadService, Stage2Service } from '../src/index.js'
 import { LEAD_DEDUPE_WINDOW_MS } from '../src/config.js'
 
 let h: Harness
@@ -158,5 +158,54 @@ describe('createLead — the inert Stage 1 lead write', () => {
     const second = await service({ config: { leadDedupeWindowMs: 60_000 } }).createLead({ email, chapter: 'c', fillerRole: 'parent' })
     expect(second.suppressed).toBe(false)
     expect(second.leadId).not.toBe(first.leadId)
+  })
+})
+
+// ===========================================================================
+// The Stage-2 entry seam: createLead RETURNS the raw Stage-2 token, but ONLY to
+// a parent-filler (who receives the response), so a student-filler cannot proceed
+// as the parent — the parent gets the token by email later. This is the same
+// safety line as the 2A/2B two-token split.
+describe('createLead — the returned parentToken (Stage-2 entry seam)', () => {
+  test('a parent-filled Stage 1 returns a non-null parentToken that drives startStage2', async () => {
+    const result = await service().createLead({
+      email: `parent-token-${Date.now()}@example.test`,
+      chapter: 'c',
+      fillerRole: 'parent',
+    })
+    expect(result.suppressed).toBe(false)
+    expect(result.parentToken).not.toBeNull()
+    expect(typeof result.parentToken).toBe('string')
+
+    // The EXACT returned token drives startStage2 and mints a draft bound to the lead.
+    const started = await new Stage2Service({ sql: h.sql }).startStage2(result.parentToken!)
+    expect(started.leadId).toBe(result.leadId)
+    const [draft] = await h.sql`select lead_id from application_draft where id = ${started.draftId}`
+    expect(draft!.lead_id).toBe(result.leadId)
+  })
+
+  test('a student-filled Stage 1 returns parentToken: null, but the lead still carries a hashed token server-side', async () => {
+    const result = await service().createLead({
+      email: `student-token-${Date.now()}@example.test`,
+      chapter: 'c',
+      fillerRole: 'student',
+    })
+    expect(result.suppressed).toBe(false)
+    // The student-filler must not receive the token — the parent gets it by email.
+    expect(result.parentToken).toBeNull()
+
+    // But the token still exists server-side (hashed) for the future parent mailer.
+    const [lead] = await h.sql`select token_hash from application_lead where id = ${result.leadId}`
+    expect(lead!.token_hash).not.toBeNull()
+    expect(typeof lead!.token_hash).toBe('string')
+  })
+
+  test('a suppressed duplicate returns parentToken: null (no new token minted)', async () => {
+    const email = `dupe-token-${Date.now()}@example.test`
+    const first = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
+    const second = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
+    expect(first.suppressed).toBe(false)
+    expect(second.suppressed).toBe(true)
+    expect(second.parentToken).toBeNull()
   })
 })
