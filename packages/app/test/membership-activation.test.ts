@@ -18,6 +18,7 @@ import {
   InMemoryStorageAdapter,
   MembershipActivationService,
   MembershipActivationConsentError,
+  MilestoneService,
   type MembershipActivationAuthorizeFn,
 } from '../src/index.js'
 
@@ -287,6 +288,118 @@ describe('activateStudent (guards)', () => {
       currentTier: null,
       account: 'pending',
     })
+  })
+})
+
+// ===========================================================================
+describe('activateStudent (M2.5: seed milestones + timeline, the empty-state solution)', () => {
+  test('emits a Joined and a Reached Explorer timeline_entry AND system_generated milestone post, in the activation transaction', async () => {
+    const f = await seededPendingStudent()
+    const ctx = directorCtx(f.director, f.chapter)
+    await withRequest(async () => {
+      await svc().activateStudent(f.membershipId, ctx)
+    })
+
+    // The timeline spine: a Joined entry and a tier-reached entry for the student.
+    const entries = await h.sql`
+      select kind, ref from timeline_entry where account_id = ${f.accountId} order by kind
+    `
+    const kinds = entries.map((e) => e.kind as string)
+    expect(kinds).toContain('joined')
+    expect(kinds).toContain('tier_reached')
+
+    // Both milestone posts: type milestone, system_generated, authored by the
+    // STUDENT's membership, published.
+    const posts = await h.sql`
+      select type, system_generated, author_membership_id, body, status
+      from post where author_membership_id = ${f.membershipId} and system_generated = true
+      order by body
+    `
+    expect(posts.length).toBeGreaterThanOrEqual(2)
+    for (const p of posts) {
+      expect(p.type).toBe('milestone')
+      expect(p.system_generated).toBe(true)
+      expect(p.author_membership_id).toBe(f.membershipId)
+      expect(p.status).toBe('published')
+    }
+    const bodies = posts.map((p) => p.body as string)
+    expect(bodies).toContain('Joined CurioLab')
+    expect(bodies).toContain('Reached Explorer')
+
+    // The tier milestone references the initial tier_transition.
+    const [tt] = await h.sql`select id from tier_transition where membership_id = ${f.membershipId}`
+    const tierEntry = entries.find((e) => e.kind === 'tier_reached')
+    expect(tierEntry!.ref).toBe(tt!.id)
+  })
+
+  test('a day-one activated student has a non-empty timeline (>= the two seed entries)', async () => {
+    const f = await seededPendingStudent()
+    const ctx = directorCtx(f.director, f.chapter)
+    await withRequest(async () => {
+      await svc().activateStudent(f.membershipId, ctx)
+    })
+    const [c] = await h.sql`select count(*)::int as n from timeline_entry where account_id = ${f.accountId}`
+    expect(c!.n).toBeGreaterThanOrEqual(2)
+  })
+
+  test('the seed milestones are emitted INSIDE the activation transaction: a failing emit rolls the whole activation back', async () => {
+    const f = await seededPendingStudent()
+    const ctx = directorCtx(f.director, f.chapter)
+    // A MilestoneService whose emit throws after the coupling has flipped the
+    // membership/account and written the tier grant. If milestones did not share
+    // the transaction, those writes would leak; they must not.
+    const throwingMilestones = {
+      emit: async () => {
+        throw new Error('boom-in-emit')
+      },
+    } as unknown as MilestoneService
+    const s = new MembershipActivationService({
+      sql: h.sql,
+      authorize,
+      milestones: throwingMilestones,
+    })
+
+    let caught: unknown
+    await withRequest(async () => {
+      try {
+        await s.activateStudent(f.membershipId, ctx)
+      } catch (e) {
+        caught = e
+      }
+    })
+    expect((caught as Error).message).toMatch(/boom-in-emit/)
+
+    // The whole activation rolled back: nothing flipped, no tier grant, no seeds.
+    expect(await statusesOf(f.membershipId, f.accountId)).toEqual({
+      membership: 'pending',
+      currentTier: null,
+      account: 'pending',
+    })
+    const [ttc] = await h.sql`select count(*)::int as n from tier_transition where membership_id = ${f.membershipId}`
+    expect(ttc!.n).toBe(0)
+    const [tec] = await h.sql`select count(*)::int as n from timeline_entry where account_id = ${f.accountId}`
+    expect(tec!.n).toBe(0)
+    const [pc] = await h.sql`select count(*)::int as n from post where author_membership_id = ${f.membershipId}`
+    expect(pc!.n).toBe(0)
+  })
+
+  test('when activation rolls back (ghost director FK failure) no milestones persist', async () => {
+    const f = await seededPendingStudent()
+    const ghostDirector = randomUUID()
+    const ctx = baseCtx(ghostDirector, new Date(), [mem('chapter_director', f.chapter)])
+    let caught: unknown
+    await withRequest(async () => {
+      try {
+        await svc().activateStudent(f.membershipId, ctx)
+      } catch (e) {
+        caught = e
+      }
+    })
+    expect(caught).toBeInstanceOf(Error)
+    const [tec] = await h.sql`select count(*)::int as n from timeline_entry where account_id = ${f.accountId}`
+    expect(tec!.n).toBe(0)
+    const [pc] = await h.sql`select count(*)::int as n from post where author_membership_id = ${f.membershipId}`
+    expect(pc!.n).toBe(0)
   })
 })
 

@@ -50,6 +50,14 @@ export type {
   ActivateStudentOptions,
   ActivateStudentResult,
 } from './membership-activation.js'
+export {
+  MilestoneService,
+  MILESTONE_JOINED_KIND,
+  MILESTONE_TIER_KIND,
+  MILESTONE_JOINED_BODY,
+  tierMilestoneBody,
+} from './milestone.js'
+export type { EmitMilestoneParams, EmitMilestoneResult } from './milestone.js'
 export { DobCorrectionService } from './dob-correction.js'
 export type {
   DobCorrectionServiceDeps,

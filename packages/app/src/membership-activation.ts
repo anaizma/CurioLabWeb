@@ -32,6 +32,13 @@ import {
   MembershipActivationEvidenceError,
   MembershipNotFoundError,
 } from './errors.js'
+import {
+  MilestoneService,
+  MILESTONE_JOINED_BODY,
+  MILESTONE_JOINED_KIND,
+  MILESTONE_TIER_KIND,
+  tierMilestoneBody,
+} from './milestone.js'
 
 /**
  * The injected `authorize` dependency, narrowed to this service's one capability
@@ -48,6 +55,12 @@ export type MembershipActivationAuthorizeFn = <T = void>(
 export interface MembershipActivationServiceDeps {
   sql: Sql
   authorize: MembershipActivationAuthorizeFn
+  /**
+   * The system milestone emitter (M2.5). Defaults to a fresh MilestoneService.
+   * Injected so the seed-milestone wiring is overridable in tests (e.g. to prove
+   * the emit shares this coupling's transaction).
+   */
+  milestones?: MilestoneService
 }
 
 export interface ActivateStudentOptions {
@@ -66,10 +79,12 @@ export interface ActivateStudentResult {
 export class MembershipActivationService {
   private readonly sql: Sql
   private readonly authorize: MembershipActivationAuthorizeFn
+  private readonly milestones: MilestoneService
 
   constructor(deps: MembershipActivationServiceDeps) {
     this.sql = deps.sql
     this.authorize = deps.authorize
+    this.milestones = deps.milestones ?? new MilestoneService()
   }
 
   /**
@@ -94,6 +109,7 @@ export class MembershipActivationService {
         m.status       as membership_status,
         m.account_id   as account_id,
         m.chapter_id   as chapter_id,
+        m.pod_id       as pod_id,
         a.status       as account_status,
         (
           select e.id from enrollment_record e
@@ -109,11 +125,13 @@ export class MembershipActivationService {
 
     const membershipStatus = row.membership_status as string
     const accountId = row.account_id as string
+    const chapterId = row.chapter_id as string
+    const podId = (row.pod_id as string | null) ?? null
     const enrollmentRecordId = row.enrollment_record_id as string | null
 
     // Authorize against the membership's chapter (writes one permission.denied and
     // throws Forbidden on deny), BEFORE any mutation or transaction.
-    const resource: Resource = { id: membershipId, chapter_id: row.chapter_id as string }
+    const resource: Resource = { id: membershipId, chapter_id: chapterId }
     await this.authorize(ctx, 'member.activate', resource, { sql: this.sql })
 
     // Legality of the membership edge itself (independent of the actor): only a
@@ -179,11 +197,40 @@ export class MembershipActivationService {
           ${membershipId}, ${null}, 'explorer', ${ctx.account.id}, ${enrollmentRecordId}, ${note}
         ) returning id
       `
+      const tierTransitionId = tt!.id as string
+
+      // M2.5: seed the day-one timeline and feed IN THIS SAME TRANSACTION (an
+      // extension of couplings A/F), so a brand-new Explorer reads as populated
+      // rather than empty. Two milestones: "Joined CurioLab" (enrollment/activation)
+      // and "Reached Explorer" (tied to the initial tier grant above). The
+      // milestone posts are authored by the student's own membership (the subject),
+      // system_generated, and skip the consent gate.
+      const occurredAt = new Date()
+      await this.milestones.emit(tx, {
+        accountId,
+        membershipId,
+        kind: MILESTONE_JOINED_KIND,
+        chapterId,
+        podId,
+        occurredAt,
+        body: MILESTONE_JOINED_BODY,
+        ref: enrollmentRecordId,
+      })
+      await this.milestones.emit(tx, {
+        accountId,
+        membershipId,
+        kind: MILESTONE_TIER_KIND,
+        chapterId,
+        podId,
+        occurredAt,
+        body: tierMilestoneBody('explorer'),
+        ref: tierTransitionId,
+      })
 
       return {
         membershipId,
         accountId,
-        tierTransitionId: tt!.id as string,
+        tierTransitionId,
         tier: 'explorer' as const,
       }
     }) as Promise<ActivateStudentResult>
