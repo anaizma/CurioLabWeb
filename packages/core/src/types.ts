@@ -207,6 +207,7 @@ export type Capability =
   | 'project.publish_public'
   | 'application.view'
   | 'application.transition'
+  | 'lead.invite'
   | 'enrollment.create'
   | 'member.invite'
   | 'member.activate'

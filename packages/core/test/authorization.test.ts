@@ -25,6 +25,7 @@ import {
   narrativeOwnedBy,
   narrativeReviewC1,
   applicationInC1,
+  leadInC1,
   enrollmentInC1,
   inviteInC1,
   membershipInC1,
@@ -350,6 +351,12 @@ describe('capability coverage: allow and deny for every registry key', () => {
   test('application.transition (ops back office, chapter-scoped write)', () => {
     expectAllow(actors.chapter_director_c1, 'application.transition', applicationInC1)
     expectDeny(actors.student_18, 'application.transition', applicationInC1, 'role_not_permitted')
+  })
+
+  test('lead.invite (Stage 2 start; staff invite a lead to apply, chapter-scoped write; chapter_director)', () => {
+    expectAllow(actors.chapter_director_c1, 'lead.invite', leadInC1)
+    expectDeny(actors.chapter_director_c2, 'lead.invite', leadInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'lead.invite', leadInC1, 'role_not_permitted')
   })
 
   test('enrollment.create (coupling D, chapter-scoped ops write)', () => {

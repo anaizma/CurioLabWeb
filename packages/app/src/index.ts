@@ -70,8 +70,20 @@ export type {
   SubmitLeadInput,
   SubmitLeadResult,
 } from './lead.js'
+export { Stage2Service } from './stage2.js'
+export type {
+  Stage2ServiceDeps,
+  Stage2AuthorizeFn,
+  Answers,
+  StartStage2Result,
+  SaveParentSectionResult,
+  ReviewStage2Result,
+  SubmitStage2Result,
+} from './stage2.js'
 export {
   LEAD_DEDUPE_WINDOW_MS,
+  STAGE2_STUDENT_ALLOWED_FIELDS,
+  STAGE2_IDENTIFYING_KEY_PATTERN,
   defaultConfig,
   type AppConfig,
   FORM_SOURCED_CONSENT_TYPES,
@@ -167,6 +179,14 @@ export {
   IllegalTransitionError,
   ApplicationNotFoundError,
   EnrollmentDobRequiredError,
+  LeadNotFoundError,
+  Stage2AlreadyStartedError,
+  InvalidStage2TokenError,
+  Stage2NotInPhaseError,
+  StudentSectionIdentifyingFieldError,
+  StudentSectionFieldNotAllowedError,
+  Stage2ParentFactsIncompleteError,
+  Stage2LeadChapterRequiredError,
   InviteNotFoundError,
   InvalidInviteError,
   InviteCredentialMismatchError,

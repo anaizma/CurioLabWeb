@@ -159,6 +159,22 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+  // lead → Stage 2 invite (milestone-1-application-funnel.md v2: staff decide
+  // which leads are invited to apply; packages/app Stage2Service.startStage2). The
+  // gate on issuing a parent Stage-2 token and creating the application_draft.
+  // Chapter-scoped to the lead's chapter, chapter_director — mirroring the
+  // application ops floor (04-state-machines names the actor "relations_manager or
+  // chapter_director"; relations_manager is not a modeled Role, so the floor is
+  // chapter_director, as with application.view/transition). Writes; the token
+  // issue + draft create is the mutation. The three token-gated Stage-2 endpoints
+  // (saveParentSection, saveStudentSection, reviewStage2, submitStage2, sendBack)
+  // carry no AuthContext and do NOT pass through here — they are gated by the
+  // opaque parent/student token, like the unauthenticated invite accept endpoints.
+  'lead.invite': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
   // enrollment upload (Flow A step 2, coupling D): the Chapter Director records
   // the signed form, the enrollment record, and the two form-sourced consents in
   // one transaction. 04-state-machines names the actor "chapter_director".

@@ -361,6 +361,12 @@ export const projectPublicUnconsented: Resource = {
 // application funnel (ops back office) — chapter-scoped, no subject snapshot.
 export const applicationInC1: Resource = { id: 'application-1', chapter_id: C1 }
 
+// lead → Stage 2 invite (lead.invite): staff decide which leads are invited to
+// apply (packages/app Stage2Service.startStage2). Chapter-scoped ops write; the
+// resource is the lead's chapter. Mirrors the application ops floor
+// (chapter_director), no subject consent snapshot.
+export const leadInC1: Resource = { chapter_id: C1 }
+
 // enrollment upload (coupling D) — chapter-scoped ops write, no subject snapshot.
 export const enrollmentInC1: Resource = { id: 'enrollment-1', chapter_id: C1 }
 

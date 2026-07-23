@@ -103,9 +103,48 @@ export function guardianNamesMatch(a: string, b: string): boolean {
   return normalizeGuardianName(a) === normalizeGuardianName(b)
 }
 
+/**
+ * The Stage 2B (student section) NON-IDENTIFYING ALLOWLIST — the closed set of
+ * keys a student may save on their own section (Stage2Service.saveStudentSection;
+ * milestone-1-application-funnel.md v2 invariant 3: "2B collects no identifying
+ * fields at all: no name, no email, no school", enforced by an allowlist so an
+ * identifying field cannot be saved even if the form is tampered with). A key not
+ * on this list is REJECTED, not silently stripped, so tampering fails loudly.
+ *
+ * Every key here is a non-identifying, student-authored answer. It lives here as a
+ * VALUE, not in code (compliance-coppa.md Part 3 "Configuration, not code"): the
+ * mechanism — reject anything off the list — is stable regardless of which
+ * questions the 2B form asks this season, so a form change is a config edit.
+ */
+export const STAGE2_STUDENT_ALLOWED_FIELDS: readonly string[] = [
+  'motivation',
+  'interests',
+  'project_idea',
+  'favorite_subject',
+  'prior_experience',
+  'availability',
+  'goals',
+] as const
+
+/**
+ * The identifying-key rejection pattern for Stage 2B. A defence-in-depth companion
+ * to the allowlist: any 2B key that LOOKS identifying (name, email, school,
+ * address, phone, a guardian/parent field, a birthday, a postal code, a username)
+ * is rejected with a specific "identifying field" error, distinct from the generic
+ * "not on the allowlist" rejection. The allowlist alone already rejects these
+ * (none appear on it), so this only sharpens the signal when a tampered form tries
+ * to smuggle a name/email/school through. No allowlisted key matches this pattern.
+ */
+export const STAGE2_IDENTIFYING_KEY_PATTERN =
+  /name|e-?mail|school|address|phone|surname|contact|username|dob|birth|zip|postal|guardian|parent/i
+
 export interface AppConfig {
   /** The Stage 1 lead email dedupe window in ms (LeadService.submitLead). */
   leadDedupeWindowMs: number
+  /** The Stage 2B non-identifying allowlist: the only keys a student may save. */
+  stage2StudentAllowedFields: readonly string[]
+  /** The identifying-key pattern that fails a 2B save loudly (defence in depth). */
+  stage2IdentifyingKeyPattern: RegExp
   /** Consent types created form-sourced on enrollment (coupling D). */
   formSourcedConsentTypes: readonly FormSourcedConsentType[]
   /** The consent `reason` for a form-sourced grant (never safeguarding here). */
@@ -128,6 +167,8 @@ export interface AppConfig {
 
 export const defaultConfig: AppConfig = {
   leadDedupeWindowMs: LEAD_DEDUPE_WINDOW_MS,
+  stage2StudentAllowedFields: STAGE2_STUDENT_ALLOWED_FIELDS,
+  stage2IdentifyingKeyPattern: STAGE2_IDENTIFYING_KEY_PATTERN,
   formSourcedConsentTypes: FORM_SOURCED_CONSENT_TYPES,
   formSourcedConsentReason: 'standard',
   signedFormKeyPrefix: SIGNED_FORM_KEY_PREFIX,

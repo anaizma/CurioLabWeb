@@ -44,6 +44,121 @@ export class EnrollmentDobRequiredError extends Error {
   }
 }
 
+/** The referenced application_lead does not exist (startStage2 of an unknown id). */
+export class LeadNotFoundError extends Error {
+  readonly leadId: string
+  constructor(leadId: string) {
+    super(`lead not found: ${leadId}`)
+    this.name = 'LeadNotFoundError'
+    this.leadId = leadId
+  }
+}
+
+/**
+ * startStage2 was called on a lead that is not `new` — Stage 2 has already been
+ * started (a draft + parent token exist) or the lead has converted/been deleted.
+ * Stage 2 starts exactly once per lead; a re-start would mint a second draft.
+ */
+export class Stage2AlreadyStartedError extends Error {
+  readonly leadId: string
+  constructor(leadId: string) {
+    super(`Stage 2 already started for lead: ${leadId}`)
+    this.name = 'Stage2AlreadyStartedError'
+    this.leadId = leadId
+  }
+}
+
+/**
+ * A Stage 2 token-gated call presented a token that is not usable for the
+ * requested op — never issued, forged, or the WRONG KIND (a student token at a
+ * parent-only endpoint such as submitStage2). Deliberately ONE opaque error for
+ * every not-usable cause, mirroring InvalidInviteError: the token surface reveals
+ * nothing, so "wrong token" and "wrong role of token" look identical. This is
+ * what makes "only the parent submits" hold — a student token simply fails to
+ * resolve a parent-gated draft (milestone-1-application-funnel.md v2 invariant 4).
+ */
+export class InvalidStage2TokenError extends Error {
+  constructor() {
+    super('Stage 2 token is not usable')
+    this.name = 'InvalidStage2TokenError'
+  }
+}
+
+/**
+ * A Stage 2 op was attempted while the draft was in the wrong phase (e.g. submit
+ * before the student has finished 2B, or a student re-save after submission).
+ * Carries the expected and actual phase so a route can map it to a 409.
+ */
+export class Stage2NotInPhaseError extends Error {
+  readonly expected: readonly string[]
+  readonly actual: string
+  constructor(expected: readonly string[], actual: string) {
+    super(`Stage 2 draft is in phase ${actual}; expected one of ${expected.join(', ')}`)
+    this.name = 'Stage2NotInPhaseError'
+    this.expected = expected
+    this.actual = actual
+  }
+}
+
+/**
+ * A 2B (student section) save carried an IDENTIFYING key (name/email/school/…).
+ * 2B collects no identifying fields at all (milestone-1-application-funnel.md v2
+ * invariant 3); the identifying key is REJECTED, not silently stripped, so a
+ * tampered form fails loudly. The specific "identifying" error is distinct from
+ * the generic "not on the allowlist" one below.
+ */
+export class StudentSectionIdentifyingFieldError extends Error {
+  readonly field: string
+  constructor(field: string) {
+    super(`the 2B student section cannot carry the identifying field: ${field}`)
+    this.name = 'StudentSectionIdentifyingFieldError'
+    this.field = field
+  }
+}
+
+/**
+ * A 2B (student section) save carried a key that is not on the non-identifying
+ * allowlist (config.ts stage2StudentAllowedFields). Rejected, not stripped, so
+ * tampering fails loudly (milestone-1-application-funnel.md v2 invariant 3).
+ */
+export class StudentSectionFieldNotAllowedError extends Error {
+  readonly field: string
+  constructor(field: string) {
+    super(`the 2B student section field is not on the allowlist: ${field}`)
+    this.name = 'StudentSectionFieldNotAllowedError'
+    this.field = field
+  }
+}
+
+/**
+ * submitStage2 could not build the `application` because the parent-provided 2A
+ * facts are incomplete (a child name, guardian name, and guardian email are
+ * required — the application's NOT-NULL applicant/guardian columns). The parent
+ * must complete 2A before submitting at 2C.
+ */
+export class Stage2ParentFactsIncompleteError extends Error {
+  readonly missing: readonly string[]
+  constructor(missing: readonly string[]) {
+    super(`the 2A parent section is missing required facts: ${missing.join(', ')}`)
+    this.name = 'Stage2ParentFactsIncompleteError'
+    this.missing = missing
+  }
+}
+
+/**
+ * submitStage2 could not build the `application` because the lead carries no
+ * chapter (`application.chapter_id` is NOT NULL). A Stage-2 lead is invited into
+ * a chapter, so this guards a misuse (a chapter-less lead reaching 2C submit).
+ */
+export class Stage2LeadChapterRequiredError extends Error {
+  readonly leadId: string
+  constructor(leadId: string) {
+    super(`cannot mint an application: lead ${leadId} has no chapter`)
+    this.name = 'Stage2LeadChapterRequiredError'
+    this.leadId = leadId
+  }
+}
+
 /** The referenced invite does not exist (ops resend of an unknown id). */
 export class InviteNotFoundError extends Error {
   readonly inviteId: string
