@@ -55,13 +55,17 @@ import {
   inviteKindEnum,
   inviteStatusEnum,
   maturationStateEnum,
+  mediaReviewStatusEnum,
+  mediaSourceEnum,
   membershipStatusEnum,
   moderationActionEnum,
   moderationClassEnum,
   moderationReasonEnum,
   moderationTargetTypeEnum,
+  narrativeStatusEnum,
   paymentStatusEnum,
   postTypeEnum,
+  projectStatusEnum,
   reactionTargetTypeEnum,
   relationshipEnum,
   roleEnum,
@@ -655,5 +659,111 @@ export const moderationReport = pgTable(
       .on(t.dueAt)
       .where(sql`${t.resolvedAt} is null`),
     index('moderation_report_chapter_idx').on(t.chapterId, t.filedAt),
+  ],
+)
+
+// --- Project / media / profile / verification (Milestone 3.1) --------------
+// The showcase spine: a project, its media (attached to a project or a feed
+// post), the accounts a piece of media depicts, a member's profile narrative,
+// and the single-use verification token that backs a shared public profile. The
+// guarantees (verification_token one-live-per-subject partial unique index and
+// token_hash uniqueness, media_depiction composite PK, the enum/default
+// discipline, the Mechanism-A grants) live in migration 0015_project_media.sql,
+// not here. The consent-driven couplings (C1 photo_media -> pending_review, C2
+// public_listed -> external_publication) are deferred to their own phase.
+
+export const project = pgTable(
+  'project',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chapterId: uuid('chapter_id')
+      .notNull()
+      .references(() => chapter.id),
+    // Ownership is by membership so a row carries the owner's capacity and scope.
+    ownerMembershipId: uuid('owner_membership_id')
+      .notNull()
+      .references(() => membership.id),
+    title: text('title').notNull(),
+    summary: text('summary'),
+    status: projectStatusEnum('status').notNull().default('draft'),
+    verifiedBy: uuid('verified_by').references(() => account.id),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('project_chapter_status_idx').on(t.chapterId, t.status),
+    index('project_owner_idx').on(t.ownerMembershipId),
+  ],
+)
+
+export const projectMedia = pgTable(
+  'project_media',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Media hangs off either a project or a feed post; both fks are nullable.
+    projectId: uuid('project_id').references(() => project.id),
+    postId: uuid('post_id').references(() => post.id),
+    storageRef: uuid('storage_ref').notNull(),
+    reviewStatus: mediaReviewStatusEnum('review_status').notNull().default('pending_review'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('project_media_project_idx').on(t.projectId)],
+)
+
+export const mediaDepiction = pgTable(
+  'media_depiction',
+  {
+    mediaId: uuid('media_id')
+      .notNull()
+      .references(() => projectMedia.id),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => account.id),
+    addedBy: uuid('added_by')
+      .notNull()
+      .references(() => account.id),
+    source: mediaSourceEnum('source').notNull(),
+    // Set by a mentor/staff confirmation to clear the image for gated uses.
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.mediaId, t.accountId] })],
+)
+
+export const profileNarrative = pgTable(
+  'profile_narrative',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => account.id),
+    body: text('body').notNull(),
+    status: narrativeStatusEnum('status').notNull().default('draft'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('profile_narrative_account_idx').on(t.accountId)],
+)
+
+export const verificationToken = pgTable(
+  'verification_token',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    subjectAccountId: uuid('subject_account_id')
+      .notNull()
+      .references(() => account.id),
+    tokenHash: text('token_hash').notNull(),
+    issuedBy: uuid('issued_by')
+      .notNull()
+      .references(() => account.id),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('verification_token_hash_unique').on(t.tokenHash),
+    // At most one LIVE token per subject; a revoked token no longer counts.
+    uniqueIndex('verification_token_one_live_per_subject')
+      .on(t.subjectAccountId)
+      .where(sql`${t.revokedAt} is null`),
   ],
 )

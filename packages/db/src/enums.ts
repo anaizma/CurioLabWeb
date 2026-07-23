@@ -209,3 +209,25 @@ export const moderationActionEnum = pgEnum('moderation_action', [
   'dismissed',
   'escalated',
 ])
+
+// --- Project / media / profile / verification (Milestone 3.1) ---
+export const projectStatusEnum = pgEnum('project_status', [
+  'draft',
+  'submitted',
+  'verified',
+  'public_listed',
+])
+export const mediaReviewStatusEnum = pgEnum('media_review_status', [
+  'ok',
+  'pending_review',
+  'removed',
+])
+// Who asserted a depiction; only mentor/staff authoritatively clears an image.
+export const mediaSourceEnum = pgEnum('media_source', ['student', 'mentor', 'staff'])
+// The narrative lifecycle (distinct from content_status: it carries pending_review).
+export const narrativeStatusEnum = pgEnum('narrative_status', [
+  'draft',
+  'pending_review',
+  'published',
+  'removed',
+])
