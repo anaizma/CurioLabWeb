@@ -175,6 +175,21 @@ export type {
   ExportTierTransitionView,
   FulfillExportResult,
 } from './export-fulfillment.js'
+export { PostService, CommentService, ReactionService } from './feed.js'
+export type {
+  FeedServiceDeps,
+  FeedAuthorizeFn,
+  AuthoredPostType,
+  CreatePostInput,
+  CreatePostResult,
+  EditPostResult,
+  CreateCommentInput,
+  CreateCommentResult,
+  ReactionTarget,
+  AddReactionResult,
+  RemoveReactionResult,
+  ContentStatusResult,
+} from './feed.js'
 export {
   IllegalTransitionError,
   ApplicationNotFoundError,
@@ -208,4 +223,9 @@ export {
   DeletionSubjectChapterNotFoundError,
   IllegalDeletionTransitionError,
   DeletionReasonRequiredError,
+  PostNotFoundError,
+  CommentNotFoundError,
+  PostMilestoneForbiddenError,
+  IllegalFeedContentTransitionError,
+  FeedAuthorMembershipNotFoundError,
 } from './errors.js'

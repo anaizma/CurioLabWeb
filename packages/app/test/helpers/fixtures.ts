@@ -6,6 +6,7 @@ export {
   makeChapter,
   makeMinor,
   makeMembership,
+  makePod,
   makeTerm,
   makeApplication,
   makeEnrollment,

@@ -449,6 +449,98 @@ export class DeletionReasonRequiredError extends Error {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Feed (Milestone 2.2: The Lab — posts, comments, reactions).
+// ---------------------------------------------------------------------------
+
+/** The referenced post does not exist (edit/moderate/react of an unknown id). */
+export class PostNotFoundError extends Error {
+  readonly postId: string
+  constructor(postId: string) {
+    super(`post not found: ${postId}`)
+    this.name = 'PostNotFoundError'
+    this.postId = postId
+  }
+}
+
+/** The referenced comment does not exist (moderate/react of an unknown id). */
+export class CommentNotFoundError extends Error {
+  readonly commentId: string
+  constructor(commentId: string) {
+    super(`comment not found: ${commentId}`)
+    this.name = 'CommentNotFoundError'
+    this.commentId = commentId
+  }
+}
+
+/**
+ * A `PostService.create` attempted to mint a `milestone` post or a
+ * `system_generated` one. Milestone posts are the SYSTEM path only (M2.5,
+ * driven by lifecycle transitions writing a timeline_entry + a system_generated
+ * milestone post); the member-authored create path never produces one
+ * (milestone-2.md §M2.2; 04-state-machines "milestone posts are
+ * system_generated and skip the consent gate"). Rejected before any IO.
+ */
+export class PostMilestoneForbiddenError extends Error {
+  readonly kind: 'milestone_type' | 'system_generated'
+  constructor(kind: 'milestone_type' | 'system_generated') {
+    super(
+      kind === 'milestone_type'
+        ? 'a milestone post is system-generated only; it cannot be created via PostService.create'
+        : 'a system_generated post cannot be created via PostService.create',
+    )
+    this.name = 'PostMilestoneForbiddenError'
+    this.kind = kind
+  }
+}
+
+/**
+ * A requested post/comment lifecycle change is not a legal edge of the feed
+ * content machine (04-state-machines `published -> hidden -> removed`; `removed`
+ * is terminal). Carries the structured reason from `canTransition` so a route
+ * can map it to a 409, distinct from a Forbidden (an authorization failure that
+ * leaks no reason). `machine` distinguishes the post and comment lifecycles
+ * (identical shape, separate entities).
+ */
+export class IllegalFeedContentTransitionError extends Error {
+  readonly machine: 'feed_post' | 'comment'
+  readonly from: string | null
+  readonly to: string
+  readonly reason: TransitionResult['reason']
+  constructor(
+    machine: 'feed_post' | 'comment',
+    from: string | null,
+    to: string,
+    reason: TransitionResult['reason'],
+  ) {
+    super(`illegal ${machine} transition ${from ?? '(none)'} -> ${to}${reason ? ` (${reason})` : ''}`)
+    this.name = 'IllegalFeedContentTransitionError'
+    this.machine = machine
+    this.from = from
+    this.to = to
+    this.reason = reason
+  }
+}
+
+/**
+ * A feed write authorized for the actor could not resolve the actor's in-scope
+ * active membership row (the post/comment `author_membership_id`, or the
+ * reaction `membership_id`). Authorship is by membership so the row carries the
+ * author's capacity and scope (02-data-model). `can` matched an in-force
+ * membership in the actor's AuthContext, so a missing DB row here is a data
+ * mismatch, not a normal denial.
+ */
+export class FeedAuthorMembershipNotFoundError extends Error {
+  readonly accountId: string
+  readonly chapterId: string
+  constructor(accountId: string, chapterId: string) {
+    super(`no active membership for account ${accountId} in chapter ${chapterId} to author a feed write`)
+    this.name = 'FeedAuthorMembershipNotFoundError'
+    this.accountId = accountId
+    this.chapterId = chapterId
+  }
+}
+
 /**
  * The requested guardianship state change is not a legal edge of the
  * guardianship lifecycle (04-state-machines). Verification only ever fires on a
