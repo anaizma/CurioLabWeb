@@ -23,7 +23,7 @@ CurioLab retains a child's personal information only as long as reasonably neces
 
 ## How deletion happens
 
-- **Application leads** that do not convert are deleted automatically 30 days after collection (implemented: the `sweepUnconvertedLeads` job).
+- **Application leads** that do not convert are deleted automatically 30 days after collection — evaluated at request time against each lead's stored `expires_at` (implemented: the `sweepExpiredLeads` job).
 - **Contact details and community content** are deleted or redacted one year after a student's last active term (the retention schedule is expressed in configuration; the sweep for these classes is implemented as the program's data ages).
 - **A parent's deletion request** is honored per § 312.6: the parent's deletion right takes priority, and CurioLab may terminate the child's participation as a consequence (implemented: tiered deletion fulfillment). Full erase removes the verification skeleton; redaction preserves an anonymized skeleton with identifiers removed.
 - Deletion is recorded in the append-only audit log by reference; the audit entry never contains the deleted personal information.

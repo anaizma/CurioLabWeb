@@ -25,7 +25,7 @@ function service(overrides: Record<string, unknown> = {}) {
 /**
  * A chapter director actor in the given chapter, plus a `submitted` application
  * created directly in a fixture. The public write no longer creates an
- * `application` (that path became `LeadService.submitLead`; the `application`
+ * `application` (that path became `LeadService.createLead`; the `application`
  * row is minted only at 2C submit, part B), so the ops transitions are exercised
  * against an application seeded straight into the table.
  */

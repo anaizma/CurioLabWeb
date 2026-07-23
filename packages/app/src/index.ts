@@ -67,13 +67,12 @@ export {
 export { LeadService } from './lead.js'
 export type {
   LeadServiceDeps,
-  SubmitLeadInput,
-  SubmitLeadResult,
+  CreateLeadInput,
+  CreateLeadResult,
 } from './lead.js'
 export { Stage2Service } from './stage2.js'
 export type {
   Stage2ServiceDeps,
-  Stage2AuthorizeFn,
   Answers,
   StartStage2Result,
   SaveParentSectionResult,
@@ -82,6 +81,7 @@ export type {
 } from './stage2.js'
 export {
   LEAD_DEDUPE_WINDOW_MS,
+  LEAD_EXPIRY_WINDOW_MS,
   STAGE2_STUDENT_ALLOWED_FIELDS,
   STAGE2_IDENTIFYING_KEY_PATTERN,
   defaultConfig,
@@ -153,9 +153,9 @@ export {
   type RetentionConfig,
 } from './retention.js'
 export {
-  sweepUnconvertedLeads,
-  type SweepUnconvertedLeadsDeps,
-  type SweepUnconvertedLeadsResult,
+  sweepExpiredLeads,
+  type SweepExpiredLeadsDeps,
+  type SweepExpiredLeadsResult,
 } from './retention-sweep.js'
 export { DeletionFulfillmentService } from './deletion-fulfillment.js'
 export type {

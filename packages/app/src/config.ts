@@ -20,6 +20,16 @@
 export const LEAD_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 /**
+ * The Stage-1 lead expiry window (design §7.1): `createLead` stamps
+ * `expires_at = created_at + 30 days`, the § 312.4(c)(1)(vii) retention/deletion
+ * floor the unconverted-lead sweep (retention-sweep.ts) reads at request time. A
+ * value, not a literal, so a policy change is a config edit, never a code change
+ * (compliance-coppa.md Part 3 "Configuration, not code"). It mirrors the
+ * retention config's CONSENT_SEEKING_WINDOW_MS deliberately — same 30 days.
+ */
+export const LEAD_EXPIRY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+/**
  * The consent types granted by a signed enrollment form (coupling D). These are
  * Block A of the paper form — required to participate (compliance-coppa.md Part 2
  * Stage 2). They live here, not in code, because Block composition is a
@@ -139,8 +149,10 @@ export const STAGE2_IDENTIFYING_KEY_PATTERN =
   /name|e-?mail|school|address|phone|surname|contact|username|dob|birth|zip|postal|guardian|parent/i
 
 export interface AppConfig {
-  /** The Stage 1 lead email dedupe window in ms (LeadService.submitLead). */
+  /** The Stage 1 lead email dedupe window in ms (LeadService.createLead). */
   leadDedupeWindowMs: number
+  /** The Stage 1 lead expiry window in ms — createLead stamps created_at + this. */
+  leadExpiryWindowMs: number
   /** The Stage 2B non-identifying allowlist: the only keys a student may save. */
   stage2StudentAllowedFields: readonly string[]
   /** The identifying-key pattern that fails a 2B save loudly (defence in depth). */
@@ -167,6 +179,7 @@ export interface AppConfig {
 
 export const defaultConfig: AppConfig = {
   leadDedupeWindowMs: LEAD_DEDUPE_WINDOW_MS,
+  leadExpiryWindowMs: LEAD_EXPIRY_WINDOW_MS,
   stage2StudentAllowedFields: STAGE2_STUDENT_ALLOWED_FIELDS,
   stage2IdentifyingKeyPattern: STAGE2_IDENTIFYING_KEY_PATTERN,
   formSourcedConsentTypes: FORM_SOURCED_CONSENT_TYPES,

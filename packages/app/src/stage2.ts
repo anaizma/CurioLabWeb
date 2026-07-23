@@ -1,7 +1,7 @@
 // -------------------------------------------------------------------------
 // Stage2Service — the three-phase Stage 2 of the application funnel
-// (docs/platform/plans/milestone-1-application-funnel.md v2). One `application_
-// draft` bound to a lead advances through three phases against two tokens:
+// (application-funnel Stage-1 design §7.2/§8). One `application_draft` bound to a
+// lead advances through three phases against TWO tokens:
 //
 //   2A  parent section   — saveParentSection: the parent fills the child facts
 //                          (name, grade, school) and guardian details. Identifying
@@ -17,29 +17,26 @@
 //                          the student to revise; the parent cannot edit the
 //                          student's answers), and submitStage2 (parent token ONLY)
 //                          — the ONE place the `application` row is minted, from
-//                          the 2A facts + the 2B student section.
+//                          the 2A facts + the 2B student section. Submit also sets
+//                          the lead's `converted_at` + `converted_application_id`.
 //
-// startStage2 is the single staff-gated op (lead.invite, chapter_director), since
-// staff decide which leads are invited to apply. The four token-gated ops carry
-// NO AuthContext — like the invite accept endpoints, they are gated by the opaque
-// parent/student token alone (CSPRNG token returned to the caller, only its
-// SHA-256 hash stored on the draft, timing-safe compare). Mail delivery is
-// deferred: the returned tokens are the seam a future mailer consumes.
+// The Stage-2 PARENT token ORIGINATES from the lead's `token_hash`, issued at
+// createLead (design §7.1). startStage2 validates/consumes that lead token and
+// creates the draft — it does NOT mint a fresh parent token. A SEPARATE student
+// token gates 2B (the two-token model is retained deliberately: a single shared
+// token would let the student's 2B link open the parent's 2A/2C sections).
+//
+// Every op is UNAUTHENTICATED and token-gated — like the invite accept endpoints,
+// gated by the opaque parent/student token alone (only the SHA-256 hash stored,
+// timing-safe compare). Mail delivery is deferred: the tokens are the mailer seam.
 // -------------------------------------------------------------------------
 
 import { timingSafeEqual } from 'node:crypto'
 import type { Sql, JSONValue } from 'postgres'
-import type { AuthContext, Resource } from '@curiolab/core'
-import {
-  assertAuthorized,
-  generateSessionToken,
-  hashToken,
-  type AuthorizeDeps,
-} from '@curiolab/runtime'
+import { generateSessionToken, hashToken } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
 import {
   InvalidStage2TokenError,
-  LeadNotFoundError,
   Stage2AlreadyStartedError,
   Stage2LeadChapterRequiredError,
   Stage2NotInPhaseError,
@@ -48,21 +45,8 @@ import {
   StudentSectionIdentifyingFieldError,
 } from './errors.js'
 
-/**
- * The injected `authorize` dependency, narrowed to this service's one staff
- * capability (structurally the runtime `authorize` wrapper; taken by injection so
- * the deny/backstop paths are testable without HTTP).
- */
-export type Stage2AuthorizeFn = <T = void>(
-  ctx: AuthContext,
-  capability: 'lead.invite',
-  resource: Resource,
-  deps: AuthorizeDeps<T>,
-) => Promise<T | undefined>
-
 export interface Stage2ServiceDeps {
   sql: Sql
-  authorize: Stage2AuthorizeFn
   /** Optional overrides for the config-not-code tunables (the 2B allowlist). */
   config?: Partial<AppConfig>
 }
@@ -73,8 +57,6 @@ export type Answers = Record<string, unknown>
 export interface StartStage2Result {
   draftId: string
   leadId: string
-  /** The opaque parent token handed to the caller (only its hash is stored). */
-  parentToken: string
 }
 
 export interface SaveParentSectionResult {
@@ -115,41 +97,39 @@ interface DraftRow {
 
 export class Stage2Service {
   private readonly sql: Sql
-  private readonly authorize: Stage2AuthorizeFn
   private readonly config: AppConfig
 
   constructor(deps: Stage2ServiceDeps) {
     this.sql = deps.sql
-    this.authorize = deps.authorize
     this.config = { ...defaultConfig, ...deps.config }
   }
 
-  // ---- start (POST /ops/leads/:id/start-stage2, lead.invite) ---------------
+  // ---- start (parent token issued at createLead, UNAUTHENTICATED) ----------
   /**
-   * Issue the parent token, create the `application_draft` (phase `2a`, status
-   * `in_progress`), and advance the lead `new -> stage2_started`, all atomically.
-   * Gated through `authorize` under `lead.invite` (chapter_director): staff decide
-   * which leads are invited to apply. Email delivery is deferred: the returned
-   * parent token is the mailer's seam.
+   * Validate/CONSUME the lead's Stage-2 token (issued at createLead) and create
+   * the `application_draft` (phase `2a`, status `in_progress`) bound to that lead,
+   * advancing the lead `new -> stage2_started`, all atomically. The parent token
+   * is NOT re-minted here: the draft's `parent_token_hash` is the lead's own
+   * `token_hash`, so the token the parent already holds carries straight into 2A.
+   * A token that resolves no lead is an opaque InvalidStage2TokenError; a lead
+   * that is not `new` (already started / converted) is Stage2AlreadyStartedError.
    */
-  async startStage2(leadId: string, ctx: AuthContext): Promise<StartStage2Result> {
+  async startStage2(parentToken: string): Promise<StartStage2Result> {
+    const parentHash = hashToken(parentToken)
     const [lead] = await this.sql`
-      select id, chapter_id, status from application_lead where id = ${leadId}
+      select id, status, token_hash from application_lead where token_hash = ${parentHash}
     `
-    if (lead === undefined) throw new LeadNotFoundError(leadId)
+    // Reveal nothing: an unknown token and a hash mismatch look identical.
+    if (lead === undefined || !hashesEqual(lead.token_hash as string, parentHash)) {
+      throw new InvalidStage2TokenError()
+    }
+    const leadId = lead.id as string
     if (lead.status !== 'new') throw new Stage2AlreadyStartedError(leadId)
 
-    const resource: Resource = { chapter_id: (lead.chapter_id as string | null) ?? null }
-    await this.authorize(ctx, 'lead.invite', resource, { sql: this.sql })
-
-    const parentToken = generateSessionToken()
-    const parentHash = hashToken(parentToken)
-
     const draftId = await this.sql.begin(async (tx) => {
-      assertAuthorized() // runtime backstop: no mutation without a recorded decision
       // Advance the lead only if still `new` (guards a concurrent double-start).
       const advanced = await tx`
-        update application_lead set status = 'stage2_started', token_hash = ${parentHash}
+        update application_lead set status = 'stage2_started'
         where id = ${leadId} and status = 'new'
         returning id
       `
@@ -162,7 +142,7 @@ export class Stage2Service {
       return row!.id as string
     })
 
-    return { draftId, leadId, parentToken }
+    return { draftId, leadId }
   }
 
   // ---- 2A save (parent token, UNAUTHENTICATED) -----------------------------
@@ -276,7 +256,8 @@ export class Stage2Service {
       `
       const appId = app!.id as string
       await tx`
-        update application_lead set status = 'converted', converted_application_id = ${appId}
+        update application_lead
+        set status = 'converted', converted_application_id = ${appId}, converted_at = now()
         where id = ${draft.lead_id}
       `
       await tx`

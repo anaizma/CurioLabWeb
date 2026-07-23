@@ -18,7 +18,7 @@ afterAll(async () => {
 
 /**
  * A `submitted` application created directly in a fixture. The public write no
- * longer mints an `application` (that path became `LeadService.submitLead`; the
+ * longer mints an `application` (that path became `LeadService.createLead`; the
  * `application` is created only at 2C submit, part B), so authorization on the
  * ops transitions is exercised against a directly-seeded application.
  */

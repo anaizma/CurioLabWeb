@@ -20,9 +20,8 @@ export { ValidationError, mapError, FORBIDDEN_BODY, readJson } from './respond.j
 export { resolveAuthContext } from './context.js'
 export { runAuthed, runPublic } from './run.js'
 
-// Public funnel
+// Public funnel (Stage 2 token-gated chain; Stage 1 /api/apply is frontend-owned)
 export {
-  submitLead,
   startStage2,
   saveParentSection,
   saveStudentSection,

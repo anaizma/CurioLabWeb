@@ -116,6 +116,11 @@ export const applicationLeadStatusEnum = pgEnum('application_lead_status', [
   'converted',
   'deleted',
 ])
+// Who filled the Stage 1 form — drives the confirmation copy (design §7.1).
+export const applicationLeadFillerRoleEnum = pgEnum('application_lead_filler_role', [
+  'parent',
+  'student',
+])
 export const applicationDraftPhaseEnum = pgEnum('application_draft_phase', [
   '2a',
   '2b',

@@ -35,6 +35,7 @@ import {
   applicationDraftPhaseEnum,
   applicationDraftStatusEnum,
   applicationKindEnum,
+  applicationLeadFillerRoleEnum,
   applicationLeadStatusEnum,
   applicationStatusEnum,
   chapterStatusEnum,
@@ -240,12 +241,24 @@ export const applicationLead = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     email: citext('email').notNull(),
+    // The selected chapter CODE (design §7.1) — free text, not an fk, so
+    // "interested in another school" (no chapter row) is expressible.
+    chapter: text('chapter').notNull(),
+    // Kept as the optional 2C linkage, populated when the code maps to a chapter.
     chapterId: uuid('chapter_id').references(() => chapter.id),
-    referralSource: text('referral_source').notNull(),
+    // "How did you hear" — optional (design §7.1).
+    source: text('source'),
+    // Who filled Stage 1 (parent|student); drives the confirmation copy.
+    fillerRole: applicationLeadFillerRoleEnum('filler_role').notNull(),
     status: applicationLeadStatusEnum('status').notNull().default('new'),
+    // The Stage-2 token, issued at lead creation (forward-compat); consumed by Stage 2.
     tokenHash: text('token_hash'),
     convertedApplicationId: uuid('converted_application_id').references(() => application.id),
+    // The design's conversion marker, set when a Stage-2 application submits at 2C.
+    convertedAt: timestamp('converted_at', { withTimezone: true }),
     createdAt: createdAt(),
+    // created_at + 30 days — the § 312.4(c)(1)(vii) retention/deletion floor.
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => [

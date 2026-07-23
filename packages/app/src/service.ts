@@ -62,7 +62,7 @@ export class ApplicationService {
   }
 
   // NOTE: the old public `submitApplication` write is GONE. The public surface
-  // is now Stage 1 lead capture (`LeadService.submitLead`), which creates an
+  // is now Stage 1 lead capture (`LeadService.createLead`), which creates an
   // `application_lead`, never an `application`. The `application` row is created
   // only at 2C submit (part B). This service now owns only the ops transitions
   // below, which operate on an `application` once it exists.

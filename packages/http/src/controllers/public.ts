@@ -1,66 +1,43 @@
 // -------------------------------------------------------------------------
-// Public funnel controllers (Milestone 1 parts A/B).
+// Public funnel controllers — the Stage 2 token-gated chain (design §7.2/§8).
 //
-//   submitLead            POST /api/public/apply        — unauthenticated, inert.
-//   startStage2           POST /api/ops/leads/:id/start-stage2 — staff (lead.invite).
+//   startStage2           POST /api/public/stage2/start    — consumes the lead token.
 //   saveParentSection     POST /api/public/stage2/parent   — 2A, parent token.
 //   saveStudentSection    POST /api/public/stage2/student  — 2B, student token.
 //   reviewStage2          POST /api/public/stage2/review   — 2C, parent token.
 //   submitStage2          POST /api/public/stage2/submit   — 2C, parent token.
 //   sendBack              POST /api/public/stage2/send-back — 2C -> 2B, parent token.
 //
-// The token-gated ops carry NO AuthContext: the opaque parent/student token is
-// the only gate (Stage2Service does the timing-safe compare). start is the one
-// staff-gated op, so it goes through runAuthed.
+// Every op is UNAUTHENTICATED and token-gated: the opaque parent/student token is
+// the only gate (Stage2Service does the timing-safe compare). The Stage-2 parent
+// token originates from the lead's `token_hash`, issued at createLead — start
+// consumes it. Stage 1 (`POST /api/apply`) is owned by the web/frontend (design
+// §7.3), NOT this layer; there is no lead-write controller here.
 // -------------------------------------------------------------------------
 
 import {
-  LeadService,
   Stage2Service,
   type Answers,
   type ReviewStage2Result,
   type SaveParentSectionResult,
   type StartStage2Result,
-  type SubmitLeadResult,
   type SubmitStage2Result,
 } from '@curiolab/app'
-import { authorize } from '@curiolab/runtime'
-import { runAuthed, runPublic } from '../run.js'
-import { reqObj, reqStr, optStr } from '../respond.js'
-import type { AuthedInputBase, ControllerResult, PublicInputBase } from '../types.js'
-
-// ---- Stage 1 --------------------------------------------------------------
-
-export interface SubmitLeadInput extends PublicInputBase {
-  body: { email?: unknown; chapterId?: unknown; referralSource?: unknown }
-}
-
-/** POST /api/public/apply — the unauthenticated, inert Stage 1 lead write. */
-export function submitLead(input: SubmitLeadInput): Promise<ControllerResult<SubmitLeadResult>> {
-  return runPublic(async () => {
-    const email = reqStr(input.body?.email, 'email')
-    const referralSource = reqStr(input.body?.referralSource, 'referralSource')
-    const chapterId = optStr(input.body?.chapterId)
-    const result = await new LeadService({ sql: input.sql }).submitLead({
-      email,
-      chapterId,
-      referralSource,
-    })
-    return { status: 201, body: result }
-  })
-}
+import { runPublic } from '../run.js'
+import { reqObj, reqStr } from '../respond.js'
+import type { ControllerResult, PublicInputBase } from '../types.js'
 
 // ---- Stage 2 --------------------------------------------------------------
 
-export interface StartStage2Input extends AuthedInputBase {
-  params: { leadId?: unknown }
+export interface Stage2StartInput extends PublicInputBase {
+  body: { token?: unknown }
 }
 
-/** POST /api/ops/leads/:id/start-stage2 — staff-gated (lead.invite). */
-export function startStage2(input: StartStage2Input): Promise<ControllerResult<StartStage2Result>> {
-  return runAuthed(input, async (ctx, sql) => {
-    const leadId = reqStr(input.params?.leadId, 'leadId')
-    const result = await new Stage2Service({ sql, authorize }).startStage2(leadId, ctx)
+/** POST /api/public/stage2/start — consume the lead's Stage-2 token; create the draft. */
+export function startStage2(input: Stage2StartInput): Promise<ControllerResult<StartStage2Result>> {
+  return runPublic(async () => {
+    const token = reqStr(input.body?.token, 'token')
+    const result = await new Stage2Service({ sql: input.sql }).startStage2(token)
     return { status: 201, body: result }
   })
 }
@@ -76,10 +53,7 @@ export function saveParentSection(
   return runPublic(async () => {
     const token = reqStr(input.body?.token, 'token')
     const answers = reqObj(input.body?.answers, 'answers') as Answers
-    const result = await new Stage2Service({ sql: input.sql, authorize }).saveParentSection(
-      token,
-      answers,
-    )
+    const result = await new Stage2Service({ sql: input.sql }).saveParentSection(token, answers)
     return { status: 200, body: result }
   })
 }
@@ -91,7 +65,7 @@ export function saveStudentSection(
   return runPublic(async () => {
     const token = reqStr(input.body?.token, 'token')
     const answers = reqObj(input.body?.answers, 'answers') as Answers
-    await new Stage2Service({ sql: input.sql, authorize }).saveStudentSection(token, answers)
+    await new Stage2Service({ sql: input.sql }).saveStudentSection(token, answers)
     return { status: 200, body: { saved: true } }
   })
 }
@@ -106,7 +80,7 @@ export function reviewStage2(
 ): Promise<ControllerResult<ReviewStage2Result>> {
   return runPublic(async () => {
     const token = reqStr(input.body?.token, 'token')
-    const result = await new Stage2Service({ sql: input.sql, authorize }).reviewStage2(token)
+    const result = await new Stage2Service({ sql: input.sql }).reviewStage2(token)
     return { status: 200, body: result }
   })
 }
@@ -117,7 +91,7 @@ export function submitStage2(
 ): Promise<ControllerResult<SubmitStage2Result>> {
   return runPublic(async () => {
     const token = reqStr(input.body?.token, 'token')
-    const result = await new Stage2Service({ sql: input.sql, authorize }).submitStage2(token)
+    const result = await new Stage2Service({ sql: input.sql }).submitStage2(token)
     return { status: 201, body: result }
   })
 }
@@ -126,7 +100,7 @@ export function submitStage2(
 export function sendBack(input: Stage2ReviewInput): Promise<ControllerResult<{ sentBack: true }>> {
   return runPublic(async () => {
     const token = reqStr(input.body?.token, 'token')
-    await new Stage2Service({ sql: input.sql, authorize }).sendBack(token)
+    await new Stage2Service({ sql: input.sql }).sendBack(token)
     return { status: 200, body: { sentBack: true } }
   })
 }

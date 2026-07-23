@@ -1,22 +1,24 @@
 // -------------------------------------------------------------------------
-// Public funnel controller chain (Milestone 1 part A/B). Embedded Postgres,
-// synthetic data only.
+// Public funnel controller chain (the Stage 2 token-gated chain). Embedded
+// Postgres, synthetic data only.
 //
-// Proves the framework-agnostic controllers behind the public funnel:
-//   - submitLead runs with NO session, creating exactly one inert lead
-//     (application_lead, no account, no application);
-//   - the Stage 2 chain is token-gated: start (staff), 2A parent, 2B student,
-//     2C review + submit mint the application; send-back returns 2C -> 2B;
+// Stage 1 (the lead write, POST /api/apply) is owned by the web/frontend (design
+// §7.3), so it is NOT exercised here; the test seeds a lead the way createLead
+// leaves it (a chapter code + a Stage-2 token whose hash is on the lead). It then
+// proves the framework-agnostic Stage 2 controllers:
+//   - start consumes the lead token and creates the draft (token-gated, no session);
+//   - 2A parent, 2B student, 2C review + submit mint the application and set the
+//     lead's converted_at; send-back returns 2C -> 2B;
 //   - a bad/missing token is a 4xx (opaque), never a 500;
 //   - a 2B save of an identifying field is a 400 (loud), not a 500.
 // -------------------------------------------------------------------------
 
+import { randomUUID } from 'node:crypto'
 import { beforeAll, afterAll, describe, expect, test } from 'vitest'
-import { createSession } from '@curiolab/runtime'
+import { generateSessionToken, hashToken } from '@curiolab/runtime'
 import { startHarness, type Harness } from './helpers/pg.js'
-import { makeAdult, makeChapter } from './helpers/fixtures.js'
+import { makeChapter } from './helpers/fixtures.js'
 import {
-  submitLead,
   startStage2,
   saveParentSection,
   saveStudentSection,
@@ -35,59 +37,50 @@ afterAll(async () => {
   await h?.end()
 })
 
-/** A director with a chapter_director membership in `chapter`, plus a live session token. */
-async function directorSession(chapter: string): Promise<string> {
-  const director = await makeAdult(h.sql)
-  await h.sql`
-    insert into membership (account_id, chapter_id, role, status)
-    values (${director}, ${chapter}, 'chapter_director', 'active')
+/** A lead as createLead leaves it: chapter code + chapter_id fk + issued token. */
+async function seedLead(chapterId: string): Promise<{ leadId: string; token: string }> {
+  const token = generateSessionToken()
+  const [row] = await h.sql`
+    insert into application_lead (email, chapter, chapter_id, source, filler_role, status, token_hash)
+    values (${`parent-${randomUUID().slice(0, 8)}@example.test`}, 'a-chapter-code', ${chapterId},
+            'friend', 'parent', 'new', ${hashToken(token)})
+    returning id
   `
-  const { token } = await createSession(h.sql, {
-    accountId: director,
-    expiresAt: new Date(Date.now() + 3_600_000),
-  })
-  return token
+  return { leadId: row!.id as string, token }
 }
 
-describe('submitLead — the public inert Stage 1 write', () => {
-  test('creates one application_lead with no session, no account, no application', async () => {
+describe('startStage2 — the token-gated Stage 2 start', () => {
+  test('consumes the lead token, creates a draft, no session required', async () => {
     const chapter = await makeChapter(h.sql)
-    const res = await submitLead({
-      sql: h.sql,
-      body: { email: 'parent-a@example.test', chapterId: chapter, referralSource: 'friend' },
-    })
-    expect(res.status).toBe(201)
-    expect(res.body.suppressed).toBe(false)
-    expect(res.body.leadId).toBeTruthy()
+    const { leadId, token } = await seedLead(chapter)
 
-    const [lead] = await h.sql`select * from application_lead where id = ${res.body.leadId}`
-    expect(lead!.status).toBe('new')
-    expect(lead!.email).toBe('parent-a@example.test')
-    // Inert: no application row was created.
-    const apps = await h.sql`select 1 from application`
-    expect(apps).toHaveLength(0)
+    const started = await startStage2({ sql: h.sql, body: { token } })
+    expect(started.status).toBe(201)
+    expect(started.body.leadId).toBe(leadId)
+    expect(started.body.draftId).toBeTruthy()
+
+    const [l] = await h.sql`select status from application_lead where id = ${leadId}`
+    expect(l!.status).toBe('stage2_started')
   })
 
-  test('missing required fields are a 400, not a 500', async () => {
-    const res = await submitLead({ sql: h.sql, body: { referralSource: 'friend' } as never })
+  test('a missing token is a 400, not a 500', async () => {
+    const res = await startStage2({ sql: h.sql, body: {} })
     expect(res.status).toBe(400)
+  })
+
+  test('a forged lead token is a 401 (opaque), not a 500', async () => {
+    const res = await startStage2({ sql: h.sql, body: { token: 'not-a-real-token' } })
+    expect(res.status).toBe(401)
   })
 })
 
 describe('the Stage 2 three-phase chain against tokens', () => {
-  test('start (staff) -> 2A -> 2B -> 2C review -> submit mints the application', async () => {
+  test('start -> 2A -> 2B -> 2C review -> submit mints the application and converts the lead', async () => {
     const chapter = await makeChapter(h.sql)
-    const lead = await submitLead({
-      sql: h.sql,
-      body: { email: 'parent-b@example.test', chapterId: chapter, referralSource: 'search' },
-    })
-    const token = await directorSession(chapter)
+    const { leadId, token: parentToken } = await seedLead(chapter)
 
-    // start: staff-gated (lead.invite). Issues the parent token.
-    const started = await startStage2({ sql: h.sql, sessionToken: token, params: { leadId: lead.body.leadId } })
+    const started = await startStage2({ sql: h.sql, body: { token: parentToken } })
     expect(started.status).toBe(201)
-    const parentToken = started.body.parentToken
-    expect(parentToken).toBeTruthy()
 
     // 2A: the parent section; issues the student token.
     const parentSaved = await saveParentSection({
@@ -122,19 +115,15 @@ describe('the Stage 2 three-phase chain against tokens', () => {
     const [app] = await h.sql`select * from application where id = ${submitted.body.applicationId}`
     expect(app!.status).toBe('submitted')
     expect(app!.applicant_name).toBe('Minor Testchild')
-    const [ld] = await h.sql`select status from application_lead where id = ${lead.body.leadId}`
+    const [ld] = await h.sql`select status, converted_at from application_lead where id = ${leadId}`
     expect(ld!.status).toBe('converted')
+    expect(ld!.converted_at).not.toBeNull()
   })
 
   test('send-back returns the draft from 2C to 2B', async () => {
     const chapter = await makeChapter(h.sql)
-    const lead = await submitLead({
-      sql: h.sql,
-      body: { email: 'parent-c@example.test', chapterId: chapter, referralSource: 'search' },
-    })
-    const token = await directorSession(chapter)
-    const started = await startStage2({ sql: h.sql, sessionToken: token, params: { leadId: lead.body.leadId } })
-    const parentToken = started.body.parentToken
+    const { leadId, token: parentToken } = await seedLead(chapter)
+    await startStage2({ sql: h.sql, body: { token: parentToken } })
     const parentSaved = await saveParentSection({
       sql: h.sql,
       body: { token: parentToken, answers: { childName: 'C', guardianName: 'P', guardianEmail: 'parent-c@example.test' } },
@@ -143,7 +132,7 @@ describe('the Stage 2 three-phase chain against tokens', () => {
 
     const back = await sendBack({ sql: h.sql, body: { token: parentToken } })
     expect(back.status).toBe(200)
-    const [draft] = await h.sql`select phase, status from application_draft where lead_id = ${lead.body.leadId}`
+    const [draft] = await h.sql`select phase, status from application_draft where lead_id = ${leadId}`
     expect(draft!.phase).toBe('2b')
     expect(draft!.status).toBe('sent_back')
   })
@@ -155,15 +144,11 @@ describe('the Stage 2 three-phase chain against tokens', () => {
 
   test('a 2B save of an identifying field is a 400 (loud), not a 500', async () => {
     const chapter = await makeChapter(h.sql)
-    const lead = await submitLead({
-      sql: h.sql,
-      body: { email: 'parent-d@example.test', chapterId: chapter, referralSource: 'search' },
-    })
-    const token = await directorSession(chapter)
-    const started = await startStage2({ sql: h.sql, sessionToken: token, params: { leadId: lead.body.leadId } })
+    const { token: parentToken } = await seedLead(chapter)
+    await startStage2({ sql: h.sql, body: { token: parentToken } })
     const parentSaved = await saveParentSection({
       sql: h.sql,
-      body: { token: started.body.parentToken, answers: { childName: 'D', guardianName: 'P', guardianEmail: 'parent-d@example.test' } },
+      body: { token: parentToken, answers: { childName: 'D', guardianName: 'P', guardianEmail: 'parent-d@example.test' } },
     })
     const res = await saveStudentSection({
       sql: h.sql,
