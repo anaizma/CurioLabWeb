@@ -6,9 +6,12 @@
 // Every method is gated through `authorize` under a guardian capability, matched
 // by the `guardian` scope against ctx.guardianOf (03-authorization.md): the
 // resource names the child, and the scope matches only the guardian's own
-// verified children under 18. A lapsed/revoked edge is absent from guardianOf,
-// so it denies; an 18+ child denies on the age bound. Consent grant/revoke are
-// NOT here (step 5, ConsentService).
+// verified children. A lapsed/revoked edge is absent from guardianOf, so it
+// denies. The age-18 bar applies to guardian WRITE authority only (request_export
+// / request_deletion): guardian READ (view_child_record / view_fee_status)
+// persists past the child's majority until the edge lapses at coming-of-age
+// (04-state-machines: read ends at `verified -> lapsed`, not at 18). Consent
+// grant/revoke are NOT here (step 5, ConsentService).
 //
 //   - viewChildRecord: guardian.view_child_record (logsRead). The read and its
 //     minor_record.read obligation run in ONE transaction via the `authorize`
@@ -187,8 +190,9 @@ export class GuardianPortalService {
 
   /**
    * The guardian-scope resource for a child. Carries the child as the subject
-   * with its age (so the scope bars at 18) and, for the read-log, its pod and
-   * whether it is a minor.
+   * with its age (so the scope bars guardian WRITES at 18 — request_export /
+   * request_deletion; reads are not age-bounded) and, for the read-log, its pod
+   * and whether it is a minor.
    */
   private childResource(childId: string, s: ChildSubject): Resource {
     return {

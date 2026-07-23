@@ -402,6 +402,17 @@ export const dobCorrectInC1: Resource = { id: 'acct-child-in-pod', chapter_id: C
 export const deletionRequestInC1: Resource = { id: 'deletion-request-1', chapter_id: C1 }
 export const exportRequestInC1: Resource = { id: 'export-request-1', chapter_id: C1 }
 
+// maturation.confirm (Flow D step 3): the Chapter Director confirms an adult
+// student's coming-of-age, moving maturation_pending -> self_managed and lapsing
+// the guardianship edge. Chapter-scoped to the student's enrolling chapter; the
+// resource is the maturing account. No subject-consent snapshot.
+export const maturationConfirmInC1: Resource = { id: 'acct-child-18', chapter_id: C1 }
+
+// account.recover (Flow D step 4): the Chapter Director reissues a setup token for
+// a locked-out adult former student. Chapter-scoped to the subject's enrolling
+// chapter; the resource is the account being recovered. No subject-consent snapshot.
+export const accountRecoverInC1: Resource = { id: 'acct-child-18', chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,
@@ -450,6 +461,18 @@ export const childRecordOutOfPod: Resource = {
   chapter_id: C1,
   pod_id: POD2,
   subjectPodId: POD2,
+}
+// A verified guardian's now-18 child, in the maturation_pending window (the edge
+// is still verified; the child just turned 18). Guardian READ persists here — it
+// ends only at the edge's lapse, not at the child's majority (04-state-machines
+// guardianship "verified -> lapsed"; the age-18 bar is on consent WRITE, not read).
+export const childRecord18: Resource = {
+  subjectAccountId: ID.child18,
+  subjectAge: 18,
+  subjectIsMinor: false,
+  chapter_id: C1,
+  pod_id: POD1,
+  subjectPodId: POD1,
 }
 
 // consent targets

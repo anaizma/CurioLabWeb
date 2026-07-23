@@ -35,6 +35,9 @@ import {
   dobCorrectInC1,
   deletionRequestInC1,
   exportRequestInC1,
+  maturationConfirmInC1,
+  accountRecoverInC1,
+  childRecord18,
   safetyReport,
   ordinaryReport,
   childRecordOfS,
@@ -475,6 +478,37 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectAllow(actors.chapter_director_c1, 'export.fulfill', exportRequestInC1)
     expectDeny(actors.chapter_director_c2, 'export.fulfill', exportRequestInC1, 'out_of_scope')
     expectDeny(actors.lead_instructor_c1, 'export.fulfill', exportRequestInC1, 'role_not_permitted')
+  })
+
+  // 04-state-machines account_maturation "maturation_pending -> self_managed |
+  // maturation.confirm | chapter_director" (Flow D step 3). Chapter-scoped ops
+  // write, Chapter Director; admin via platformGrant.
+  test('maturation.confirm (Flow D step 3, chapter-scoped write; director, or admin via platformGrant)', () => {
+    expectAllow(actors.chapter_director_c1, 'maturation.confirm', maturationConfirmInC1)
+    expectAllow(actors.platform_admin, 'maturation.confirm', maturationConfirmInC1) // platformGrant
+    expectDeny(actors.chapter_director_c2, 'maturation.confirm', maturationConfirmInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'maturation.confirm', maturationConfirmInC1, 'role_not_permitted')
+  })
+
+  // 06-onboarding-flows Flow D step 4 (account.recover): the Chapter Director
+  // reissues a setup token for a locked-out adult former student. Chapter-scoped
+  // ops write, Chapter Director; admin via platformGrant.
+  test('account.recover (Flow D step 4, chapter-scoped write; director, or admin via platformGrant)', () => {
+    expectAllow(actors.chapter_director_c1, 'account.recover', accountRecoverInC1)
+    expectAllow(actors.platform_admin, 'account.recover', accountRecoverInC1) // platformGrant
+    expectDeny(actors.chapter_director_c2, 'account.recover', accountRecoverInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'account.recover', accountRecoverInC1, 'role_not_permitted')
+  })
+
+  // The age-18 bar is on the guardian's consent WRITE authority, not on read
+  // (04-state-machines: guardian read ends at the edge's `verified -> lapsed`, not
+  // at the child's majority; 03-authorization "the guardian-consent-write bar at
+  // 18"). A verified guardian still READS a just-turned-18 child's record through
+  // maturation_pending; the same guardian may NOT write consent for them.
+  test('guardian read persists at 18 (edge still verified); guardian consent write is barred at 18', () => {
+    expectAllow(actors.guardian_of_S, 'guardian.view_child_record', childRecord18)
+    expectAllow(actors.guardian_of_S, 'guardian.view_fee_status', childRecord18)
+    expectDeny(actors.guardian_of_S, 'consent.grant', childRecord18, 'out_of_scope')
   })
 
   test('platform override does not clear subject consent (admin) but grants scope+role (staff read)', () => {

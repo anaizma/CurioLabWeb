@@ -58,6 +58,18 @@ export {
   tierMilestoneBody,
 } from './milestone.js'
 export type { EmitMilestoneParams, EmitMilestoneResult } from './milestone.js'
+export { MaturationService, passwordResetRoute } from './maturation.js'
+export type {
+  MaturationServiceDeps,
+  MaturationAuthorizeFn,
+  AddEmailResult,
+  ConfirmMaturationResult,
+  ReissueSetupResult,
+  PrivatizeCredentialResult,
+  MaturationLapseNotice,
+  SweepMaturationDeps,
+  SweepMaturationResult,
+} from './maturation.js'
 export { DobCorrectionService } from './dob-correction.js'
 export type {
   DobCorrectionServiceDeps,
@@ -350,4 +362,13 @@ export {
   IllegalNarrativeTransitionError,
   VerificationSubjectNotFoundError,
   InvalidSubscriberTokenError,
+  MaturationAccountNotFoundError,
+  MaturationChapterNotFoundError,
+  MaturationNotSelfError,
+  MaturationAgeError,
+  IllegalMaturationTransitionError,
+  ReissueActiveMembershipError,
+  CredentialWitnessRequiredError,
+  CredentialWitnessInvalidError,
+  CredentialWitnessIsGuardianError,
 } from './errors.js'

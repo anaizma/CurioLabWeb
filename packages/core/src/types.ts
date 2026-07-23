@@ -236,3 +236,7 @@ export type Capability =
   | 'deletion.review'
   | 'deletion.fulfill'
   | 'export.fulfill'
+  // coming of age (M4): the Chapter Director confirms maturation, and recovers a
+  // locked-out adult former student (Flow D steps 3 and 4)
+  | 'maturation.confirm'
+  | 'account.recover'

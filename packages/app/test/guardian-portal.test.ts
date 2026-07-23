@@ -9,9 +9,11 @@
 //
 //   - a verified guardian views their own child's record; the read logs exactly
 //     one minor_record.read row (the logsRead obligation ran transactionally);
-//   - a guardian of a DIFFERENT child, a lapsed/revoked edge, and an 18+ child
-//     are each denied out_of_scope (the guardian scope requires a verified minor
-//     child in ctx.guardianOf, subject age < 18);
+//   - a guardian of a DIFFERENT child and a lapsed/revoked edge are each denied
+//     out_of_scope (the guardian scope requires the child in ctx.guardianOf);
+//   - guardian READ persists past the child's 18th birthday while the edge is
+//     verified (04-state-machines: read ends at the edge's `verified -> lapsed`,
+//     not at majority; the age-18 bar is on guardian consent WRITE, not read);
 //   - requestExport / requestDeletion file the request rows with the right
 //     status/scope; a reason-less deletion refusal is rejected by the DB;
 //   - viewFees reads payment status and scholarship WITHOUT any amount;
@@ -229,25 +231,27 @@ describe('viewChildRecord — the guardian scope denies everyone else', () => {
     expect(denied[0]!.detail).toMatchObject({ reason: 'out_of_scope' })
   })
 
-  test('a guardian of an 18+ child is denied out_of_scope (authority ends at majority)', async () => {
-    // DOB making the "child" an adult at request time.
+  test('guardian READ persists for an 18+ child while the edge is verified (read ends at lapse, not majority)', async () => {
+    // DOB making the "child" an adult at request time. The edge is still verified
+    // (not lapsed), so guardian READ resolves — coming-of-age ends read only at the
+    // edge's `verified -> lapsed` (04-state-machines), not at the 18th birthday.
     const f = await seedChild('2005-01-01')
     const svc = new GuardianPortalService({ sql: h.sql, authorize })
-    // The edge is still listed, so age is the ONLY reason for the denial.
     const ctx = guardianCtx(f.guardian, [f.child])
 
-    let caught: unknown
+    let record!: Awaited<ReturnType<GuardianPortalService['viewChildRecord']>>
     await withRequest(async () => {
-      try {
-        await svc.viewChildRecord(f.child, ctx)
-      } catch (e) {
-        caught = e
-      }
+      record = await svc.viewChildRecord(f.child, ctx)
     })
 
-    expect(caught).toBeInstanceOf(Forbidden)
+    expect(record).toBeDefined()
+    expect(record!.childId).toBe(f.child)
+    // No denial: the read was allowed.
     const denied = await auditRows('permission.denied', f.guardian)
-    expect(denied[0]!.detail).toMatchObject({ reason: 'out_of_scope' })
+    expect(denied).toHaveLength(0)
+    // An adult child is not a minor, so the minor_record.read obligation does not fire.
+    const logged = await auditRows('minor_record.read', f.guardian)
+    expect(logged).toHaveLength(0)
   })
 })
 

@@ -45,7 +45,8 @@ export type TransitionCapability =
   // 'guardianship.verify' is now a first-class Capability (added in M1 step 4),
   // so it arrives via `Capability` above and is not redeclared here.
   | 'guardianship.revoke'
-  | 'maturation.confirm'
+  // 'maturation.confirm' is now a first-class Capability (added in M4), so it
+  // arrives via `Capability` above and is not redeclared here.
   // 'newsletter.submit_review', 'newsletter.return', 'newsletter.schedule', and
   // 'newsletter.unpublish' are now first-class Capabilities (added in M3.5), so
   // they arrive via `Capability` above and are not redeclared here.

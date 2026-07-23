@@ -450,6 +450,157 @@ export class DeletionReasonRequiredError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Coming of age (Milestone 4: the maturation flow + the 16+ credential
+// privatization). Flow D (06-onboarding-flows); the account_maturation machine
+// (04-state-machines).
+// ---------------------------------------------------------------------------
+
+/** The referenced account does not exist (a maturation op of an unknown id). */
+export class MaturationAccountNotFoundError extends Error {
+  readonly accountId: string
+  constructor(accountId: string) {
+    super(`account not found: ${accountId}`)
+    this.name = 'MaturationAccountNotFoundError'
+    this.accountId = accountId
+  }
+}
+
+/**
+ * A maturation op that scopes to the subject's enrolling chapter (confirm,
+ * recover) could not resolve any enrollment record for the account, so the
+ * chapter cannot be resolved and the op cannot be authorized. A student always
+ * has a seeding enrollment record; this guards a misuse (mirrors
+ * DobCorrectionSubjectNotFoundError).
+ */
+export class MaturationChapterNotFoundError extends Error {
+  readonly accountId: string
+  constructor(accountId: string) {
+    super(`no enrollment record found to scope a maturation op for account: ${accountId}`)
+    this.name = 'MaturationChapterNotFoundError'
+    this.accountId = accountId
+  }
+}
+
+/**
+ * A self-initiated maturation op (addEmail, privatizeCredential) was attempted by
+ * an actor who is not the account owner. These flow from the student's OWN
+ * authenticated session (06-onboarding-flows Flow D step 2; the `self_private`
+ * transition), so the acting account must be the subject. Distinct from a
+ * Forbidden: no capability gates a self-op, so this is a typed misuse.
+ */
+export class MaturationNotSelfError extends Error {
+  readonly accountId: string
+  readonly actorAccountId: string
+  constructor(accountId: string, actorAccountId: string) {
+    super(`a self-initiated maturation op must act on the caller's own account (${actorAccountId} != ${accountId})`)
+    this.name = 'MaturationNotSelfError'
+    this.accountId = accountId
+    this.actorAccountId = actorAccountId
+  }
+}
+
+/**
+ * A self-initiated maturation op was attempted below its age floor: addEmail
+ * requires the student to be 18+ (Flow D step 2), and privatizeCredential
+ * requires 16+ (the `self_private` transition). Carries the required floor and
+ * the actor's age for the route to surface.
+ */
+export class MaturationAgeError extends Error {
+  readonly op: 'add_email' | 'privatize_credential'
+  readonly requiredAge: number
+  readonly actualAge: number
+  constructor(op: 'add_email' | 'privatize_credential', requiredAge: number, actualAge: number) {
+    super(`${op} requires age >= ${requiredAge}; the account is ${actualAge}`)
+    this.name = 'MaturationAgeError'
+    this.op = op
+    this.requiredAge = requiredAge
+    this.actualAge = actualAge
+  }
+}
+
+/**
+ * The requested account_maturation state change is not a legal edge of the
+ * maturation lifecycle (04-state-machines: `minor -> maturation_pending ->
+ * self_managed`; self_managed is terminal). For example, adding an email to an
+ * account already past `minor`, or confirming one still `minor`. Carries the
+ * structured reason from `canTransition` so a route can map it to a 409, distinct
+ * from a Forbidden (an authorization failure that leaks no reason).
+ */
+export class IllegalMaturationTransitionError extends Error {
+  readonly from: string | null
+  readonly to: string
+  readonly reason: TransitionResult['reason']
+  constructor(from: string | null, to: string, reason: TransitionResult['reason']) {
+    super(`illegal account_maturation transition ${from ?? '(none)'} -> ${to}${reason ? ` (${reason})` : ''}`)
+    this.name = 'IllegalMaturationTransitionError'
+    this.from = from
+    this.to = to
+    this.reason = reason
+  }
+}
+
+/**
+ * An `account.recover` (reissue-setup) was attempted against an account that
+ * still holds an active membership. Recovery is for a LOCKED-OUT adult FORMER
+ * student (06-onboarding-flows Flow D step 4: "rejected against any account with
+ * an active membership") — an active member recovers through the ordinary
+ * authenticated flows, not this out-of-band reissue.
+ */
+export class ReissueActiveMembershipError extends Error {
+  readonly accountId: string
+  constructor(accountId: string) {
+    super(`account.recover is rejected: account ${accountId} has an active membership`)
+    this.name = 'ReissueActiveMembershipError'
+    this.accountId = accountId
+  }
+}
+
+/**
+ * A `self_private` transition was attempted without a `witnessedBy`. The 16+
+ * privatization requires a chapter adult who is not a guardian to witness it,
+ * "because a guardian holding the child's credentials is indistinguishable from
+ * the child cryptographically" (06-onboarding-flows). No witness -> rejected.
+ */
+export class CredentialWitnessRequiredError extends Error {
+  constructor() {
+    super('the self_private credential transition requires a non-guardian chapter-adult witness')
+    this.name = 'CredentialWitnessRequiredError'
+  }
+}
+
+/**
+ * The named `witnessedBy` is not an eligible witness: not an ADULT (18+) with an
+ * ACTIVE teaching/staff membership in the student's chapter (06-onboarding-flows:
+ * "a mentor or instructor present", "a chapter adult who is not a guardian"). A
+ * stranger, a minor mentor, or a member of a different chapter cannot witness.
+ */
+export class CredentialWitnessInvalidError extends Error {
+  readonly witnessAccountId: string
+  constructor(witnessAccountId: string) {
+    super(`witness ${witnessAccountId} is not an active adult teaching/staff member of the student's chapter`)
+    this.name = 'CredentialWitnessInvalidError'
+    this.witnessAccountId = witnessAccountId
+  }
+}
+
+/**
+ * The named `witnessedBy` is a guardian of that student. The whole point of the
+ * witness is independence from the credentials the guardian holds, so a guardian
+ * of the transitioning student is explicitly barred (06-onboarding-flows: "a
+ * transition witnessed by a guardian of that student is rejected").
+ */
+export class CredentialWitnessIsGuardianError extends Error {
+  readonly witnessAccountId: string
+  readonly studentAccountId: string
+  constructor(witnessAccountId: string, studentAccountId: string) {
+    super(`witness ${witnessAccountId} is a guardian of student ${studentAccountId} and cannot witness the transition`)
+    this.name = 'CredentialWitnessIsGuardianError'
+    this.witnessAccountId = witnessAccountId
+    this.studentAccountId = studentAccountId
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Feed (Milestone 2.2: The Lab — posts, comments, reactions).
 // ---------------------------------------------------------------------------
 

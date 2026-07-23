@@ -346,6 +346,32 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     writes: true,
   },
 
+  // ---- coming of age (Milestone 4) -----------------------------------------
+  // maturation confirm (Flow D step 3; 04-state-machines account_maturation
+  // "maturation_pending -> self_managed | maturation.confirm | chapter_director",
+  // and the coupled guardianship "verified -> lapsed"). The Chapter Director
+  // confirms an adult student's coming-of-age: the account converts to
+  // self_managed and the guardianship edge lapses (MaturationService). Chapter-
+  // scoped to the student's enrolling chapter; platform_admin via platformGrant.
+  // No subject-consent snapshot (a maturation is not a consent decision).
+  'maturation.confirm': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+  // account recover / reissue-setup (Flow D step 4; 06-onboarding-flows "a
+  // locked-out adult former student ... recovers via account.recover"). After a
+  // documented identity check the Chapter Director mints a fresh setup token so
+  // the adult former student adds an email and sets a new password. Rejected
+  // against any account with an active membership (MaturationService.reissueSetup).
+  // Chapter-scoped to the subject's enrolling chapter; platform_admin via
+  // platformGrant. No subject-consent snapshot.
+  'account.recover': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+
   // ---- profile / narrative -------------------------------------------------
   // A member views their OWN composed profile (05-api-surface GET /profile/:id
   // "student.view_record or profile.view"). Own scope: the subject is the actor.

@@ -129,13 +129,18 @@ export function can(
         }
       } else if (scope === 'guardian') {
         const subject = resource.subjectAccountId
-        // Guardian authority is over a verified minor child only; it ends at
-        // the child's majority (encoded here as the general guardian-path rule,
-        // consistent with the guardianship lapse at coming-of-age).
+        // Guardian authority is over the guardian's own verified child (the edge
+        // is in `guardianOf`; a lapsed/revoked edge is already absent). The age-18
+        // bar applies only to guardian WRITE authority (consent grant/revoke,
+        // export/deletion requests): "the guardian's consent write authority ends
+        // (guardian path requires childAge < 18)" (04/06). Guardian READ persists
+        // through maturation_pending — it ends at the edge's `verified -> lapsed`,
+        // not at the child's majority — so a read is not age-bounded here.
+        const writeAgeOk = resource.subjectAge == null || resource.subjectAge < 18
         if (
           subject != null &&
           ctx.guardianOf.includes(subject) &&
-          (resource.subjectAge == null || resource.subjectAge < 18)
+          (!def.writes || writeAgeOk)
         ) {
           match = { via: 'guardian' }
           break
