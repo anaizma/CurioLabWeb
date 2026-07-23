@@ -21,11 +21,19 @@
 import type { Sql } from 'postgres'
 import { generateSessionToken, hashToken } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
+import { type Mailer, defaultMailer } from './mail.js'
 
 export interface LeadServiceDeps {
   sql: Sql
   /** Optional overrides for the config-not-code tunables (dedupe/expiry windows). */
   config?: Partial<AppConfig>
+  /**
+   * The mailer used to send the BACKEND-owned student-filler -> parent Stage-2
+   * link email. Defaults to `defaultMailer()` (a ResendMailer when RESEND_API_KEY
+   * is set, else a NoopMailer) so the frontend's /api/apply route triggers the
+   * email with no wiring change; tests inject a FakeMailer.
+   */
+  mailer?: Mailer
 }
 
 export interface CreateLeadInput {
@@ -56,10 +64,12 @@ export interface CreateLeadResult {
 export class LeadService {
   private readonly sql: Sql
   private readonly config: AppConfig
+  private readonly mailer: Mailer
 
   constructor(deps: LeadServiceDeps) {
     this.sql = deps.sql
     this.config = { ...defaultConfig, ...deps.config }
+    this.mailer = deps.mailer ?? defaultMailer(this.config.applyFromEmail)
   }
 
   /**
@@ -122,6 +132,34 @@ export class LeadService {
     // gets it by email) — preserving "the parent proceeds and submits." This is the
     // same safety line as the two-token 2A/2B split.
     const parentToken = input.fillerRole === 'parent' ? rawToken : null
+
+    // Email 1 (BACKEND-owned): for a STUDENT-filler, the parent never receives the
+    // Stage-2 token in the response, so email them the continue link built from the
+    // RAW token (available here, before it was hashed above). For a parent-filler we
+    // send NOTHING — the frontend owns that continue-link email (it has the token
+    // from the response). Best-effort: the lead is already inserted, so a send
+    // failure is logged and swallowed — we do NOT roll back the lead (a retry/resend
+    // is a future concern).
+    if (input.fillerRole === 'student') {
+      const link = `${this.config.appUrl}/apply/parent/${rawToken}`
+      try {
+        await this.mailer.send({
+          to: input.email,
+          subject: 'Finish your child’s CurioLab application',
+          text:
+            'Your child started a CurioLab application and asked you to finish it.\n\n' +
+            `Continue here to fill in your part and submit:\n${link}\n\n` +
+            'This link is personal to you — please do not share it.',
+          html:
+            '<p>Your child started a CurioLab application and asked you to finish it.</p>' +
+            `<p>Continue here to fill in your part and submit:<br><a href="${link}">${link}</a></p>` +
+            '<p>This link is personal to you — please do not share it.</p>',
+        })
+      } catch (err) {
+        console.error(`[LeadService] Stage-2 link email failed for lead ${row!.id as string}:`, err)
+      }
+    }
+
     return { leadId: row!.id as string, suppressed: false, parentToken }
   }
 }

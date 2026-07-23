@@ -100,6 +100,13 @@ export type {
   CreateLeadInput,
   CreateLeadResult,
 } from './lead.js'
+export {
+  ResendMailer,
+  NoopMailer,
+  FakeMailer,
+  defaultMailer,
+} from './mail.js'
+export type { Mailer, MailMessage } from './mail.js'
 export { Stage2Service } from './stage2.js'
 export type {
   Stage2ServiceDeps,
@@ -114,6 +121,8 @@ export {
   LEAD_EXPIRY_WINDOW_MS,
   STAGE2_STUDENT_ALLOWED_FIELDS,
   STAGE2_IDENTIFYING_KEY_PATTERN,
+  APPLY_FROM_EMAIL,
+  APP_URL,
   defaultConfig,
   type AppConfig,
   FORM_SOURCED_CONSENT_TYPES,

@@ -158,9 +158,32 @@ export const STAGE2_STUDENT_ALLOWED_FIELDS: readonly string[] = [
 export const STAGE2_IDENTIFYING_KEY_PATTERN =
   /name|e-?mail|school|address|phone|surname|contact|username|dob|birth|zip|postal|guardian|parent/i
 
+/**
+ * The from-address for the two BACKEND-owned application-funnel emails
+ * (mail.ts). Defaults to Resend's shared SANDBOX sender `onboarding@resend.dev`,
+ * which only delivers to the Resend account owner's own verified address until a
+ * real domain is verified. Override via `APPLY_FROM_EMAIL` once a domain is
+ * verified in Resend. A value, not a literal, per compliance-coppa.md Part 3
+ * "Configuration, not code".
+ */
+export const APPLY_FROM_EMAIL: string = process.env.APPLY_FROM_EMAIL ?? 'onboarding@resend.dev'
+
+/**
+ * The public base URL the backend uses to build funnel links (e.g. the Stage-2
+ * continue link `${APP_URL}/apply/parent/${rawToken}` in the student-filler
+ * email). Read from `APP_URL` (docs/platform/deploy/env.example); defaults to the
+ * documented placeholder so a keyless dev/CI run still produces a well-formed
+ * link. A value, not a literal, per compliance-coppa.md Part 3.
+ */
+export const APP_URL: string = process.env.APP_URL ?? 'https://platform.example.org'
+
 export interface AppConfig {
   /** The Stage 1 lead email dedupe window in ms (LeadService.createLead). */
   leadDedupeWindowMs: number
+  /** The from-address for backend-owned funnel emails (mail.ts). */
+  applyFromEmail: string
+  /** The public base URL for building funnel links (Stage-2 continue link). */
+  appUrl: string
   /** The Stage 1 lead expiry window in ms — createLead stamps created_at + this. */
   leadExpiryWindowMs: number
   /** The Stage 2B non-identifying allowlist: the only keys a student may save. */
@@ -191,6 +214,8 @@ export interface AppConfig {
 
 export const defaultConfig: AppConfig = {
   leadDedupeWindowMs: LEAD_DEDUPE_WINDOW_MS,
+  applyFromEmail: APPLY_FROM_EMAIL,
+  appUrl: APP_URL,
   leadExpiryWindowMs: LEAD_EXPIRY_WINDOW_MS,
   stage2StudentAllowedFields: STAGE2_STUDENT_ALLOWED_FIELDS,
   stage2IdentifyingKeyPattern: STAGE2_IDENTIFYING_KEY_PATTERN,

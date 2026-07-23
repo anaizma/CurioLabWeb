@@ -22,7 +22,8 @@
     "@curiolab/core": "*",
     "@curiolab/db": "*",
     "@curiolab/runtime": "*",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "resend": "^6.17.2"
   },
   "devDependencies": {
     "@types/node": "^20",

@@ -37,6 +37,7 @@ import { timingSafeEqual } from 'node:crypto'
 import type { Sql, JSONValue } from 'postgres'
 import { generateSessionToken, hashToken } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
+import { type Mailer, defaultMailer } from './mail.js'
 import {
   InvalidStage2TokenError,
   Stage2AlreadyStartedError,
@@ -52,6 +53,13 @@ export interface Stage2ServiceDeps {
   sql: Sql
   /** Optional overrides for the config-not-code tunables (the 2B allowlist). */
   config?: Partial<AppConfig>
+  /**
+   * The mailer used for the BACKEND-owned "your child finished, ready to review"
+   * notification sent to the parent when the student completes 2B. Defaults to
+   * `defaultMailer()` (ResendMailer when RESEND_API_KEY is set, else NoopMailer);
+   * tests inject a FakeMailer.
+   */
+  mailer?: Mailer
 }
 
 /** A free-form answers blob (parent-provided 2A facts, or student 2B answers). */
@@ -108,10 +116,12 @@ function leadExpired(expiresAt: Date, now: Date): boolean {
 export class Stage2Service {
   private readonly sql: Sql
   private readonly config: AppConfig
+  private readonly mailer: Mailer
 
   constructor(deps: Stage2ServiceDeps) {
     this.sql = deps.sql
     this.config = { ...defaultConfig, ...deps.config }
+    this.mailer = deps.mailer ?? defaultMailer(this.config.applyFromEmail)
   }
 
   // ---- start (parent token issued at createLead, UNAUTHENTICATED) ----------
@@ -218,9 +228,33 @@ export class Stage2Service {
         phase = '2c'
       where id = ${draft.id}
     `
-    // NOTIFY THE PARENT (deferred): the student section is saved and ready for the
-    // parent to review at 2C. The real mailer is the future seam; there is no token
-    // to hand back here (both parties already hold theirs).
+
+    // Email 2 (BACKEND-owned): notify the parent that the student finished 2B and
+    // the application is ready to review at 2C. Resolve the parent's email via the
+    // draft -> lead. IMPORTANT: at this point the backend holds only the parent
+    // token HASH, not the raw token, so it CANNOT build a fresh clickable review
+    // link — this is a NOTIFICATION only; the parent returns via the link they
+    // already hold. (A clickable link here would need a separate short-lived
+    // parent-review token — a follow-up, not built now.) Best-effort: the section
+    // is already saved, so a send failure is logged and swallowed, never rolled back.
+    try {
+      const [lead] = await this.sql`select email from application_lead where id = ${draft.lead_id}`
+      const parentEmail = lead?.email as string | undefined
+      if (parentEmail !== undefined) {
+        await this.mailer.send({
+          to: parentEmail,
+          subject: 'Your child finished their part of the CurioLab application',
+          text:
+            'Your child finished their part of the CurioLab application; return to your ' +
+            'application to review and submit.',
+          html:
+            '<p>Your child finished their part of the CurioLab application; return to your ' +
+            'application to review and submit.</p>',
+        })
+      }
+    } catch (err) {
+      console.error(`[Stage2Service] ready-to-review email failed for draft ${draft.id}:`, err)
+    }
   }
 
   // ---- 2C review (parent token, UNAUTHENTICATED) ---------------------------
