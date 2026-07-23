@@ -17,6 +17,7 @@
 
 import {
   ApplicationService,
+  ConsentService,
   DeletionFulfillmentService,
   EnrollmentService,
   ExportFulfillmentService,
@@ -24,6 +25,10 @@ import {
   InMemoryStorageAdapter,
   InviteService,
   MembershipActivationService,
+  composeRevokeCascades,
+  mediaPhotoMediaRevokeCascade,
+  projectExternalPublicationRevokeCascade,
+  type ConsentResult,
   type CreateEnrollmentResult,
   type DeletionOutcome,
   type FulfillDeletionResult,
@@ -32,6 +37,7 @@ import {
   type IssueInviteResult,
   type ActivateStudentResult,
   type ReviewDeletionResult,
+  type RevokeGuardianshipResult,
   type StorageAdapter,
   type VerifyGuardianshipResult,
   type GuardianVerificationMethod,
@@ -220,6 +226,69 @@ export function verifyGuardianship(
       method ? { verificationMethod: method as GuardianVerificationMethod } : {},
     )
     return { status: 200, body: result }
+  })
+}
+
+// ---- Guardianship revoke --------------------------------------------------
+
+export interface RevokeGuardianshipInput extends AuthedInputBase {
+  params: { id?: unknown }
+  body?: { reason?: unknown }
+}
+
+/**
+ * POST /api/ops/guardianships/:id/revoke — 04-state-machines guardianship
+ * `verified -> revoked` (guardianship.revoke). Guardian access ends immediately;
+ * consents granted before revocation stand; a new guardian must be verified before
+ * further consent decisions.
+ */
+export function revokeGuardianship(
+  input: RevokeGuardianshipInput,
+): Promise<ControllerResult<RevokeGuardianshipResult>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const guardianshipId = reqStr(input.params?.id, 'id')
+    const reason = optStr(input.body?.reason)
+    const result = await new GuardianshipService({ sql, authorize }).revokeGuardianship(
+      guardianshipId,
+      ctx,
+      reason ? { reason } : {},
+    )
+    return { status: 200, body: result }
+  })
+}
+
+// ---- Safeguarding consent suspend -----------------------------------------
+
+export interface SafeguardSuspendInput extends AuthedInputBase {
+  params: { id?: unknown }
+}
+
+export interface SafeguardSuspendResult {
+  studentAccountId: string
+  suspended: ConsentResult[]
+}
+
+/**
+ * POST /api/ops/students/:id/consents/safeguard-suspend — the one sanctioned
+ * STAFF write to consent (consent.revoke_safeguarding). Inserts `reason =
+ * safeguarding` revokes for `public_profile` and `photo_media` in one transaction,
+ * firing the C1 cascade (depicting media -> pending_review). The composed revoke
+ * cascade is wired here so the content consequence rides the same transaction.
+ */
+export function safeguardSuspend(
+  input: SafeguardSuspendInput,
+): Promise<ControllerResult<SafeguardSuspendResult>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const studentAccountId = reqStr(input.params?.id, 'id')
+    const suspended = await new ConsentService({
+      sql,
+      authorize,
+      onRevoke: composeRevokeCascades(
+        projectExternalPublicationRevokeCascade,
+        mediaPhotoMediaRevokeCascade,
+      ),
+    }).revokeSafeguarding(studentAccountId, ctx)
+    return { status: 200, body: { studentAccountId, suspended } }
   })
 }
 

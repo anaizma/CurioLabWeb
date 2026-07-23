@@ -12,8 +12,9 @@
 // The session cookie is opaque: only the token hash is stored (sessions.ts).
 // -------------------------------------------------------------------------
 
-import type { AuthContext, Role } from '@curiolab/core'
+import type { Resource } from '@curiolab/core'
 import {
+  authorize,
   createImpersonationSession,
   createSession,
   revokeSession,
@@ -23,7 +24,7 @@ import {
 import { passwordResetRoute } from '@curiolab/app'
 import { resolveAuthContext } from '../context.js'
 import { runAuthed, runPublic } from '../run.js'
-import { FORBIDDEN_BODY, reqStr } from '../respond.js'
+import { reqStr } from '../respond.js'
 import type { AuthedInputBase, ControllerResult, PublicInputBase } from '../types.js'
 
 /** How long a fresh login session lasts. */
@@ -194,16 +195,6 @@ export function requestPasswordReset(
 
 // ---- impersonation (POST | DELETE /api/auth/impersonate) --------------------
 
-/** True when the actor holds an in-force membership with `role` (mirrors core hasRole). */
-function holdsActiveRole(ctx: AuthContext, role: Role): boolean {
-  return ctx.memberships.some((m) => {
-    if (m.role !== role || m.status !== 'active') return false
-    if (m.active_from !== null && m.active_from > ctx.now) return false
-    if (m.active_until !== null && ctx.now >= m.active_until) return false
-    return true
-  })
-}
-
 export interface StartImpersonationInput extends AuthedInputBase {
   body: { targetAccountId?: unknown }
 }
@@ -217,22 +208,25 @@ export interface StartImpersonationResult {
 /**
  * POST /api/auth/impersonate — mint a 30-minute impersonation session
  * (05-api-surface `impersonation.start`, platform_admin only; read-only when the
- * target is a minor; both actor fields set). `impersonation.start` is NOT a
- * registry capability, so the platform-admin gate is a direct in-force role
- * check rather than an `authorize` call (the one documented exception to the
- * single-code-path invariant for this surface). The read-only-for-a-minor rule
- * and the 30-minute expiry are enforced by `createImpersonationSession` and the
- * database trigger floor. The adapter sets the returned token as the session
- * cookie.
+ * target is a minor; both actor fields set). The platform-admin gate now routes
+ * through `authorize(ctx, 'impersonation.start', …)` (a first-class registry
+ * capability: scope 'platform', writes:true — a `platform_admin` satisfies it via
+ * the platform override, a `platform_staff` does NOT), restoring the
+ * single-code-path invariant: a deny writes one reasoned permission.denied row and
+ * throws Forbidden, surfacing as an opaque 403. The read-only-for-a-minor rule and
+ * the 30-minute expiry are enforced by `createImpersonationSession` and the
+ * database trigger floor. The adapter sets the returned token as the session cookie.
  */
 export function startImpersonation(
   input: StartImpersonationInput,
 ): Promise<ControllerResult<StartImpersonationResult>> {
   return runAuthed<StartImpersonationResult>(input, async (ctx, sql) => {
-    if (!holdsActiveRole(ctx, 'platform_admin')) {
-      return { status: 403, body: FORBIDDEN_BODY as unknown as StartImpersonationResult }
-    }
     const targetAccountId = reqStr(input.body?.targetAccountId, 'targetAccountId')
+    // Gate through `authorize` BEFORE any lookup or session mint. A non-admin
+    // (including a platform_staff) denies here — Forbidden -> opaque 403.
+    const resource: Resource = { id: targetAccountId, subjectAccountId: targetAccountId }
+    await authorize(ctx, 'impersonation.start', resource, { sql })
+
     const now = input.now ?? new Date()
     const [target] = await sql`select date_of_birth::text as dob from account where id = ${targetAccountId}`
     if (target === undefined) {

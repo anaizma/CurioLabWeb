@@ -48,6 +48,9 @@ import {
   consentTargetSelf,
   verificationTargetSelf,
   guardianResourceOf,
+  impersonationTarget,
+  auditChapterC1,
+  safeguardTargetC1,
   CHILD_S,
   OWNER_S18,
   type Role,
@@ -514,6 +517,48 @@ describe('capability coverage: allow and deny for every registry key', () => {
   test('platform override does not clear subject consent (admin) but grants scope+role (staff read)', () => {
     // sanity: a read platform_staff can do via platformGrant
     expectAllow(actors.platform_staff, 'student.view_record', childRecordInPod)
+  })
+
+  // impersonation.start (05-api-surface `impersonation.start`, platform_admin
+  // only). Scope 'platform', writes:true — the platform_admin satisfies it via the
+  // override; the platform_staff read-only override does NOT (writes:true), so a
+  // staff and any chapter actor deny out_of_scope.
+  test('impersonation.start (platform_admin only; a write, so platform_staff and chapter actors deny)', () => {
+    expectAllow(actors.platform_admin, 'impersonation.start', impersonationTarget)
+    expectDeny(actors.platform_staff, 'impersonation.start', impersonationTarget, 'out_of_scope')
+    expectDeny(actors.chapter_director_c1, 'impersonation.start', impersonationTarget, 'out_of_scope')
+  })
+
+  // audit.view (05-api-surface GET /ops/audit chapter-scoped; GET /admin/audit
+  // global via the platform override). A director reads their own chapter; the
+  // platform_admin reads any (global) via the override; another chapter denies
+  // out_of_scope; a non-director role in the chapter denies role_not_permitted.
+  test('audit.view (director for own chapter; admin global via override; other chapter out_of_scope)', () => {
+    expectAllow(actors.chapter_director_c1, 'audit.view', auditChapterC1)
+    expectAllow(actors.platform_admin, 'audit.view', auditChapterC1)
+    expectDeny(actors.chapter_director_c2, 'audit.view', auditChapterC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'audit.view', auditChapterC1, 'role_not_permitted')
+  })
+
+  // guardianship.revoke (04-state-machines guardianship `verified -> revoked`,
+  // actor director/admin). Chapter-scoped write; admin via the override.
+  test('guardianship.revoke (director; admin via override; another chapter out_of_scope; non-director role_not_permitted)', () => {
+    expectAllow(actors.chapter_director_c1, 'guardianship.revoke', guardianshipInC1)
+    expectAllow(actors.platform_admin, 'guardianship.revoke', guardianshipInC1)
+    expectDeny(actors.chapter_director_c2, 'guardianship.revoke', guardianshipInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'guardianship.revoke', guardianshipInC1, 'role_not_permitted')
+  })
+
+  // consent.revoke_safeguarding (04-state-machines the safeguarding suspend; the
+  // one sanctioned STAFF write to consent). Chapter-scoped write, chapter_director,
+  // admin via override. It does NOT ride guardian/self scope, so a guardian denies
+  // out_of_scope (no chapter membership to match).
+  test('consent.revoke_safeguarding (director/admin only; a guardian cannot; a non-director denies role_not_permitted)', () => {
+    expectAllow(actors.chapter_director_c1, 'consent.revoke_safeguarding', safeguardTargetC1)
+    expectAllow(actors.platform_admin, 'consent.revoke_safeguarding', safeguardTargetC1)
+    expectDeny(actors.chapter_director_c2, 'consent.revoke_safeguarding', safeguardTargetC1, 'out_of_scope')
+    expectDeny(actors.guardian_of_S, 'consent.revoke_safeguarding', safeguardTargetC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'consent.revoke_safeguarding', safeguardTargetC1, 'role_not_permitted')
   })
 
   test('senior_instructor resolves independently across its two pods', () => {

@@ -237,6 +237,27 @@ describe('readOpsAudit (GET /api/ops/audit)', () => {
     `
     expect(reads).toHaveLength(0)
   })
+
+  test("a director naming ANOTHER chapter's audit is denied out_of_scope THROUGH authorize (permission.denied written, no audit.read)", async () => {
+    const d = await seedDirector(h.sql)
+    const other = await seedDirector(h.sql) // a different chapter with its own director
+    const res = await readOpsAudit({
+      sql: h.sql,
+      sessionToken: d.directorToken,
+      query: { chapterId: other.chapter },
+    })
+    expect(res.status).toBe(403)
+    const denied = await h.sql`
+      select detail from audit_entry
+      where action = 'permission.denied' and actor_account_id = ${d.director}
+    `
+    expect(denied).toHaveLength(1)
+    expect(denied[0]!.detail).toMatchObject({ capability: 'audit.view', reason: 'out_of_scope' })
+    const reads = await h.sql`
+      select 1 from audit_entry where action = 'audit.read' and actor_account_id = ${d.director}
+    `
+    expect(reads).toHaveLength(0)
+  })
 })
 
 describe('readAdminAudit (GET /api/admin/audit)', () => {
@@ -255,5 +276,13 @@ describe('readAdminAudit (GET /api/admin/audit)', () => {
 
     const denied = await readAdminAudit({ sql: h.sql, sessionToken: d.directorToken })
     expect(denied.status).toBe(403)
+    // The director deny flows through `authorize` on the GLOBAL resource (only the
+    // platform override satisfies it), writing one reasoned permission.denied row.
+    const rows = await h.sql`
+      select detail from audit_entry
+      where action = 'permission.denied' and actor_account_id = ${d.director}
+    `
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.detail).toMatchObject({ capability: 'audit.view', reason: 'out_of_scope' })
   })
 })

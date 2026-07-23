@@ -45,7 +45,7 @@ import {
  */
 export type ConsentAuthorizeFn = <T = void>(
   ctx: AuthContext,
-  capability: 'consent.grant' | 'consent.revoke',
+  capability: 'consent.grant' | 'consent.revoke' | 'consent.revoke_safeguarding',
   resource: Resource,
   deps: AuthorizeDeps<T>,
 ) => Promise<T | undefined>
@@ -263,5 +263,94 @@ export class ConsentService {
         action: 'revoke' as const,
       }
     }) as Promise<ConsentResult>
+  }
+
+  /**
+   * Resolve the student's enrolling chapter (their most recent enrollment
+   * record). `consent.revoke_safeguarding` is CHAPTER-scoped — unlike the ordinary
+   * guardian/self grant/revoke — so `can` needs the chapter to match the acting
+   * director's membership.
+   */
+  private async loadChapter(studentAccountId: string): Promise<string> {
+    const [row] = await this.sql`
+      select e.chapter_id as chapter_id from enrollment_record e
+      where e.student_account_id = ${studentAccountId}
+      order by e.created_at desc
+      limit 1
+    `
+    if (row === undefined || row.chapter_id == null) {
+      throw new ConsentEnrollmentNotFoundError(studentAccountId)
+    }
+    return row.chapter_id as string
+  }
+
+  /**
+   * Safeguarding suspend (04-state-machines consent "safeguarding suspend |
+   * consent.revoke_safeguarding | chapter_director, admin"). The ONE sanctioned
+   * STAFF write to consent: gated through `authorize` under
+   * `consent.revoke_safeguarding` (CHAPTER-scoped, Chapter Director; admin via the
+   * platform override) — it does NOT ride the guardian/self scope, so a guardian
+   * cannot invoke it.
+   *
+   * Inserts append-only `reason = 'safeguarding'` revoke rows for BOTH
+   * `public_profile` and `photo_media` in ONE transaction, each firing the shared
+   * `onRevoke` cascade under the `consent_current` FOR UPDATE lock — so C1
+   * (photo_media -> depicting media re-review) commits together with the revoke.
+   * The suspension STANDS until a new guardian decides.
+   */
+  async revokeSafeguarding(
+    studentAccountId: string,
+    ctx: AuthContext,
+  ): Promise<ConsentResult[]> {
+    const anchor = await this.loadAnchor(studentAccountId)
+    const chapterId = await this.loadChapter(studentAccountId)
+
+    // The resource is CHAPTER-scoped (unlike grant/revoke's guardian/own resource).
+    const resource: Resource = {
+      subjectAccountId: studentAccountId,
+      subjectAge: anchor.age,
+      subjectIsMinor: anchor.age < 18,
+      chapter_id: chapterId,
+    }
+    await this.authorize(ctx, 'consent.revoke_safeguarding', resource, { sql: this.sql })
+
+    const onRevoke = this.onRevoke
+    // The two Block-C types a safeguarding suspend covers (compliance-coppa.md;
+    // 04-state-machines). `public_profile` has no content cascade; `photo_media`
+    // fires C1 through the shared seam.
+    const types: ConsentType[] = ['public_profile', 'photo_media']
+
+    return this.sql.begin(async (tx) => {
+      assertAuthorized()
+      const results: ConsentResult[] = []
+      for (const type of types) {
+        // Serialization point for C1: lock the current row so a concurrent media
+        // insert cannot slip between the read and its effect.
+        await tx`
+          select scope_ref from consent_current
+          where student_account_id = ${studentAccountId} and type = ${type}
+          for update
+        `
+        // Neither public_profile nor photo_media is a scoped type — scope_ref null.
+        await onRevoke(tx, { studentAccountId, type, scopeRef: null })
+
+        const [c] = await tx`
+          insert into consent (
+            student_account_id, type, action, source, source_ref,
+            enrollment_record_id, scope_ref, granted_by, effective_at, reason
+          ) values (
+            ${studentAccountId}, ${type}, 'revoke', 'digital', ${null},
+            ${anchor.enrollmentRecordId}, ${null}, ${ctx.account.id}, now(), 'safeguarding'
+          ) returning id
+        `
+        results.push({
+          consentId: c!.id as string,
+          studentAccountId,
+          type,
+          action: 'revoke' as const,
+        })
+      }
+      return results
+    }) as Promise<ConsentResult[]>
   }
 }

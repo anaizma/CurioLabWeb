@@ -505,6 +505,22 @@ export const guardianResourceOf = (subject: string, age = 15): Resource => ({
   chapter_id: C1,
 })
 
+// impersonation.start (platform-scoped write, platform_admin only): the resource
+// is the impersonation target. Scope 'platform' is reachable only through the
+// platform override, so a chapter actor denies out_of_scope and a platform_staff
+// (writes:true bars the read-only override) denies out_of_scope too.
+export const impersonationTarget: Resource = { id: 'session-target', subjectAccountId: ID.childS }
+
+// audit.view (chapter-scoped read; a director sees their chapter, platform_admin
+// global via the override). The resource is the chapter whose trail is read.
+export const auditChapterC1: Resource = { chapter_id: C1 }
+
+// consent.revoke_safeguarding (the one sanctioned STAFF write to consent;
+// chapter-scoped, chapter_director, admin via override). The resource is the
+// student, scoped to their enrolling chapter — it does NOT ride guardian/self
+// scope, so a guardian denies out_of_scope.
+export const safeguardTargetC1: Resource = { subjectAccountId: ID.childS, chapter_id: C1 }
+
 export const CHILD_S = ID.childS
 export const CHILD_18 = ID.child18
 export const OWNER_S18 = ID.s18

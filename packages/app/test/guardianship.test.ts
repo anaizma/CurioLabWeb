@@ -16,11 +16,13 @@
 import { randomUUID } from 'node:crypto'
 import type { Sql } from 'postgres'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { can } from '@curiolab/core'
 import { Forbidden, authorize, withRequest } from '@curiolab/runtime'
 import { startHarness, type Harness } from './helpers/pg.js'
 import { makeAdult, makeChapter, makeMinor } from './helpers/fixtures.js'
 import { baseCtx, mem } from './helpers/ctx.js'
 import {
+  ConsentService,
   GuardianshipService,
   IllegalGuardianshipTransitionError,
   GuardianshipNotFoundError,
@@ -383,6 +385,137 @@ describe('illegal transitions are rejected via canTransition', () => {
 
     expect(caught).toBeInstanceOf(IllegalGuardianshipTransitionError)
     expect((caught as IllegalGuardianshipTransitionError).reason).toBe('terminal_state')
+  })
+})
+
+// The verified children the runtime context builder would resolve for a guardian
+// (only `verified` edges become `guardianOf`; a revoked edge is absent).
+async function verifiedChildrenOf(guardian: string): Promise<string[]> {
+  const rows = await h.sql`
+    select student_account_id from guardianship
+    where guardian_account_id = ${guardian} and status = 'verified'
+  `
+  return rows.map((r) => r.student_account_id as string)
+}
+async function currentActive(student: string, type: string): Promise<boolean | undefined> {
+  const [row] = await h.sql`
+    select active from consent_current where student_account_id = ${student} and type = ${type}
+  `
+  return row?.active as boolean | undefined
+}
+
+describe('revokeGuardianship (Flow: verified -> revoked; prior consents STAND)', () => {
+  test("a director revokes a verified edge; the guardian's prior consents are untouched; the revoke is audited; the guardian read then denies", async () => {
+    const f = await setup({
+      guardianLegalName: 'Parent Testperson',
+      guardianNameOnForm: 'Parent Testperson',
+      guardianStatus: 'active',
+      edgeStatus: 'verified',
+    })
+
+    // The guardian grants a digital consent BEFORE revocation — it must stand.
+    const gctx = { ...baseCtx(f.guardian, new Date()), guardianOf: [f.student] }
+    await withRequest(() =>
+      new ConsentService({ sql: h.sql, authorize }).grantConsent(f.student, 'photo_media', gctx),
+    )
+    const before = await h.sql`
+      select id, type, action, granted_by, effective_at from consent
+      where student_account_id = ${f.student} order by seq asc
+    `
+
+    // Pre-revoke the verified edge lets the guardian read the child record.
+    expect(await verifiedChildrenOf(f.guardian)).toContain(f.student)
+
+    const ctx = baseCtx(f.director, new Date(), [mem('chapter_director', f.chapter)])
+    const svc = new GuardianshipService({ sql: h.sql, authorize })
+    let result!: Awaited<ReturnType<GuardianshipService['revokeGuardianship']>>
+    await withRequest(async () => {
+      result = await svc.revokeGuardianship(f.guardianshipId, ctx, { reason: 'guardian_replaced' })
+    })
+
+    expect(result).toMatchObject({ status: 'revoked' })
+    expect((await edgeRow(f.guardianshipId)).status).toBe('revoked')
+
+    // Ruling: consents granted BEFORE revocation STAND — the rows are untouched.
+    const after = await h.sql`
+      select id, type, action, granted_by, effective_at from consent
+      where student_account_id = ${f.student} order by seq asc
+    `
+    expect(after).toEqual(before)
+    expect(await currentActive(f.student, 'photo_media')).toBe(true)
+
+    // The revoke writes exactly one audit entry.
+    const audit = await h.sql`
+      select detail from audit_entry where action = 'guardianship.revoke' and subject_id = ${f.guardianshipId}
+    `
+    expect(audit).toHaveLength(1)
+
+    // After revoke the edge is no longer verified, so the guardian read denies —
+    // a new guardian must be verified before further decisions.
+    const postChildren = await verifiedChildrenOf(f.guardian)
+    expect(postChildren).not.toContain(f.student)
+    const gctx2 = { ...baseCtx(f.guardian, new Date()), guardianOf: postChildren }
+    const d = can(gctx2, 'guardian.view_child_record', {
+      subjectAccountId: f.student,
+      subjectAge: 15,
+      subjectIsMinor: true,
+      subjectPodId: 'pod-x',
+      chapter_id: f.chapter,
+    })
+    expect(d.allowed).toBe(false)
+  })
+
+  test('a non-director is denied: opaque Forbidden, one reasoned permission.denied row, edge stays verified', async () => {
+    const f = await setup({
+      guardianLegalName: 'Parent Testperson',
+      guardianNameOnForm: 'Parent Testperson',
+      guardianStatus: 'active',
+      edgeStatus: 'verified',
+    })
+    const leadId = await makeAdult(h.sql)
+    const ctx = baseCtx(leadId, new Date(), [mem('lead_instructor', f.chapter)])
+    const svc = new GuardianshipService({ sql: h.sql, authorize })
+
+    let caught: unknown
+    await withRequest(async () => {
+      try {
+        await svc.revokeGuardianship(f.guardianshipId, ctx)
+      } catch (e) {
+        caught = e
+      }
+    })
+
+    expect(caught).toBeInstanceOf(Forbidden)
+    const denied = await h.sql`
+      select detail from audit_entry
+      where action = 'permission.denied' and actor_account_id = ${leadId}
+    `
+    expect(denied).toHaveLength(1)
+    expect(denied[0]!.detail).toMatchObject({ capability: 'guardianship.revoke', reason: 'role_not_permitted' })
+    expect((await edgeRow(f.guardianshipId)).status).toBe('verified')
+  })
+
+  test('revoking a still-pending edge is rejected (illegal_transition), nothing persists', async () => {
+    const f = await setup({
+      guardianLegalName: 'Parent Testperson',
+      guardianNameOnForm: 'Parent Testperson',
+      edgeStatus: 'pending',
+    })
+    const ctx = baseCtx(f.director, new Date(), [mem('chapter_director', f.chapter)])
+    const svc = new GuardianshipService({ sql: h.sql, authorize })
+
+    let caught: unknown
+    await withRequest(async () => {
+      try {
+        await svc.revokeGuardianship(f.guardianshipId, ctx)
+      } catch (e) {
+        caught = e
+      }
+    })
+
+    expect(caught).toBeInstanceOf(IllegalGuardianshipTransitionError)
+    expect((caught as IllegalGuardianshipTransitionError).reason).toBe('illegal_transition')
+    expect((await edgeRow(f.guardianshipId)).status).toBe('pending')
   })
 })
 

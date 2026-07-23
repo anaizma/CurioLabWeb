@@ -164,7 +164,7 @@ describe('startImpersonation / endImpersonation (POST|DELETE /api/auth/impersona
     expect(vs!.mode).toBe('full')
   })
 
-  test('a non-admin (director) is 403', async () => {
+  test('a non-admin (director) is 403 THROUGH authorize (one permission.denied row now written)', async () => {
     const d = await seedDirector(h.sql)
     const adult = await makeAdult(h.sql)
     const res = await startImpersonation({
@@ -173,6 +173,38 @@ describe('startImpersonation / endImpersonation (POST|DELETE /api/auth/impersona
       body: { targetAccountId: adult },
     })
     expect(res.status).toBe(403)
+    // The single-code-path invariant: the deny flows through `authorize`, which
+    // writes exactly one reasoned permission.denied row for `impersonation.start`.
+    const denied = await h.sql`
+      select detail from audit_entry
+      where action = 'permission.denied' and actor_account_id = ${d.director}
+    `
+    expect(denied).toHaveLength(1)
+    expect(denied[0]!.detail).toMatchObject({ capability: 'impersonation.start', reason: 'out_of_scope' })
+    // No impersonation session was minted.
+    expect(res.session).toBeUndefined()
+  })
+
+  test('a platform_staff (not admin) is 403: impersonation.start is a write the read-only override does not cover', async () => {
+    const { chapter } = await seedDirector(h.sql)
+    const staff = await makeAdult(h.sql)
+    await h.sql`
+      insert into membership (account_id, chapter_id, role, status)
+      values (${staff}, ${chapter}, 'platform_staff', 'active')
+    `
+    const target = await makeAdult(h.sql)
+    const res = await startImpersonation({
+      sql: h.sql,
+      sessionToken: await sessionFor(staff),
+      body: { targetAccountId: target },
+    })
+    expect(res.status).toBe(403)
+    const denied = await h.sql`
+      select detail from audit_entry
+      where action = 'permission.denied' and actor_account_id = ${staff}
+    `
+    expect(denied).toHaveLength(1)
+    expect(denied[0]!.detail).toMatchObject({ capability: 'impersonation.start' })
   })
 
   test('DELETE ends the impersonation session', async () => {

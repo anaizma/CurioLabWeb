@@ -240,3 +240,12 @@ export type Capability =
   // locked-out adult former student (Flow D steps 3 and 4)
   | 'maturation.confirm'
   | 'account.recover'
+  // platform back office (M1 HTTP-completion): impersonation start (platform_admin
+  // only) and the audit-trail read (chapter for a director, global via the
+  // platform override).
+  | 'impersonation.start'
+  | 'audit.view'
+  // guardianship revoke (04-state-machines guardianship `verified -> revoked`) and
+  // the safeguarding consent suspend (the one sanctioned staff write to consent).
+  | 'guardianship.revoke'
+  | 'consent.revoke_safeguarding'

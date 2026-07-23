@@ -42,6 +42,8 @@ export type {
   GuardianshipAuthorizeFn,
   VerifyGuardianshipOptions,
   VerifyGuardianshipResult,
+  RevokeGuardianshipOptions,
+  RevokeGuardianshipResult,
 } from './guardianship.js'
 export { MembershipActivationService } from './membership-activation.js'
 export type {

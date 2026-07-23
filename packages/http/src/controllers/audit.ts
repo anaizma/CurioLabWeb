@@ -1,18 +1,20 @@
 // -------------------------------------------------------------------------
 // Audit readers (05-api-surface.md: GET /ops/audit — chapter-scoped for a
 // director; GET /admin/audit — cross-chapter for platform staff). Each read is
-// itself logged: one `audit.read` entry PER QUERY (not per row). `audit.view`
-// is NOT a registry capability, so the gate here is a direct in-force role check
-// (the documented exception to the single-code-path invariant for this surface);
-// the read + the log use only the existing runtime primitives (a direct
-// audit_entry read and `writeAudit`), inventing no app service.
+// itself logged: one `audit.read` entry PER QUERY (not per row). The gate now
+// routes through `authorize(ctx, 'audit.view', …)` — a first-class registry
+// capability (scope 'chapter', roles [chapter_director]; the platform override
+// grants any chapter and the global trail) — restoring the single-code-path
+// invariant: a deny writes one reasoned permission.denied row and throws Forbidden
+// (opaque 403). The read + the audit.read log use only the existing runtime
+// primitives (a direct audit_entry read and `writeAudit`), inventing no app service.
 //
 //   readOpsAudit    GET /api/ops/audit    a chapter_director reads their chapter
 //   readAdminAudit  GET /api/admin/audit  platform_admin / platform_staff, global
 // -------------------------------------------------------------------------
 
-import type { AuthContext, Role } from '@curiolab/core'
-import { writeAudit } from '@curiolab/runtime'
+import type { AuthContext } from '@curiolab/core'
+import { authorize, writeAudit } from '@curiolab/runtime'
 import { runAuthed } from '../run.js'
 import { FORBIDDEN_BODY, optStr } from '../respond.js'
 import type { AuthedInputBase, ControllerResult } from '../types.js'
@@ -44,20 +46,6 @@ export interface AdminAuditResult {
 
 export interface ReadAuditInput extends AuthedInputBase {
   query?: { chapterId?: unknown; limit?: unknown }
-}
-
-/** True when the actor holds an in-force membership with `role` (mirrors core hasRole). */
-function holdsActiveRole(ctx: AuthContext, role: Role): boolean {
-  return ctx.memberships.some((m) => {
-    if (m.role !== role || m.status !== 'active') return false
-    if (m.active_from !== null && m.active_from > ctx.now) return false
-    if (m.active_until !== null && ctx.now >= m.active_until) return false
-    return true
-  })
-}
-
-function isPlatformReader(ctx: AuthContext): boolean {
-  return holdsActiveRole(ctx, 'platform_admin') || holdsActiveRole(ctx, 'platform_staff')
 }
 
 /** The chapters the actor may read audit for as a director (in-force chapter_director). */
@@ -95,20 +83,27 @@ function toView(r: Record<string, unknown>): AuditEntryView {
 /**
  * GET /api/ops/audit — a Chapter Director reads their chapter's audit trail.
  * The chapter is `?chapterId` (must be one the actor directs) or, when absent,
- * the actor's director chapter. A platform reader may name any chapter. One
- * `audit.read` entry is written for the query.
+ * the actor's director chapter. A platform reader may name any chapter (via the
+ * platform override). The chapter-scoped `audit.view` gate runs through
+ * `authorize`; a deny is an opaque 403 with one permission.denied row. One
+ * `audit.read` entry is written for the query on allow.
  */
 export function readOpsAudit(input: ReadAuditInput): Promise<ControllerResult<OpsAuditResult>> {
   return runAuthed<OpsAuditResult>(input, async (ctx, sql) => {
     const requested = optStr(input.query?.chapterId)
     const chapters = directorChapters(ctx)
-    const platform = isPlatformReader(ctx)
     const chapterId = requested ?? (chapters.length > 0 ? chapters[0]! : null)
 
-    const authorized = chapterId !== null && (platform || chapters.includes(chapterId))
-    if (!authorized) {
+    // No chapter to scope to (a caller with no ?chapterId and no director chapter):
+    // an opaque 403 with no decision to attribute, like a null-session runAuthed.
+    if (chapterId === null) {
       return { status: 403, body: FORBIDDEN_BODY as unknown as OpsAuditResult }
     }
+
+    // Chapter-scoped gate. A director of another chapter denies out_of_scope; a
+    // non-director role in the chapter denies role_not_permitted; a platform
+    // reader is granted by the override. Deny -> Forbidden -> 403 + permission.denied.
+    await authorize(ctx, 'audit.view', { chapter_id: chapterId }, { sql })
 
     const limit = parseLimit(input.query?.limit)
     const rows = await sql`
@@ -135,14 +130,16 @@ export function readOpsAudit(input: ReadAuditInput): Promise<ControllerResult<Op
 
 /**
  * GET /api/admin/audit — a platform reader reads the cross-chapter audit trail
- * (optionally filtered to one `?chapterId`). Requires an in-force platform_admin
- * or platform_staff membership. One `audit.read` entry is written for the query.
+ * (optionally filtered to one `?chapterId`). The global read is authorized via
+ * `audit.view` on a resource with NO chapter, so ONLY the platform override
+ * satisfies it (a chapter director's chapter scope cannot match a null chapter) —
+ * making this endpoint platform-only through the same single code path. A deny is
+ * an opaque 403 with one permission.denied row. One `audit.read` entry is written
+ * for the query on allow.
  */
 export function readAdminAudit(input: ReadAuditInput): Promise<ControllerResult<AdminAuditResult>> {
   return runAuthed<AdminAuditResult>(input, async (ctx, sql) => {
-    if (!isPlatformReader(ctx)) {
-      return { status: 403, body: FORBIDDEN_BODY as unknown as AdminAuditResult }
-    }
+    await authorize(ctx, 'audit.view', {}, { sql })
     const filterChapter = optStr(input.query?.chapterId)
     const limit = parseLimit(input.query?.limit)
     const rows = filterChapter

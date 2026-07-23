@@ -26,18 +26,18 @@
 import type { Sql } from 'postgres'
 import type { AuthContext, Resource } from '@curiolab/core'
 import { canTransition } from '@curiolab/core'
-import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
+import { assertAuthorized, writeAudit, type AuthorizeDeps } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig, type GuardianVerificationMethod } from './config.js'
 import { GuardianshipNotFoundError, IllegalGuardianshipTransitionError } from './errors.js'
 
 /**
- * The injected `authorize` dependency, narrowed to this service's one
- * capability (structurally the runtime `authorize` wrapper; taken by injection
+ * The injected `authorize` dependency, narrowed to this service's two
+ * capabilities (structurally the runtime `authorize` wrapper; taken by injection
  * so the deny/backstop paths are testable without HTTP).
  */
 export type GuardianshipAuthorizeFn = <T = void>(
   ctx: AuthContext,
-  capability: 'guardianship.verify',
+  capability: 'guardianship.verify' | 'guardianship.revoke',
   resource: Resource,
   deps: AuthorizeDeps<T>,
 ) => Promise<T | undefined>
@@ -66,6 +66,24 @@ export interface VerifyGuardianshipResult {
   matched: boolean
   /** Whether the accepting account was closed (mismatch only). */
   accountClosed: boolean
+}
+
+export interface RevokeGuardianshipOptions {
+  /**
+   * A free-text reason recorded on the audit entry (never PII) — e.g. why the
+   * edge is being revoked (a guardian change, a safeguarding decision). Defaults
+   * to `'standard'`. There is no `reason` column on the guardianship row; the
+   * revoke is a status change plus its audit record.
+   */
+  reason?: string
+}
+
+export interface RevokeGuardianshipResult {
+  guardianshipId: string
+  /** The resulting edge state (always `revoked` on success). */
+  status: 'revoked'
+  guardianAccountId: string
+  studentAccountId: string
 }
 
 export class GuardianshipService {
@@ -188,5 +206,97 @@ export class GuardianshipService {
       `
       return { guardianshipId, status: 'rejected', matched: false, accountClosed: true }
     }) as Promise<VerifyGuardianshipResult>
+  }
+
+  /**
+   * POST /ops/guardianships/:id/revoke — 04-state-machines guardianship
+   * `verified -> revoked` (actor "director, admin"). Gated through `authorize`
+   * under `guardianship.revoke` (chapter-scoped, Chapter Director; admin via the
+   * platform override), against the student's enrolling chapter.
+   *
+   * Guardian access ends immediately (the edge is no longer `verified`, so the
+   * runtime context builder stops resolving it into `guardianOf`, and every
+   * guardian capability then denies). Consents the guardian granted BEFORE
+   * revocation STAND — this method touches NO consent row; a new guardian must be
+   * verified before further consent decisions. The status change and its audit
+   * entry commit in one transaction.
+   */
+  async revokeGuardianship(
+    guardianshipId: string,
+    ctx: AuthContext,
+    options: RevokeGuardianshipOptions = {},
+  ): Promise<RevokeGuardianshipResult> {
+    // Load the edge and resolve its enrolling chapter via the student's most
+    // recent enrollment record (the guardianship row carries no chapter FK),
+    // mirroring verifyGuardianship's binding resolution.
+    const [row] = await this.sql`
+      select
+        g.id                  as id,
+        g.status              as status,
+        g.guardian_account_id as guardian_account_id,
+        g.student_account_id  as student_account_id,
+        e.chapter_id          as chapter_id
+      from guardianship g
+      join lateral (
+        select chapter_id from enrollment_record
+        where student_account_id = g.student_account_id
+        order by created_at desc
+        limit 1
+      ) e on true
+      where g.id = ${guardianshipId}
+    `
+    if (row === undefined) throw new GuardianshipNotFoundError(guardianshipId)
+
+    const studentAccountId = row.student_account_id as string
+    const guardianAccountId = row.guardian_account_id as string
+    const chapterId = row.chapter_id as string
+
+    // Authorize against the enrolling chapter (writes one permission.denied and
+    // throws Forbidden on deny), BEFORE any mutation.
+    const resource: Resource = {
+      id: guardianshipId,
+      chapter_id: chapterId,
+      subjectAccountId: studentAccountId,
+    }
+    await this.authorize(ctx, 'guardianship.revoke', resource, { sql: this.sql })
+
+    const fromStatus = row.status as string
+    // Only a `verified` edge is revocable; the pure transition guard rejects a
+    // pending/rejected/revoked/lapsed edge (illegal_transition / terminal_state).
+    const legal = canTransition('guardianship', fromStatus, 'revoked')
+    if (!legal.allowed) {
+      throw new IllegalGuardianshipTransitionError(fromStatus, 'revoked', legal.reason)
+    }
+
+    return this.sql.begin(async (tx) => {
+      assertAuthorized() // runtime backstop: no mutation without a recorded decision
+
+      // The `status = 'verified'` guard makes the transition idempotent-safe
+      // against a concurrent revoke.
+      const updated = await tx`
+        update guardianship set status = 'revoked'
+        where id = ${guardianshipId} and status = 'verified'
+        returning id
+      `
+      if (updated.length === 0) {
+        throw new IllegalGuardianshipTransitionError(fromStatus, 'revoked', 'illegal_transition')
+      }
+
+      await writeAudit(tx, {
+        action: 'guardianship.revoke',
+        subjectType: 'guardianship',
+        subjectId: guardianshipId,
+        actorAccountId: ctx.account.id,
+        realActorAccountId: ctx.session.impersonation?.real_actor_account_id ?? null,
+        chapterId,
+        detail: {
+          studentAccountId,
+          guardianAccountId,
+          reason: options.reason ?? 'standard',
+        },
+      })
+
+      return { guardianshipId, status: 'revoked', guardianAccountId, studentAccountId }
+    }) as Promise<RevokeGuardianshipResult>
   }
 }

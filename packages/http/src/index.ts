@@ -87,12 +87,19 @@ export {
   issueInvite,
   resendInvite,
   verifyGuardianship,
+  revokeGuardianship,
+  safeguardSuspend,
   activateMembership,
   reviewDeletion,
   fulfillDeletion,
   fulfillExport,
 } from './controllers/ops.js'
-export type { ApplicationTransitionBody } from './controllers/ops.js'
+export type {
+  ApplicationTransitionBody,
+  RevokeGuardianshipInput,
+  SafeguardSuspendInput,
+  SafeguardSuspendResult,
+} from './controllers/ops.js'
 
 // Guardian portal
 export {

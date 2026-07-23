@@ -459,4 +459,56 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: [],
     writes: false,
   },
+
+  // ---- platform back office (M1 HTTP-completion) ---------------------------
+  // impersonation start (05-api-surface `impersonation.start`, platform_admin
+  // only). Scope 'platform', reachable ONLY through the platform override; roles
+  // is empty because no chapter role ever satisfies it. writes:true is the whole
+  // point: a `platform_admin` gets scope+role via `platformGrant`, but a
+  // `platform_staff` (whose override covers reads and the zero-student publish
+  // only) does NOT — so only the admin may impersonate. There is no consent gate.
+  'impersonation.start': {
+    scope: 'platform',
+    roles: [],
+    writes: true,
+  },
+  // audit-trail read (05-api-surface GET /ops/audit chapter-scoped; GET
+  // /admin/audit global). A chapter_director reads their OWN chapter's trail via
+  // the chapter scope; a `platform_admin` (and, since writes:false, a
+  // `platform_staff`) reads any chapter — and the global trail — via the platform
+  // override. Read-only, no consent gate.
+  'audit.view': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+
+  // ---- guardianship revoke -------------------------------------------------
+  // 04-state-machines guardianship `verified -> revoked` ("director, admin"):
+  // guardian access ends immediately; consents granted BEFORE revocation stand; a
+  // new guardian must be verified before further consent decisions. Chapter-scoped
+  // write, chapter_director; platform_admin via the override. No subject-consent
+  // snapshot (a revoke of the EDGE is not a consent decision), and the legality of
+  // the edge itself is checked by `canTransition('guardianship','verified','revoked')`
+  // in the service, not here.
+  'guardianship.revoke': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+
+  // ---- safeguarding consent suspend ----------------------------------------
+  // 04-state-machines consent "safeguarding suspend | consent.revoke_safeguarding |
+  // chapter_director, admin": the ONE sanctioned STAFF write to consent. It inserts
+  // `reason = safeguarding` revokes for `public_profile` and `photo_media` (firing
+  // C1), pending a new guardian's decision. Chapter-scoped write, chapter_director,
+  // admin via override — it deliberately does NOT ride the guardian/self scope the
+  // ordinary consent.grant/revoke use, so a guardian cannot invoke it. No
+  // subject-consent snapshot (staff safeguarding is not gated on the child's own
+  // consent).
+  'consent.revoke_safeguarding': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
 }
