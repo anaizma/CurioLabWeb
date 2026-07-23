@@ -275,12 +275,33 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
   },
 
   // ---- profile / narrative -------------------------------------------------
+  // A member views their OWN composed profile (05-api-surface GET /profile/:id
+  // "student.view_record or profile.view"). Own scope: the subject is the actor.
+  // Staff read a student's record via student.view_record (which logs an
+  // out-of-pod minor read); this own path is the self-view and never logs a read
+  // of one's own record. A student or an alumnus (their showcase persists) may
+  // view their own profile.
+  'profile.view': {
+    scope: 'own',
+    roles: ['student', 'alumni'],
+    writes: false,
+  },
   'profile.edit_narrative': {
     scope: 'own',
     roles: ['student'],
     writes: true,
   },
   'narrative.review': {
+    scope: 'chapter',
+    roles: REVIEWERS,
+    writes: true,
+  },
+  // Staff moderation of a profile narrative: -> removed (02-data-model.md
+  // "staff may remove or clear but never author"; 04-state-machines the narrative
+  // machine's `-> removed`). Chapter-scoped; the same senior authority that
+  // clears a narrative may remove one. Reportable-then-removed rides the
+  // moderation_report path; this is the direct remove capability.
+  'narrative.remove': {
     scope: 'chapter',
     roles: REVIEWERS,
     writes: true,

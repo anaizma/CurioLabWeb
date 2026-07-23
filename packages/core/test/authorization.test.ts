@@ -25,6 +25,7 @@ import {
   projectPublicListed,
   narrativeOwnedBy,
   narrativeReviewC1,
+  profileOwnedBy,
   applicationInC1,
   leadInC1,
   enrollmentInC1,
@@ -292,6 +293,11 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectDeny(actors.chapter_director_c1, 'project.publish_public', projectPublicUnconsented, 'subject_consent_missing')
   })
 
+  test('profile.view (own scope: a member views their own profile)', () => {
+    expectAllow(actors.student_18, 'profile.view', profileOwnedBy(actors.student_18.account.id))
+    expectDeny(actors.student_18, 'profile.view', profileOwnedBy('someone-else'), 'out_of_scope')
+  })
+
   test('profile.edit_narrative', () => {
     expectAllow(actors.student_18, 'profile.edit_narrative', narrativeOwnedBy(actors.student_18.account.id))
     expectDeny(actors.student_18, 'profile.edit_narrative', narrativeOwnedBy('someone-else'), 'out_of_scope')
@@ -300,6 +306,13 @@ describe('capability coverage: allow and deny for every registry key', () => {
   test('narrative.review', () => {
     expectAllow(actors.chapter_director_c1, 'narrative.review', narrativeReviewC1)
     expectDeny(actors.student_minor_consented, 'narrative.review', narrativeReviewC1, 'role_not_permitted')
+  })
+
+  test('narrative.remove (staff moderation -> removed; chapter-scoped, reviewers)', () => {
+    expectAllow(actors.lead_instructor_c1, 'narrative.remove', narrativeReviewC1)
+    expectAllow(actors.chapter_director_c1, 'narrative.remove', narrativeReviewC1)
+    expectDeny(actors.student_minor_consented, 'narrative.remove', narrativeReviewC1, 'role_not_permitted')
+    expectDeny(actors.chapter_director_c2, 'narrative.remove', narrativeReviewC1, 'out_of_scope')
   })
 
   test('verification.regenerate (scope own or guardian)', () => {

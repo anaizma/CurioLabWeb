@@ -217,6 +217,26 @@ export type {
   CreateProjectInput,
   ProjectResult,
 } from './project.js'
+export { ProfileService } from './profile.js'
+export type {
+  ProfileServiceDeps,
+  ProfileAuthorizeFn,
+  ProfileView,
+  ProfileProjectView,
+  ProfileTimelineView,
+  ProfileMembershipView,
+  EditNarrativeResult,
+  NarrativeStatusResult,
+} from './profile.js'
+export { VerificationService } from './verification.js'
+export type {
+  VerificationServiceDeps,
+  VerificationAuthorizeFn,
+  RegenerateVerificationResult,
+  VerificationRecord,
+  VerificationProject,
+  VerificationView,
+} from './verification.js'
 export { ModerationService, sweepOverdueReports } from './moderation.js'
 export type {
   ModerationServiceDeps,
@@ -278,4 +298,8 @@ export {
   IllegalModerationTransitionError,
   ProjectNotFoundError,
   IllegalProjectTransitionError,
+  ProfileSubjectNotFoundError,
+  NarrativeNotFoundError,
+  IllegalNarrativeTransitionError,
+  VerificationSubjectNotFoundError,
 } from './errors.js'

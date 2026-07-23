@@ -577,6 +577,70 @@ export class IllegalProjectTransitionError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Profile / narrative / verification (Milestone 3.3).
+// ---------------------------------------------------------------------------
+
+/**
+ * A profile view named a subject account that does not exist, so the subject's
+ * age/pod/chapter (the student.view_record scope + read-log facts) cannot be
+ * resolved. Loaded before `authorize` (which needs the subject facts), so an
+ * unknown subject is a typed not-found, not a Forbidden. Mirrors
+ * GuardianChildNotFoundError.
+ */
+export class ProfileSubjectNotFoundError extends Error {
+  readonly subjectAccountId: string
+  constructor(subjectAccountId: string) {
+    super(`no account found for profile subject: ${subjectAccountId}`)
+    this.name = 'ProfileSubjectNotFoundError'
+    this.subjectAccountId = subjectAccountId
+  }
+}
+
+/** The referenced profile_narrative does not exist (review/remove of an unknown id). */
+export class NarrativeNotFoundError extends Error {
+  readonly narrativeId: string
+  constructor(narrativeId: string) {
+    super(`profile narrative not found: ${narrativeId}`)
+    this.name = 'NarrativeNotFoundError'
+    this.narrativeId = narrativeId
+  }
+}
+
+/**
+ * A requested profile_narrative lifecycle change is not a legal edge of the
+ * narrative machine (04-state-machines: `draft`/`pending_review`/`published`/
+ * `removed`; a review clears `pending_review -> published`, a remove reaches
+ * `-> removed` from any non-removed state). For example, reviewing a narrative
+ * that is not `pending_review`. Distinct from a Forbidden (an authorization
+ * failure that leaks no reason); a route maps this to a 409.
+ */
+export class IllegalNarrativeTransitionError extends Error {
+  readonly from: string
+  readonly to: string
+  constructor(from: string, to: string) {
+    super(`illegal profile narrative transition ${from} -> ${to}`)
+    this.name = 'IllegalNarrativeTransitionError'
+    this.from = from
+    this.to = to
+  }
+}
+
+/**
+ * A verification-token regenerate named a subject account that does not exist,
+ * so the subject's age (the guardian-scope age bound) cannot be resolved. Loaded
+ * before `authorize`, so an unknown subject is a typed not-found, not a
+ * Forbidden. Mirrors ConsentEnrollmentNotFoundError / GuardianChildNotFoundError.
+ */
+export class VerificationSubjectNotFoundError extends Error {
+  readonly subjectAccountId: string
+  constructor(subjectAccountId: string) {
+    super(`no account found for verification subject: ${subjectAccountId}`)
+    this.name = 'VerificationSubjectNotFoundError'
+    this.subjectAccountId = subjectAccountId
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Moderation (Milestone 2.4: The Lab — the report queue).
 // ---------------------------------------------------------------------------
 

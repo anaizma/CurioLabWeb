@@ -409,6 +409,10 @@ export const narrativeOwnedBy = (owner: string): Resource => ({
 })
 export const narrativeReviewC1: Resource = { id: 'narrative-1', chapter_id: C1 }
 
+// profile.view (own scope): a member views their OWN composed profile. The
+// subject is the actor, carried as the owner.
+export const profileOwnedBy = (owner: string): Resource => ({ ownerAccountId: owner })
+
 export const safetyReport: Resource = {
   id: 'report-safety',
   chapter_id: C1,
