@@ -206,6 +206,7 @@ export type Capability =
   | 'project.verify'
   | 'project.publish_public'
   | 'project.unpublish'
+  | 'media.review'
   | 'application.view'
   | 'application.transition'
   | 'lead.invite'

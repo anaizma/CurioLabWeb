@@ -293,6 +293,14 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectDeny(actors.chapter_director_c1, 'project.publish_public', projectPublicUnconsented, 'subject_consent_missing')
   })
 
+  test('media.review (mentor/staff photo confirmation; pod|chapter TEACHING)', () => {
+    // Same scope/roles as feed.moderate: a pod mentor or a chapter director may
+    // confirm/clear/remove media; a student is not a reviewer.
+    expectAllow(actors.lead_instructor_c1, 'media.review', postInPod1)
+    expectAllow(actors.junior_mentor_minor, 'media.review', postInPod1)
+    expectDeny(actors.student_18, 'media.review', postChapterC1, 'role_not_permitted')
+  })
+
   test('profile.view (own scope: a member views their own profile)', () => {
     expectAllow(actors.student_18, 'profile.view', profileOwnedBy(actors.student_18.account.id))
     expectDeny(actors.student_18, 'profile.view', profileOwnedBy('someone-else'), 'out_of_scope')

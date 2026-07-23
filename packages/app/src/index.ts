@@ -217,6 +217,20 @@ export type {
   CreateProjectInput,
   ProjectResult,
 } from './project.js'
+export {
+  MediaService,
+  mediaPhotoMediaRevokeCascade,
+  composeRevokeCascades,
+} from './media.js'
+export type {
+  MediaServiceDeps,
+  MediaAuthorizeFn,
+  AttachMediaInput,
+  AttachDepictionInput,
+  AttachMediaResult,
+  MediaReviewResult,
+  ConfirmDepictionResult,
+} from './media.js'
 export { ProfileService } from './profile.js'
 export type {
   ProfileServiceDeps,
@@ -298,6 +312,8 @@ export {
   IllegalModerationTransitionError,
   ProjectNotFoundError,
   IllegalProjectTransitionError,
+  MediaNotFoundError,
+  MediaNotClearableError,
   ProfileSubjectNotFoundError,
   NarrativeNotFoundError,
   IllegalNarrativeTransitionError,

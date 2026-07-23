@@ -577,6 +577,38 @@ export class IllegalProjectTransitionError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Media (Milestone 3.4: project_media / media_depiction, the photo-review
+// policy, and coupling C1).
+// ---------------------------------------------------------------------------
+
+/** The referenced project_media does not exist (confirm/clear/remove of an unknown id). */
+export class MediaNotFoundError extends Error {
+  readonly mediaId: string
+  constructor(mediaId: string) {
+    super(`project media not found: ${mediaId}`)
+    this.name = 'MediaNotFoundError'
+    this.mediaId = mediaId
+  }
+}
+
+/**
+ * A `clear` was attempted on a media that is not clearable for photo_media-gated
+ * use (02-data-model.md the media policy): an image is clearable only when EVERY
+ * depicted account has an active `photo_media` consent AND every depiction is
+ * mentor/staff-confirmed. An unconfirmed (student-source) hint, or a depicted
+ * account without active `photo_media`, keeps it un-clearable. Distinct from a
+ * Forbidden (the actor IS an authorized reviewer); a route maps this to a 409.
+ */
+export class MediaNotClearableError extends Error {
+  readonly mediaId: string
+  constructor(mediaId: string) {
+    super(`media is not clearable for public use (unconfirmed or unconsented depiction): ${mediaId}`)
+    this.name = 'MediaNotClearableError'
+    this.mediaId = mediaId
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Profile / narrative / verification (Milestone 3.3).
 // ---------------------------------------------------------------------------
 

@@ -158,6 +158,26 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     writes: true,
   },
 
+  // ---- media (the photo-review policy) -------------------------------------
+  // 02-data-model.md project_media / media_depiction and the "who populates it"
+  // media policy; 03-authorization.md the media.review capability; 05-api-surface
+  // POST /ops/media/:id/{confirm-depiction,clear,remove}. A mentor or staff
+  // authoritatively tags who is in an image and clears/removes it for
+  // photo_media-gated use — a student may attach their own work but cannot
+  // confirm depictions. Scope pod|chapter, roles TEACHING (a pod mentor in the
+  // depicted student's pod, or a chapter director), mirroring feed.moderate;
+  // platform_admin is covered by platformGrant (writes:true — platform_staff is
+  // NOT, it only overrides reads). No consent gate on the ACTION itself: the
+  // consent+confirmation rule that clears an image is encoded in the service's
+  // isClearedForPublicUse, read from consent_current, not from `can`. Attaching
+  // is NOT here — a student attaches to their OWN project, gated by project.submit
+  // (own scope, student role), the ownership-of-the-project capability.
+  'media.review': {
+    scope: ['pod', 'chapter'],
+    roles: TEACHING,
+    writes: true,
+  },
+
   // ---- application funnel (ops back office) --------------------------------
   // 05-api-surface: GET/PATCH /ops/applications -> application.view /
   // application.transition. 04-state-machines names the actor as
