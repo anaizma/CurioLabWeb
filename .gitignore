@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local dev Postgres cluster (scripts/dev-db.mjs)
+.dev-postgres/

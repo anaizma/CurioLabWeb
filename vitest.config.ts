@@ -1,6 +1,12 @@
 import { defineConfig } from 'vitest/config'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
+  // The route handlers use the app's "@/..." path alias (tsconfig paths); mirror
+  // it here so the flow test can import them (e.g. @/lib/emails/apply-mail).
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('.', import.meta.url)) },
+  },
   test: {
     include: ['test/**/*.test.ts'],
     environment: 'node',
