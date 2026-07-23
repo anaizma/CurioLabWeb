@@ -135,6 +135,10 @@ export default function ParentClient({ token }: { token: string }) {
     const childName = `${form.childFirstName.trim()} ${form.childLastName.trim()}`.trim();
     const guardianName = `${form.guardianFirstName.trim()} ${form.guardianLastName.trim()}`.trim();
 
+    // Always include every field explicitly, even when empty/false: the
+    // backend merges resaved answers additively (JSONB ||), so a key
+    // absent from this payload would keep its old server-side value and
+    // an optional field could never be cleared.
     const answers: Record<string, unknown> = {
       childFirstName: form.childFirstName.trim(),
       childLastName: form.childLastName.trim(),
@@ -148,20 +152,14 @@ export default function ParentClient({ token }: { token: string }) {
       guardianEmail: form.guardianEmail.trim(),
       guardianPhone: form.guardianPhone.trim(),
       relationship: form.relationship,
+      secondGuardianName: form.secondGuardianName.trim(),
+      secondGuardianEmail: form.secondGuardianEmail.trim(),
       saturdayAvailability: form.saturdayAvailability,
       commitmentAcknowledged: form.commitmentAcknowledged,
+      scholarshipInterest: form.scholarshipInterest,
       attestedGuardian: form.attestedGuardian,
       contactConsent: form.contactConsent,
     };
-    if (form.secondGuardianName.trim()) {
-      answers.secondGuardianName = form.secondGuardianName.trim();
-    }
-    if (form.secondGuardianEmail.trim()) {
-      answers.secondGuardianEmail = form.secondGuardianEmail.trim();
-    }
-    if (form.scholarshipInterest) {
-      answers.scholarshipInterest = true;
-    }
 
     const { status } = await postJson("/api/public/stage2/parent", { token, answers });
 
@@ -189,6 +187,13 @@ export default function ParentClient({ token }: { token: string }) {
     if (status === 200 && typeof body.studentToken === "string") {
       setStudentLink(studentLinkUrl(body.studentToken));
       setLinkStatus("idle");
+      return;
+    }
+    if (status === 409) {
+      setLinkErrorMessage(
+        "Save your section first — the link becomes available once it's saved. (If you've already reached the review step, the link isn't needed anymore.)",
+      );
+      setLinkStatus("error");
       return;
     }
     setLinkErrorMessage(errorCopy(status));

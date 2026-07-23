@@ -143,8 +143,10 @@ export default function ReviewClient({ token }: { token: string }) {
         <p className="label-blue mb-3">Apply</p>
         <h1 className="text-3xl md:text-4xl font-bold mb-4">Not ready yet</h1>
         <p className="text-muted mb-6">
-          Your application isn&apos;t at the review step yet. If your student
-          is still writing, check back after they finish.
+          Your application isn&apos;t at the review step right now. If your
+          student is still writing their section, check back after they
+          finish. If you&apos;ve already submitted, you&apos;re all set —
+          nothing more to do.
         </p>
         <Link
           href={`/apply/parent/${token}`}
