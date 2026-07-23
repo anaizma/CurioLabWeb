@@ -249,3 +249,10 @@ export type Capability =
   // the safeguarding consent suspend (the one sanctioned staff write to consent).
   | 'guardianship.revoke'
   | 'consent.revoke_safeguarding'
+  // platform administration (05-api-surface CRUD /admin/chapters, /admin/terms,
+  // /admin/pods): standing up the org structure. chapter.manage is platform-scoped
+  // (platform_admin only); term.manage and pod.manage are chapter-scoped, a
+  // chapter_director managing their own chapter's terms and pods.
+  | 'chapter.manage'
+  | 'term.manage'
+  | 'pod.manage'

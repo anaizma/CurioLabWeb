@@ -511,4 +511,41 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+
+  // ---- platform administration (org structure) -----------------------------
+  // 05-api-surface "Platform administration": CRUD /admin/chapters, /admin/terms,
+  // /admin/pods, standing up the organization. 02-data-model org structure
+  // (chapter/term/pod/pod_assignment); 03-authorization the platform-vs-chapter
+  // split. The three org services (ChapterService, TermService, PodService) each
+  // gate through one of these.
+  //
+  // chapter.manage (create/update a chapter): scope 'platform', reachable ONLY
+  // through the platform override — roles is empty because no chapter role ever
+  // stands up or reconfigures a chapter, and a chapter cannot be its own scope on
+  // create (no row yet). writes:true, so a `platform_admin` gets scope+role via
+  // `platformGrant` while a `platform_staff` (read-only override) does NOT — this
+  // is platform_admin only, mirroring impersonation.start.
+  'chapter.manage': {
+    scope: 'platform',
+    roles: [],
+    writes: true,
+  },
+  // term.manage (create/update a term within a chapter): chapter-scoped write,
+  // chapter_director. A director manages terms only in THEIR chapter (a term in
+  // another chapter denies out_of_scope); platform_admin manages any chapter via
+  // the override. The resource is the term's chapter.
+  'term.manage': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+  // pod.manage (create a pod; assign/unassign a senior instructor to a pod for a
+  // term): chapter-scoped write, chapter_director, same director-scoping as
+  // term.manage. The resource is the pod's chapter. pod_assignment is the entire
+  // definition of instructor scope (02-data-model), written here.
+  'pod.manage': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
 }

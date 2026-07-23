@@ -965,3 +965,38 @@ export class IllegalGuardianshipTransitionError extends Error {
     this.reason = reason
   }
 }
+
+// ---------------------------------------------------------------------------
+// Platform administration (org structure: chapter / term / pod). 05-api-surface
+// CRUD /admin/chapters, /admin/terms, /admin/pods; 02-data-model org structure.
+// ---------------------------------------------------------------------------
+
+/** The referenced chapter does not exist (update of an unknown id). */
+export class ChapterNotFoundError extends Error {
+  readonly chapterId: string
+  constructor(chapterId: string) {
+    super(`chapter not found: ${chapterId}`)
+    this.name = 'ChapterNotFoundError'
+    this.chapterId = chapterId
+  }
+}
+
+/** The referenced term does not exist (update of an unknown id). */
+export class TermNotFoundError extends Error {
+  readonly termId: string
+  constructor(termId: string) {
+    super(`term not found: ${termId}`)
+    this.name = 'TermNotFoundError'
+    this.termId = termId
+  }
+}
+
+/** The referenced pod does not exist (assign/unassign into an unknown id). */
+export class PodNotFoundError extends Error {
+  readonly podId: string
+  constructor(podId: string) {
+    super(`pod not found: ${podId}`)
+    this.name = 'PodNotFoundError'
+    this.podId = podId
+  }
+}

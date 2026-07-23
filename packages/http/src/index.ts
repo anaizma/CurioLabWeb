@@ -105,6 +105,26 @@ export type {
   SafeguardSuspendResult,
 } from './controllers/ops.js'
 
+// Organization structure (Platform administration: chapters / terms / pods)
+export {
+  createChapter,
+  updateChapter,
+  createTerm,
+  updateTerm,
+  createPod,
+  assignPod,
+  unassignPod,
+} from './controllers/org.js'
+export type {
+  CreateChapterInputHttp,
+  UpdateChapterInputHttp,
+  CreateTermInputHttp,
+  UpdateTermInputHttp,
+  CreatePodInputHttp,
+  AssignPodInputHttp,
+  UnassignPodInputHttp,
+} from './controllers/org.js'
+
 // Guardian portal
 export {
   viewChildRecord,

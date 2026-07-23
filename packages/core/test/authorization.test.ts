@@ -51,6 +51,9 @@ import {
   impersonationTarget,
   auditChapterC1,
   safeguardTargetC1,
+  chapterManageTarget,
+  termInC1,
+  podInC1,
   CHILD_S,
   OWNER_S18,
   type Role,
@@ -559,6 +562,37 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectDeny(actors.chapter_director_c2, 'consent.revoke_safeguarding', safeguardTargetC1, 'out_of_scope')
     expectDeny(actors.guardian_of_S, 'consent.revoke_safeguarding', safeguardTargetC1, 'out_of_scope')
     expectDeny(actors.lead_instructor_c1, 'consent.revoke_safeguarding', safeguardTargetC1, 'role_not_permitted')
+  })
+
+  // ---- Platform administration (org structure) ----------------------------
+  // chapter.manage (05-api-surface CRUD /admin/chapters, platform_admin only).
+  // Scope 'platform', writes:true — the platform_admin satisfies it via the
+  // override; the platform_staff read-only override does NOT (writes:true), so a
+  // staff and any chapter director deny out_of_scope (platform scope, no role).
+  test('chapter.manage (platform_admin only; staff and a director deny out_of_scope)', () => {
+    expectAllow(actors.platform_admin, 'chapter.manage', chapterManageTarget)
+    expectDeny(actors.platform_staff, 'chapter.manage', chapterManageTarget, 'out_of_scope')
+    expectDeny(actors.chapter_director_c1, 'chapter.manage', chapterManageTarget, 'out_of_scope')
+  })
+
+  // term.manage (05-api-surface CRUD /admin/terms). Chapter-scoped write,
+  // chapter_director; a director manages terms only in THEIR chapter (another
+  // chapter denies out_of_scope); platform_admin manages any chapter via the
+  // override; a non-director role in the chapter denies role_not_permitted.
+  test('term.manage (director in own chapter; another chapter out_of_scope; admin via override)', () => {
+    expectAllow(actors.chapter_director_c1, 'term.manage', termInC1)
+    expectAllow(actors.platform_admin, 'term.manage', termInC1)
+    expectDeny(actors.chapter_director_c2, 'term.manage', termInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'term.manage', termInC1, 'role_not_permitted')
+  })
+
+  // pod.manage (05-api-surface CRUD /admin/pods). Same chapter-scoped director
+  // shape as term.manage.
+  test('pod.manage (director in own chapter; another chapter out_of_scope; admin via override)', () => {
+    expectAllow(actors.chapter_director_c1, 'pod.manage', podInC1)
+    expectAllow(actors.platform_admin, 'pod.manage', podInC1)
+    expectDeny(actors.chapter_director_c2, 'pod.manage', podInC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'pod.manage', podInC1, 'role_not_permitted')
   })
 
   test('senior_instructor resolves independently across its two pods', () => {

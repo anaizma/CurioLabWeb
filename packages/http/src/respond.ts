@@ -60,6 +60,10 @@ const NOT_FOUND = new Set([
   // Coming of age (M1 auth / account-lifecycle wiring)
   'MaturationAccountNotFoundError',
   'MaturationChapterNotFoundError',
+  // Platform administration (org structure)
+  'ChapterNotFoundError',
+  'TermNotFoundError',
+  'PodNotFoundError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */

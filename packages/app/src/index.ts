@@ -233,6 +233,33 @@ export type {
   FeedPostView,
   FeedViewResult,
 } from './feed.js'
+export { ChapterService } from './chapter.js'
+export type {
+  ChapterServiceDeps,
+  ChapterAuthorizeFn,
+  ChapterTier,
+  ChapterStatus,
+  CreateChapterInput,
+  UpdateChapterInput,
+  ChapterResult,
+} from './chapter.js'
+export { TermService } from './term.js'
+export type {
+  TermServiceDeps,
+  TermAuthorizeFn,
+  CreateTermInput,
+  UpdateTermInput,
+  TermResult,
+} from './term.js'
+export { PodService } from './pod.js'
+export type {
+  PodServiceDeps,
+  PodAuthorizeFn,
+  CreatePodInput,
+  PodResult,
+  PodAssignmentResult,
+  UnassignResult,
+} from './pod.js'
 export { ProjectService, projectExternalPublicationRevokeCascade } from './project.js'
 export type {
   ProjectServiceDeps,
@@ -383,4 +410,7 @@ export {
   CredentialWitnessInvalidError,
   CredentialWitnessIsGuardianError,
   InvalidCredentialTokenError,
+  ChapterNotFoundError,
+  TermNotFoundError,
+  PodNotFoundError,
 } from './errors.js'

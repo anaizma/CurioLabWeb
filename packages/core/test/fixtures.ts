@@ -515,6 +515,23 @@ export const impersonationTarget: Resource = { id: 'session-target', subjectAcco
 // global via the override). The resource is the chapter whose trail is read.
 export const auditChapterC1: Resource = { chapter_id: C1 }
 
+// ---- Platform administration (org structure: chapter / term / pod) ---------
+// chapter.manage (05-api-surface CRUD /admin/chapters): scope 'platform',
+// reachable ONLY through the platform override (roles is empty, writes:true), so a
+// platform_admin satisfies it and a platform_staff (read-only override) does not.
+// The resource carries the chapter id on update; create has none (no row yet).
+export const chapterManageTarget: Resource = { id: 'chapter-new' }
+
+// term.manage (05-api-surface CRUD /admin/terms): scope 'chapter',
+// chapter_director; the resource is the chapter the term belongs to. A director
+// manages terms only in THEIR chapter (another chapter denies out_of_scope);
+// platform_admin manages any chapter via the override.
+export const termInC1: Resource = { chapter_id: C1 }
+
+// pod.manage (05-api-surface CRUD /admin/pods): scope 'chapter', chapter_director;
+// the resource is the pod's chapter. Same director-scoping as term.manage.
+export const podInC1: Resource = { chapter_id: C1 }
+
 // consent.revoke_safeguarding (the one sanctioned STAFF write to consent;
 // chapter-scoped, chapter_director, admin via override). The resource is the
 // student, scoped to their enrolling chapter — it does NOT ride guardian/self
