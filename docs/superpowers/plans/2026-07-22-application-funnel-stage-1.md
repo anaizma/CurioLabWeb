@@ -1,5 +1,7 @@
 # Application Funnel — Stage 1 Implementation Plan
 
+> **SUPERSEDED** by [2026-07-23-apply-funnel-frontend.md](2026-07-23-apply-funnel-frontend.md) — the backend now owns leads/stage2; Tasks 4–15 here were never executed and must not be.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship a working Stage-1 application funnel on the website — a `/apply` form that records a parent-email-only lead, sends a receipt + staff notification, and deletes unconverted leads after 30 days — without touching the backend agent's live packages.
