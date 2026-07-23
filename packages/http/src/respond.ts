@@ -38,6 +38,13 @@ const NOT_FOUND = new Set([
   'CommentNotFoundError',
   'ModerationReportNotFoundError',
   'FeedAuthorMembershipNotFoundError',
+  // Profile / projects / media / newsletter (M3.7)
+  'ProjectNotFoundError',
+  'NewsletterIssueNotFoundError',
+  'MediaNotFoundError',
+  'ProfileSubjectNotFoundError',
+  'NarrativeNotFoundError',
+  'VerificationSubjectNotFoundError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */
@@ -51,6 +58,13 @@ const CONFLICT = new Set([
   // The Lab (M2.6): illegal feed-content / moderation-report lifecycle edges.
   'IllegalFeedContentTransitionError',
   'IllegalModerationTransitionError',
+  // Profile / projects / newsletter lifecycle edges + policy refusals (M3.7).
+  'IllegalProjectTransitionError',
+  'IllegalNewsletterTransitionError',
+  'IllegalNarrativeTransitionError',
+  'NewsletterPublishConsentChangedError',
+  // A reviewer is authorized but the media cannot yet be cleared (policy refusal).
+  'MediaNotClearableError',
 ])
 
 /** Opaque, single-signal token failures -> 401 (reveals nothing; 05-api-surface). */

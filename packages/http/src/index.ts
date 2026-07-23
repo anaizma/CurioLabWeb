@@ -105,3 +105,76 @@ export type {
   TransitionReportInput,
   ReportAction,
 } from './controllers/lab.js'
+
+// Student profile & narrative (M3.7)
+export {
+  viewProfile,
+  editNarrative,
+  reviewNarrative,
+  regenerateVerificationToken,
+} from './controllers/profile.js'
+export type {
+  ViewProfileInput,
+  EditNarrativeInput,
+  ReviewNarrativeInput,
+  RegenerateVerificationTokenInput,
+} from './controllers/profile.js'
+
+// The public verification URL (M3.7)
+export { viewVerification } from './controllers/verify.js'
+export type { ViewVerificationInput } from './controllers/verify.js'
+
+// Project lifecycle (M3.7)
+export {
+  createProject,
+  submitProject,
+  verifyProject,
+  publishProject,
+  unpublishProject,
+} from './controllers/projects.js'
+export type {
+  CreateProjectInputHttp,
+  ProjectIdInput,
+} from './controllers/projects.js'
+
+// Media ops (M3.7)
+export { attachMedia, confirmDepiction, clearMedia, removeMedia } from './controllers/media.js'
+export type {
+  AttachMediaInputHttp,
+  ConfirmDepictionInputHttp,
+  MediaIdInput,
+} from './controllers/media.js'
+
+// Newsletter ops (M3.7)
+export {
+  draftNewsletter,
+  editNewsletter,
+  submitNewsletter,
+  scheduleNewsletter,
+  publishNewsletter,
+  unpublishNewsletter,
+} from './controllers/newsletter-ops.js'
+export type {
+  DraftNewsletterInput,
+  EditNewsletterInput,
+  NewsletterIdInput,
+  ScheduleNewsletterInput,
+} from './controllers/newsletter-ops.js'
+
+// Public reads (M3.7)
+export {
+  listPublicProjects,
+  viewPublicProject,
+  listPublicNewsletters,
+  viewPublicNewsletter,
+} from './controllers/public-reads.js'
+export type {
+  PublicProjectSummary,
+  PublicProjectListResult,
+  PublicProjectInput,
+  PublicNewsletterSummary,
+  PublicNewsletterListResult,
+  PublicNewsletterItem,
+  PublicNewsletterView,
+  PublicNewsletterInput,
+} from './controllers/public-reads.js'
