@@ -251,6 +251,26 @@ export type {
   VerificationProject,
   VerificationView,
 } from './verification.js'
+export {
+  NewsletterService,
+  runScheduledNewsletters,
+  REDACTED_NEWSLETTER_ITEM_BODY,
+} from './newsletter.js'
+export type {
+  NewsletterServiceDeps,
+  NewsletterAuthorizeFn,
+  NewsletterCapability,
+  CreateNewsletterInput,
+  NewsletterItemInput,
+  NewsletterResult,
+  UnblockTarget,
+  UnpublishOptions,
+  EnqueueSend,
+  NewsletterNotifier,
+  NewsletterNotification,
+  RunScheduledNewslettersDeps,
+  RunScheduledNewslettersResult,
+} from './newsletter.js'
 export { ModerationService, sweepOverdueReports } from './moderation.js'
 export type {
   ModerationServiceDeps,
@@ -312,6 +332,9 @@ export {
   IllegalModerationTransitionError,
   ProjectNotFoundError,
   IllegalProjectTransitionError,
+  NewsletterIssueNotFoundError,
+  IllegalNewsletterTransitionError,
+  NewsletterPublishConsentChangedError,
   MediaNotFoundError,
   MediaNotClearableError,
   ProfileSubjectNotFoundError,

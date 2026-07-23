@@ -577,6 +577,61 @@ export class IllegalProjectTransitionError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Newsletter (Milestone 3.5: the newsletter_issue lifecycle + coupling E).
+// ---------------------------------------------------------------------------
+
+/** The referenced newsletter issue does not exist (any lifecycle op of an unknown id). */
+export class NewsletterIssueNotFoundError extends Error {
+  readonly issueId: string
+  constructor(issueId: string) {
+    super(`newsletter issue not found: ${issueId}`)
+    this.name = 'NewsletterIssueNotFoundError'
+    this.issueId = issueId
+  }
+}
+
+/**
+ * A requested newsletter_issue lifecycle change is not a legal edge of the
+ * newsletter machine (04-state-machines: draft -> in_review -> scheduled ->
+ * published -> archived, plus scheduled -> blocked and the blocked retries). For
+ * example, submitting a scheduled issue for review, or publishing one that is not
+ * scheduled. Carries the structured reason from `canTransition` so a route can
+ * map it to a 409, distinct from a Forbidden (an authorization failure that leaks
+ * no reason).
+ */
+export class IllegalNewsletterTransitionError extends Error {
+  readonly from: string | null
+  readonly to: string
+  readonly reason: TransitionResult['reason']
+  constructor(from: string | null, to: string, reason: TransitionResult['reason']) {
+    super(`illegal newsletter_issue transition ${from ?? '(none)'} -> ${to}${reason ? ` (${reason})` : ''}`)
+    this.name = 'IllegalNewsletterTransitionError'
+    this.from = from
+    this.to = to
+    this.reason = reason
+  }
+}
+
+/**
+ * A `publish` passed the pre-authorization consent check but the atomic re-check
+ * inside the publish transaction (holding each student item's `consent_current`
+ * row FOR UPDATE) found the consent no longer valid — a concurrent revoke landed
+ * between the check and the lock (coupling E: "a concurrent revoke blocks on the
+ * same row, so a send never goes out for revoked work"). The publish is aborted
+ * and the issue stays scheduled. Carries the `can` deny reason.
+ */
+export class NewsletterPublishConsentChangedError extends Error {
+  readonly issueId: string
+  readonly reason: string | undefined
+  constructor(issueId: string, reason: string | undefined) {
+    super(`newsletter publish consent changed under the lock for issue ${issueId}${reason ? ` (${reason})` : ''}`)
+    this.name = 'NewsletterPublishConsentChangedError'
+    this.issueId = issueId
+    this.reason = reason
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Media (Milestone 3.4: project_media / media_depiction, the photo-review
 // policy, and coupling C1).
 // ---------------------------------------------------------------------------

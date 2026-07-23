@@ -231,3 +231,16 @@ export const narrativeStatusEnum = pgEnum('narrative_status', [
   'published',
   'removed',
 ])
+
+// --- Newsletter (Milestone 3.5) ---
+// The newsletter_issue lifecycle (04-state-machines newsletter_issue):
+// draft -> in_review -> scheduled -> published -> archived, plus `blocked` (a
+// scheduled issue whose consent re-check failed).
+export const newsletterIssueStatusEnum = pgEnum('newsletter_issue_status', [
+  'draft',
+  'in_review',
+  'scheduled',
+  'published',
+  'archived',
+  'blocked',
+])

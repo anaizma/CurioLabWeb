@@ -254,14 +254,49 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectDeny(actors.junior_mentor_minor, 'moderation.resolve', safetyReport, 'actor_condition_failed')
   })
 
-  test('newsletter.draft', () => {
+  // 04-state-machines "(none) -> draft | newsletter.draft | instructor, comms,
+  // director": drafting is WIDE — an instructor (senior/lead) may draft, alongside
+  // comms and the director. (Publishing is the narrow, director-only gate.)
+  test('newsletter.draft (instructor, comms, or director may draft)', () => {
     expectAllow(actors.comms_associate_c1, 'newsletter.draft', issueNoItems)
-    expectDeny(actors.lead_instructor_c1, 'newsletter.draft', issueNoItems, 'role_not_permitted')
+    expectAllow(actors.lead_instructor_c1, 'newsletter.draft', issueNoItems)
+    expectDeny(actors.student_18, 'newsletter.draft', issueNoItems, 'role_not_permitted')
   })
 
   test('newsletter.publish', () => {
     expectAllow(actors.chapter_director_c1, 'newsletter.publish', issueConsented)
     expectDeny(actors.chapter_director_c1, 'newsletter.publish', issueUnconsented, 'subject_consent_missing')
+  })
+
+  // 04-state-machines newsletter lifecycle (M3.5): the intermediate edges.
+  //   - submit_review (draft -> in_review): the drafter (instructor/comms/director);
+  //   - return (in_review -> draft, blocked -> in_review): the director only;
+  //   - schedule (in_review -> scheduled, blocked -> scheduled): the director only;
+  //   - unpublish (published -> archived): director, or admin via platformGrant.
+  test('newsletter.submit_review (a drafter submits draft -> in_review)', () => {
+    expectAllow(actors.comms_associate_c1, 'newsletter.submit_review', issueNoItems)
+    expectAllow(actors.lead_instructor_c1, 'newsletter.submit_review', issueNoItems)
+    expectDeny(actors.student_18, 'newsletter.submit_review', issueNoItems, 'role_not_permitted')
+    expectDeny(actors.chapter_director_c2, 'newsletter.submit_review', issueNoItems, 'out_of_scope')
+  })
+
+  test('newsletter.return (only a director returns to draft)', () => {
+    expectAllow(actors.chapter_director_c1, 'newsletter.return', issueNoItems)
+    expectDeny(actors.lead_instructor_c1, 'newsletter.return', issueNoItems, 'role_not_permitted')
+    expectDeny(actors.chapter_director_c2, 'newsletter.return', issueNoItems, 'out_of_scope')
+  })
+
+  test('newsletter.schedule (only a director schedules a send time)', () => {
+    expectAllow(actors.chapter_director_c1, 'newsletter.schedule', issueNoItems)
+    expectDeny(actors.comms_associate_c1, 'newsletter.schedule', issueNoItems, 'role_not_permitted')
+    expectDeny(actors.chapter_director_c2, 'newsletter.schedule', issueNoItems, 'out_of_scope')
+  })
+
+  test('newsletter.unpublish (director, or admin via platformGrant; published -> archived)', () => {
+    expectAllow(actors.chapter_director_c1, 'newsletter.unpublish', issueNoItems)
+    expectAllow(actors.platform_admin, 'newsletter.unpublish', issueNoItems)
+    expectDeny(actors.lead_instructor_c1, 'newsletter.unpublish', issueNoItems, 'role_not_permitted')
+    expectDeny(actors.chapter_director_c2, 'newsletter.unpublish', issueNoItems, 'out_of_scope')
   })
 
   test('project.create (a student or an instructor may create; alumni may not)', () => {

@@ -34,6 +34,20 @@ const TEACHING: Role[] = [
 /** Senior teaching roles that clear narratives for public reach. */
 const REVIEWERS: Role[] = ['lead_instructor', 'chapter_director']
 
+/**
+ * Who may DRAFT / submit a newsletter issue (04-state-machines "(none) -> draft |
+ * newsletter.draft | instructor, comms, director"). Drafting is WIDE: the two
+ * instructor roles, comms, and the director. `junior_mentor` (a minor-eligible
+ * assistant, "mentor" not "instructor") is deliberately excluded; publishing is
+ * the separate, narrow, director-only gate.
+ */
+const NEWSLETTER_DRAFTERS: Role[] = [
+  'senior_instructor',
+  'lead_instructor',
+  'comms_associate',
+  'chapter_director',
+]
+
 // -------------------------------------------------------------------------
 // Reusable condition helpers.
 // -------------------------------------------------------------------------
@@ -107,9 +121,37 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
   },
 
   // ---- newsletter ----------------------------------------------------------
+  // 04-state-machines newsletter_issue lifecycle. Drafting/submitting is wide
+  // (NEWSLETTER_DRAFTERS: instructor, comms, director); returning, scheduling,
+  // publishing, and unpublishing are director-only (publish additionally runs the
+  // per-item external_publication subject-consent gate, coupling E). A chapter_id
+  // = null (platform-wide) issue matches no chapter membership, so a platform-wide
+  // issue is reachable only through platformGrant (platform_admin for any of
+  // these; platform_staff only for the zero-student publish exception).
   'newsletter.draft': {
     scope: 'chapter',
-    roles: ['comms_associate', 'chapter_director'],
+    roles: NEWSLETTER_DRAFTERS,
+    writes: true,
+  },
+  // draft -> in_review, by the drafter. Same wide role floor as draft; the
+  // "the drafter specifically" refinement is a service concern (the issue carries
+  // no author column), mirroring project.create's chapter+role floor.
+  'newsletter.submit_review': {
+    scope: 'chapter',
+    roles: NEWSLETTER_DRAFTERS,
+    writes: true,
+  },
+  // in_review -> draft (and blocked -> in_review), director only.
+  'newsletter.return': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+  // in_review -> scheduled (and blocked -> scheduled), records a send time;
+  // chapter_director only.
+  'newsletter.schedule': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
     writes: true,
   },
   'newsletter.publish': {
@@ -117,6 +159,16 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
     subjectConsent: externalPublicationForItems,
+  },
+  // published -> archived, "director, admin" (04-state-machines). Chapter-scoped
+  // director; platform_admin via platformGrant (writes:true — platform_staff is
+  // NOT, it only overrides reads and the zero-student publish). No subject-consent
+  // snapshot: withdrawing reach never asserts consent (the consent-driven variant
+  // rides ConsentService's revoke seam, like project C2).
+  'newsletter.unpublish': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
   },
 
   // ---- projects ------------------------------------------------------------

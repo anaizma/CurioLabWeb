@@ -46,10 +46,9 @@ export type TransitionCapability =
   // so it arrives via `Capability` above and is not redeclared here.
   | 'guardianship.revoke'
   | 'maturation.confirm'
-  | 'newsletter.submit_review'
-  | 'newsletter.return'
-  | 'newsletter.schedule'
-  | 'newsletter.unpublish'
+  // 'newsletter.submit_review', 'newsletter.return', 'newsletter.schedule', and
+  // 'newsletter.unpublish' are now first-class Capabilities (added in M3.5), so
+  // they arrive via `Capability` above and are not redeclared here.
   // 'project.unpublish' is now a first-class Capability (added in M3.2), so it
   // arrives via `Capability` above and is not redeclared here.
   | 'consent.revoke_safeguarding'

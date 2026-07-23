@@ -63,6 +63,7 @@ import {
   moderationReasonEnum,
   moderationTargetTypeEnum,
   narrativeStatusEnum,
+  newsletterIssueStatusEnum,
   paymentStatusEnum,
   postTypeEnum,
   projectStatusEnum,
@@ -742,6 +743,49 @@ export const profileNarrative = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('profile_narrative_account_idx').on(t.accountId)],
+)
+
+// --- Newsletter (Milestone 3.5) --------------------------------------------
+// A chapter (or platform-wide, chapter_id null) newsletter issue and its items.
+// A `newsletter_item` with a non-null `author_student_account_id` is a
+// student-authored item, which is how the publish gate (coupling E) requires
+// that student's `external_publication` consent scoped to the ISSUE. Only
+// `published` is readable without a session; `archived` is staff-read only —
+// both are read-side policies enforced in the app layer, not the schema. The
+// lifecycle guarantees (the status enum/default) and the Mechanism-A grants live
+// in migration 0016_newsletter.sql, not here.
+
+export const newsletterIssue = pgTable('newsletter_issue', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // Null = platform-wide (02-data-model.md newsletter_issue).
+  chapterId: uuid('chapter_id').references(() => chapter.id),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  status: newsletterIssueStatusEnum('status').notNull().default('draft'),
+  // The recorded send time (set at `schedule`); the auto-publish job fires when
+  // scheduled_for <= now.
+  scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
+  publishedBy: uuid('published_by').references(() => account.id),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  createdAt: createdAt(),
+})
+
+export const newsletterItem = pgTable(
+  'newsletter_item',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => newsletterIssue.id),
+    // Null = a staff-written item. Non-null = a student-authored item, whose
+    // external_publication consent (scoped to the issue) the publish gate requires.
+    authorStudentAccountId: uuid('author_student_account_id').references(() => account.id),
+    // The project/post this item points at (no FK: a polymorphic reference).
+    ref: uuid('ref'),
+    body: text('body').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('newsletter_item_issue_idx').on(t.issueId)],
 )
 
 export const verificationToken = pgTable(
