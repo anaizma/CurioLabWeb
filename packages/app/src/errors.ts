@@ -542,6 +542,41 @@ export class FeedAuthorMembershipNotFoundError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Projects (Milestone 3.2: the project lifecycle service + coupling C2).
+// ---------------------------------------------------------------------------
+
+/** The referenced project does not exist (submit/verify/publish of an unknown id). */
+export class ProjectNotFoundError extends Error {
+  readonly projectId: string
+  constructor(projectId: string) {
+    super(`project not found: ${projectId}`)
+    this.name = 'ProjectNotFoundError'
+    this.projectId = projectId
+  }
+}
+
+/**
+ * A requested project lifecycle change is not a legal edge of the project machine
+ * (04-state-machines `draft -> submitted -> verified -> public_listed`, and the
+ * de-list `public_listed -> verified`). For example, verifying a `draft` project
+ * (never submitted) or publishing one that is not `verified`. Carries the
+ * structured reason from `canTransition` so a route can map it to a 409, distinct
+ * from a Forbidden (an authorization failure that leaks no reason).
+ */
+export class IllegalProjectTransitionError extends Error {
+  readonly from: string | null
+  readonly to: string
+  readonly reason: TransitionResult['reason']
+  constructor(from: string | null, to: string, reason: TransitionResult['reason']) {
+    super(`illegal project transition ${from ?? '(none)'} -> ${to}${reason ? ` (${reason})` : ''}`)
+    this.name = 'IllegalProjectTransitionError'
+    this.from = from
+    this.to = to
+    this.reason = reason
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Moderation (Milestone 2.4: The Lab — the report queue).
 // ---------------------------------------------------------------------------
 

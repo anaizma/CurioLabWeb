@@ -210,6 +210,13 @@ export type {
   FeedPostView,
   FeedViewResult,
 } from './feed.js'
+export { ProjectService, projectExternalPublicationRevokeCascade } from './project.js'
+export type {
+  ProjectServiceDeps,
+  ProjectAuthorizeFn,
+  CreateProjectInput,
+  ProjectResult,
+} from './project.js'
 export { ModerationService, sweepOverdueReports } from './moderation.js'
 export type {
   ModerationServiceDeps,
@@ -269,4 +276,6 @@ export {
   FeedAuthorMembershipNotFoundError,
   ModerationReportNotFoundError,
   IllegalModerationTransitionError,
+  ProjectNotFoundError,
+  IllegalProjectTransitionError,
 } from './errors.js'

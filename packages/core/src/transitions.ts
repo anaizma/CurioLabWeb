@@ -50,7 +50,8 @@ export type TransitionCapability =
   | 'newsletter.return'
   | 'newsletter.schedule'
   | 'newsletter.unpublish'
-  | 'project.unpublish'
+  // 'project.unpublish' is now a first-class Capability (added in M3.2), so it
+  // arrives via `Capability` above and is not redeclared here.
   | 'consent.revoke_safeguarding'
 
 /**

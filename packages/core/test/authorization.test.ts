@@ -22,6 +22,7 @@ import {
   projectOwnedBy,
   projectPublicConsented,
   projectPublicUnconsented,
+  projectPublicListed,
   narrativeOwnedBy,
   narrativeReviewC1,
   applicationInC1,
@@ -262,9 +263,17 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectDeny(actors.chapter_director_c1, 'newsletter.publish', issueUnconsented, 'subject_consent_missing')
   })
 
-  test('project.create', () => {
+  test('project.create (a student or an instructor may create; alumni may not)', () => {
     expectAllow(actors.student_18, 'project.create', { chapter_id: 'chapter-C1' })
+    // 04-state-machines project "(none) -> draft | student (own), instructor".
+    expectAllow(actors.lead_instructor_c1, 'project.create', { chapter_id: 'chapter-C1' })
     expectDeny(actors.alumni, 'project.create', { chapter_id: 'chapter-C1' }, 'role_not_permitted')
+  })
+
+  test('project.unpublish (director de-list; chapter-scoped write)', () => {
+    expectAllow(actors.chapter_director_c1, 'project.unpublish', projectPublicListed)
+    expectDeny(actors.chapter_director_c2, 'project.unpublish', projectPublicListed, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'project.unpublish', projectPublicListed, 'role_not_permitted')
   })
 
   test('project.submit', () => {

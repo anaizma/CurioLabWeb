@@ -120,9 +120,14 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
   },
 
   // ---- projects ------------------------------------------------------------
+  // 04-state-machines project "(none) -> draft | student (own), instructor": a
+  // student may open their own project, and any teaching membership in the
+  // chapter may open one (e.g. a mentor seeding a pod project). The "own" bound
+  // for a student is enforced by the ProjectService (it sets owner_membership_id
+  // to the acting student's membership); `can` gates the chapter+role floor.
   'project.create': {
     scope: 'chapter',
-    roles: ['student'],
+    roles: ['student', ...TEACHING],
     writes: true,
   },
   'project.submit': {
@@ -141,6 +146,16 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
     subjectConsent: externalPublicationForItems,
+  },
+  // director de-list (04-state-machines project "public_listed -> verified |
+  // project.unpublish | director"). Chapter-scoped, chapter_director. The C2
+  // SYSTEM cascade (consent.revoke -> de-list) reaches the same edge without this
+  // capability — it rides the consent.revoke authorization inside ConsentService.
+  // No subject-consent snapshot: withdrawing reach never asserts consent.
+  'project.unpublish': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
   },
 
   // ---- application funnel (ops back office) --------------------------------

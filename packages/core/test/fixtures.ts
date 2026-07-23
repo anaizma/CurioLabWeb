@@ -357,6 +357,10 @@ export const projectPublicUnconsented: Resource = {
     { student: ID.s18, consent: { external_publication: { active: false } } },
   ],
 }
+// project.unpublish (director de-list; public_listed -> verified) — chapter-scoped
+// ops write, chapter_director. No subject-consent snapshot (a de-list withdraws
+// reach, it never asserts consent).
+export const projectPublicListed: Resource = { id: PROJECT_ID, chapter_id: C1 }
 
 // application funnel (ops back office) — chapter-scoped, no subject snapshot.
 export const applicationInC1: Resource = { id: 'application-1', chapter_id: C1 }

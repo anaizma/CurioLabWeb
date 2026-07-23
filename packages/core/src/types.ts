@@ -205,6 +205,7 @@ export type Capability =
   | 'project.submit'
   | 'project.verify'
   | 'project.publish_public'
+  | 'project.unpublish'
   | 'application.view'
   | 'application.transition'
   | 'lead.invite'
