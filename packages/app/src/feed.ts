@@ -51,6 +51,7 @@ import {
   PostMilestoneForbiddenError,
   PostNotFoundError,
 } from './errors.js'
+import type { ModerationReason } from './moderation.js'
 
 /**
  * The injected `authorize` dependency, narrowed to the feed capabilities
@@ -59,7 +60,13 @@ import {
  */
 export type FeedAuthorizeFn = <T = void>(
   ctx: AuthContext,
-  capability: 'feed.view' | 'feed.post' | 'feed.comment' | 'feed.react' | 'feed.moderate',
+  capability:
+    | 'feed.view'
+    | 'feed.post'
+    | 'feed.comment'
+    | 'feed.react'
+    | 'feed.moderate'
+    | 'feed.hide_safety',
   resource: Resource,
   deps: AuthorizeDeps<T>,
 ) => Promise<T | undefined>
@@ -131,6 +138,16 @@ export interface ContentStatusResult {
   id: string
   status: string
   body: string
+}
+
+/** The result of a `feed.hide_safety` on-sight hide: the content is `hidden` and
+ * a `class = safety` moderation_report was auto-filed atomically. */
+export interface HideSafetyResult {
+  /** The hidden content id (post or comment). */
+  id: string
+  status: 'hidden'
+  /** The auto-filed safety report. */
+  reportId: string
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +229,52 @@ async function moderateContent(deps: {
     assertAuthorized()
     return applyContentStatus(tx, table, id, target)
   }) as Promise<ContentStatusResult>
+}
+
+/**
+ * The `feed.hide_safety` on-sight hide (04-state-machines.md: "any chapter
+ * instructor for safety … safety hide auto-files a `class = safety` report").
+ * Any active TEACHING membership in the target's CHAPTER (not pod-bound, no
+ * consent gate, no age gate — a minor mentor may hide on sight) may hide a
+ * post/comment; the hide (`published -> hidden`) AND the auto-filed safety report
+ * commit in ONE transaction. `feed.hide_safety` is chapter-scoped in the registry,
+ * so a teaching membership whose pod does not own the content still resolves.
+ */
+async function hideSafetyContent(deps: {
+  sql: Sql
+  authorize: FeedAuthorizeFn
+  machine: 'feed_post' | 'comment'
+  table: 'post' | 'comment'
+  targetType: 'post' | 'comment'
+  id: string
+  status: string
+  chapterId: string
+  podId: string | null
+  reason: ModerationReason
+  ctx: AuthContext
+}): Promise<HideSafetyResult> {
+  const { sql, authorize, machine, table, targetType, id, status, chapterId, podId, reason, ctx } = deps
+  const resource: Resource = { id, chapter_id: chapterId, pod_id: podId }
+  await authorize(ctx, 'feed.hide_safety', resource, { sql })
+
+  const legal = canTransition(machine, status, 'hidden')
+  if (!legal.allowed) {
+    throw new IllegalFeedContentTransitionError(machine, status, 'hidden', legal.reason)
+  }
+
+  return sql.begin(async (tx) => {
+    assertAuthorized()
+    await applyContentStatus(tx, table, id, 'hidden')
+    // Auto-file the safety report in the SAME transaction as the hide. The
+    // reporter is the acting membership's account (accounts, per the data model);
+    // the class is `safety` (it drives the 24h SLA via the generated due_at).
+    const [rep] = await tx`
+      insert into moderation_report (target_type, target_id, reporter_account_id, chapter_id, class, reason)
+      values (${targetType}, ${id}, ${ctx.account.id}, ${chapterId}, 'safety', ${reason})
+      returning id
+    `
+    return { id, status: 'hidden' as const, reportId: rep!.id as string }
+  }) as Promise<HideSafetyResult>
 }
 
 // ---------------------------------------------------------------------------
@@ -368,6 +431,33 @@ export class PostService {
       ctx,
     })
   }
+
+  /**
+   * Hide a post on sight under `feed.hide_safety` (any active teaching membership
+   * in the post's chapter, not pod-bound, no consent/age gate). The hide
+   * (`published -> hidden`) and the auto-filed `class = safety` moderation_report
+   * commit atomically.
+   */
+  async hideSafety(
+    postId: string,
+    ctx: AuthContext,
+    opts: { reason?: ModerationReason } = {},
+  ): Promise<HideSafetyResult> {
+    const post = await this.loadPost(postId)
+    return hideSafetyContent({
+      sql: this.sql,
+      authorize: this.authorize,
+      machine: 'feed_post',
+      table: 'post',
+      targetType: 'post',
+      id: postId,
+      status: post.status,
+      chapterId: post.chapterId,
+      podId: post.podId,
+      reason: opts.reason ?? 'harmful',
+      ctx,
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -493,6 +583,32 @@ export class CommentService {
       chapterId: c.chapterId,
       podId: c.podId,
       target: 'removed',
+      ctx,
+    })
+  }
+
+  /**
+   * Hide a comment on sight under `feed.hide_safety` (any active teaching
+   * membership in the comment's chapter, not pod-bound). The hide and the
+   * auto-filed `class = safety` moderation_report commit atomically.
+   */
+  async hideSafety(
+    commentId: string,
+    ctx: AuthContext,
+    opts: { reason?: ModerationReason } = {},
+  ): Promise<HideSafetyResult> {
+    const c = await this.loadComment(commentId)
+    return hideSafetyContent({
+      sql: this.sql,
+      authorize: this.authorize,
+      machine: 'comment',
+      table: 'comment',
+      targetType: 'comment',
+      id: commentId,
+      status: c.status,
+      chapterId: c.chapterId,
+      podId: c.podId,
+      reason: opts.reason ?? 'harmful',
       ctx,
     })
   }

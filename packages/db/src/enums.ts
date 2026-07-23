@@ -182,3 +182,30 @@ export const postTypeEnum = pgEnum('post_type', [
 // One lifecycle for both post and comment ("Same machine as post").
 export const contentStatusEnum = pgEnum('content_status', ['published', 'hidden', 'removed'])
 export const reactionTargetTypeEnum = pgEnum('reaction_target_type', ['post', 'comment'])
+
+// --- Moderation (Milestone 2.4) ---
+export const moderationTargetTypeEnum = pgEnum('moderation_target_type', [
+  'post',
+  'comment',
+  'project_media',
+  'profile_narrative',
+])
+// The report class drives the SLA (the generated due_at): safety = 24h, ordinary = 72h.
+export const moderationClassEnum = pgEnum('moderation_class', ['safety', 'ordinary'])
+export const moderationReasonEnum = pgEnum('moderation_reason', [
+  'harmful',
+  'sexual',
+  'threatening',
+  'self_harm_disclosure',
+  'off_topic',
+  'unkind',
+  'spam',
+  'quality',
+])
+export const moderationActionEnum = pgEnum('moderation_action', [
+  'none',
+  'hidden',
+  'removed',
+  'dismissed',
+  'escalated',
+])

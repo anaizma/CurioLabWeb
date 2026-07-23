@@ -197,10 +197,30 @@ export type {
   AddReactionResult,
   RemoveReactionResult,
   ContentStatusResult,
+  HideSafetyResult,
   FeedFilters,
   FeedPostView,
   FeedViewResult,
 } from './feed.js'
+export { ModerationService, sweepOverdueReports } from './moderation.js'
+export type {
+  ModerationServiceDeps,
+  ModerationAuthorizeFn,
+  ModerationNotifier,
+  ModerationNotification,
+  ModerationClass,
+  ModerationReason,
+  ModerationAction,
+  ModerationState,
+  ModerationTarget,
+  FileReportInput,
+  FileReportResult,
+  AcknowledgeResult,
+  ResolveResult,
+  EscalateResult,
+  SweepOverdueReportsDeps,
+  SweepOverdueReportsResult,
+} from './moderation.js'
 export {
   IllegalTransitionError,
   ApplicationNotFoundError,
@@ -239,4 +259,6 @@ export {
   PostMilestoneForbiddenError,
   IllegalFeedContentTransitionError,
   FeedAuthorMembershipNotFoundError,
+  ModerationReportNotFoundError,
+  IllegalModerationTransitionError,
 } from './errors.js'

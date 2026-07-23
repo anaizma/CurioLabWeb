@@ -541,6 +541,43 @@ export class FeedAuthorMembershipNotFoundError extends Error {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Moderation (Milestone 2.4: The Lab — the report queue).
+// ---------------------------------------------------------------------------
+
+/** The referenced moderation_report does not exist (ack/resolve/escalate of an unknown id). */
+export class ModerationReportNotFoundError extends Error {
+  readonly reportId: string
+  constructor(reportId: string) {
+    super(`moderation report not found: ${reportId}`)
+    this.name = 'ModerationReportNotFoundError'
+    this.reportId = reportId
+  }
+}
+
+/**
+ * A requested moderation_report lifecycle change is not a legal edge of the
+ * moderation machine (04-state-machines: `filed -> acknowledged -> resolved`;
+ * `escalated` reachable from any pre-resolution state; `resolved` terminal). For
+ * example, resolving a still-`filed` (never acknowledged) report, or acting on an
+ * already-`resolved` one. Carries the structured reason from `canTransition` so a
+ * route can map it to a 409, distinct from a Forbidden (an authorization failure
+ * that leaks no reason). The report has no status column — the state is derived
+ * from its lifecycle timestamps.
+ */
+export class IllegalModerationTransitionError extends Error {
+  readonly from: string | null
+  readonly to: string
+  readonly reason: TransitionResult['reason']
+  constructor(from: string | null, to: string, reason: TransitionResult['reason']) {
+    super(`illegal moderation_report transition ${from ?? '(none)'} -> ${to}${reason ? ` (${reason})` : ''}`)
+    this.name = 'IllegalModerationTransitionError'
+    this.from = from
+    this.to = to
+    this.reason = reason
+  }
+}
+
 /**
  * The requested guardianship state change is not a legal edge of the
  * guardianship lifecycle (04-state-machines). Verification only ever fires on a

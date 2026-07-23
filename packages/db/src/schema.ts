@@ -56,6 +56,10 @@ import {
   inviteStatusEnum,
   maturationStateEnum,
   membershipStatusEnum,
+  moderationActionEnum,
+  moderationClassEnum,
+  moderationReasonEnum,
+  moderationTargetTypeEnum,
   paymentStatusEnum,
   postTypeEnum,
   reactionTargetTypeEnum,
@@ -604,4 +608,52 @@ export const timelineEntry = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('timeline_entry_account_occurred_idx').on(t.accountId, t.occurredAt)],
+)
+
+// --- Moderation (Milestone 2.4: the report queue) --------------------------
+// The report a member files against feed content, and the queue a moderator
+// works. Lifecycle state is derived from the timestamps (filed -> acknowledged
+// -> resolved; escalated reachable from any pre-resolution state), not a status
+// column. The SLA `due_at` is a GENERATED column (24h for safety, 72h for
+// ordinary) so it cannot drift from the class; its authoritative DDL and the
+// partial `(due_at) WHERE resolved_at IS NULL` index live in migration
+// 0014_moderation.sql, exercised by the DB guarantee tests. target_id is a
+// polymorphic reference discriminated by target_type and carries no FK.
+
+export const moderationReport = pgTable(
+  'moderation_report',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    targetType: moderationTargetTypeEnum('target_type').notNull(),
+    targetId: uuid('target_id').notNull(),
+    reporterAccountId: uuid('reporter_account_id')
+      .notNull()
+      .references(() => account.id),
+    chapterId: uuid('chapter_id')
+      .notNull()
+      .references(() => chapter.id),
+    class: moderationClassEnum('class').notNull(),
+    reason: moderationReasonEnum('reason').notNull(),
+    filedAt: timestamp('filed_at', { withTimezone: true }).notNull().defaultNow(),
+    // GENERATED ALWAYS in the migration: filed_at + 24h (safety) / 72h (ordinary),
+    // via immutable epoch arithmetic (see 0014_moderation.sql for why).
+    dueAt: timestamp('due_at', { withTimezone: true }).generatedAlwaysAs(
+      sql`to_timestamp(extract(epoch from (filed_at - '1970-01-01 00:00:00+00'::timestamptz)) + CASE WHEN class = 'safety' THEN 86400 ELSE 259200 END)`,
+    ),
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolverAccountId: uuid('resolver_account_id').references(() => account.id),
+    resolverMembershipId: uuid('resolver_membership_id').references(() => membership.id),
+    actionTaken: moderationActionEnum('action_taken'),
+    escalatedAt: timestamp('escalated_at', { withTimezone: true }),
+    escalatedTo: uuid('escalated_to').references(() => account.id),
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('moderation_report_open_due_idx')
+      .on(t.dueAt)
+      .where(sql`${t.resolvedAt} is null`),
+    index('moderation_report_chapter_idx').on(t.chapterId, t.filedAt),
+  ],
 )
