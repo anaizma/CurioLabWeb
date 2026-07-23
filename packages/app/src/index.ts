@@ -105,7 +105,7 @@ export type {
   Stage2ServiceDeps,
   Answers,
   StartStage2Result,
-  SaveParentSectionResult,
+  CreateStudentLinkResult,
   ReviewStage2Result,
   SubmitStage2Result,
 } from './stage2.js'

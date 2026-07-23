@@ -3,6 +3,7 @@
 //
 //   startStage2           POST /api/public/stage2/start    — consumes the lead token.
 //   saveParentSection     POST /api/public/stage2/parent   — 2A, parent token.
+//   createStudentLink     POST /api/public/stage2/student-link — mint 2B link, parent token.
 //   saveStudentSection    POST /api/public/stage2/student  — 2B, student token.
 //   reviewStage2          POST /api/public/stage2/review   — 2C, parent token.
 //   submitStage2          POST /api/public/stage2/submit   — 2C, parent token.
@@ -18,8 +19,8 @@
 import {
   Stage2Service,
   type Answers,
+  type CreateStudentLinkResult,
   type ReviewStage2Result,
-  type SaveParentSectionResult,
   type StartStage2Result,
   type SubmitStage2Result,
 } from '@curiolab/app'
@@ -46,14 +47,29 @@ export interface Stage2TokenBodyInput extends PublicInputBase {
   body: { token?: unknown; answers?: unknown }
 }
 
-/** POST /api/public/stage2/parent — 2A save (parent token); issues the student token. */
+/** POST /api/public/stage2/parent — 2A save (parent token); does NOT issue the student token. */
 export function saveParentSection(
   input: Stage2TokenBodyInput,
-): Promise<ControllerResult<SaveParentSectionResult>> {
+): Promise<ControllerResult<{ saved: true }>> {
   return runPublic(async () => {
     const token = reqStr(input.body?.token, 'token')
     const answers = reqObj(input.body?.answers, 'answers') as Answers
-    const result = await new Stage2Service({ sql: input.sql }).saveParentSection(token, answers)
+    await new Stage2Service({ sql: input.sql }).saveParentSection(token, answers)
+    return { status: 200, body: { saved: true } }
+  })
+}
+
+export interface Stage2ParentTokenInput extends PublicInputBase {
+  body: { token?: unknown }
+}
+
+/** POST /api/public/stage2/student-link — mint/re-mint the 2B student link (parent token). */
+export function createStudentLink(
+  input: Stage2ParentTokenInput,
+): Promise<ControllerResult<CreateStudentLinkResult>> {
+  return runPublic(async () => {
+    const token = reqStr(input.body?.token, 'token')
+    const result = await new Stage2Service({ sql: input.sql }).createStudentLink(token)
     return { status: 200, body: result }
   })
 }

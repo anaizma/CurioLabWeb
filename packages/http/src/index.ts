@@ -47,6 +47,7 @@ export type {
 export {
   startStage2,
   saveParentSection,
+  createStudentLink,
   saveStudentSection,
   reviewStage2,
   submitStage2,

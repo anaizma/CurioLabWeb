@@ -419,7 +419,13 @@ export const ROUTE_MANIFEST: RouteManifest = [
   {
     method: 'POST',
     path: '/api/public/stage2/parent',
-    inert: 'unauthenticated, parent-token-gated (timing-safe); saves 2A, issues the student token, runPublic — no actor',
+    inert: 'unauthenticated, parent-token-gated (timing-safe); saves 2A, runPublic — no actor',
+    specEnumerated: false,
+  },
+  {
+    method: 'POST',
+    path: '/api/public/stage2/student-link',
+    inert: 'unauthenticated, parent-token-gated (timing-safe); mints/re-mints the 2B student link, runPublic — no actor',
     specEnumerated: false,
   },
   {

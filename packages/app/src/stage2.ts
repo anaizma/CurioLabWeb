@@ -6,7 +6,9 @@
 //   2A  parent section   — saveParentSection: the parent fills the child facts
 //                          (name, grade, school) and guardian details. Identifying
 //                          child facts are fine HERE: the PARENT provides them.
-//                          Advances to 2b and issues the student token.
+//                          Advances to 2b. The student link is NOT minted here:
+//                          createStudentLink is a separate explicit parent action
+//                          (re-callable, superseding the prior link) once in 2b.
 //   2B  student section   — saveStudentSection: the student answers their own,
 //                          NON-IDENTIFYING section. An allowlist (config.ts)
 //                          rejects any name/email/school-like key LOUDLY. No
@@ -60,12 +62,13 @@ export interface StartStage2Result {
   leadId: string
 }
 
-export interface SaveParentSectionResult {
+export interface CreateStudentLinkResult {
   /**
-   * The opaque student token, issued ONCE when the parent first completes 2A.
-   * `null` on a later partial save (the token was already issued and delivered).
+   * The opaque student token, minted fresh on each call. Returned raw ONCE — this
+   * is the seam the frontend/mailer uses to show or send the 2B link to the child.
+   * A later call regenerates it, superseding (and so invalidating) this one.
    */
-  studentToken: string | null
+  studentToken: string
 }
 
 export interface ReviewStage2Result {
@@ -157,29 +160,40 @@ export class Stage2Service {
 
   // ---- 2A save (parent token, UNAUTHENTICATED) -----------------------------
   /**
-   * Save the parent-provided 2A facts (merged, so partial saves persist), advance
-   * the draft to `2b`, and issue the student token ONCE. The student token is the
-   * seam the mailer uses to deliver the 2B link to the parent's inbox (the parent
-   * forwards it to the student); a later partial save returns `null` and keeps the
-   * already-issued token.
+   * Save the parent-provided 2A facts (merged, so partial saves persist) and advance
+   * the draft to `2b`. This NO LONGER mints the student token: creating the link to
+   * the child is a SEPARATE, explicit parent action (`createStudentLink`), so the
+   * parent chooses when to generate and send it. The save returns nothing.
    */
-  async saveParentSection(parentToken: string, answers: Answers): Promise<SaveParentSectionResult> {
+  async saveParentSection(parentToken: string, answers: Answers): Promise<void> {
     const draft = await this.loadDraftByParentToken(parentToken)
     this.assertPhase(draft, ['2a', '2b'])
-
-    let studentToken: string | null = null
-    let studentHash = draft.student_token_hash
-    if (studentHash === null) {
-      studentToken = generateSessionToken()
-      studentHash = hashToken(studentToken)
-    }
 
     await this.sql`
       update application_draft set
         parent_answers = coalesce(parent_answers, '{}'::jsonb) || ${this.sql.json(answers as unknown as JSONValue)},
-        student_token_hash = ${studentHash},
         phase = '2b'
       where id = ${draft.id}
+    `
+  }
+
+  // ---- create/re-create the student link (parent token, UNAUTHENTICATED) ---
+  /**
+   * Mint a fresh student token for 2B and store its hash on the draft, returning the
+   * raw token ONCE (the seam the frontend/mailer uses to show or send the link to
+   * the child). Available once the draft has reached `2b` — i.e. after the parent
+   * saved their 2A section. Each call regenerates the token, superseding any prior
+   * hash, so re-creating the link INVALIDATES the previous one (the old token stops
+   * resolving) and only the newest link opens 2B.
+   */
+  async createStudentLink(parentToken: string): Promise<CreateStudentLinkResult> {
+    const draft = await this.loadDraftByParentToken(parentToken)
+    this.assertPhase(draft, ['2b'])
+
+    const studentToken = generateSessionToken()
+    const studentHash = hashToken(studentToken)
+    await this.sql`
+      update application_draft set student_token_hash = ${studentHash} where id = ${draft.id}
     `
     return { studentToken }
   }

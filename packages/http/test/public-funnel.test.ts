@@ -21,6 +21,7 @@ import { makeChapter } from './helpers/fixtures.js'
 import {
   startStage2,
   saveParentSection,
+  createStudentLink,
   saveStudentSection,
   reviewStage2,
   submitStage2,
@@ -82,7 +83,7 @@ describe('the Stage 2 three-phase chain against tokens', () => {
     const started = await startStage2({ sql: h.sql, body: { token: parentToken } })
     expect(started.status).toBe(201)
 
-    // 2A: the parent section; issues the student token.
+    // 2A: the parent section (no longer issues the student token).
     const parentSaved = await saveParentSection({
       sql: h.sql,
       body: {
@@ -91,7 +92,11 @@ describe('the Stage 2 three-phase chain against tokens', () => {
       },
     })
     expect(parentSaved.status).toBe(200)
-    const studentToken = parentSaved.body.studentToken!
+
+    // The explicit parent action that mints the student link.
+    const linked = await createStudentLink({ sql: h.sql, body: { token: parentToken } })
+    expect(linked.status).toBe(200)
+    const studentToken = linked.body.studentToken
     expect(studentToken).toBeTruthy()
 
     // 2B: the student's non-identifying section (saves, does not submit).
@@ -124,11 +129,12 @@ describe('the Stage 2 three-phase chain against tokens', () => {
     const chapter = await makeChapter(h.sql)
     const { leadId, token: parentToken } = await seedLead(chapter)
     await startStage2({ sql: h.sql, body: { token: parentToken } })
-    const parentSaved = await saveParentSection({
+    await saveParentSection({
       sql: h.sql,
       body: { token: parentToken, answers: { childName: 'C', guardianName: 'P', guardianEmail: 'parent-c@example.test' } },
     })
-    await saveStudentSection({ sql: h.sql, body: { token: parentSaved.body.studentToken!, answers: { motivation: 'x' } } })
+    const linked = await createStudentLink({ sql: h.sql, body: { token: parentToken } })
+    await saveStudentSection({ sql: h.sql, body: { token: linked.body.studentToken, answers: { motivation: 'x' } } })
 
     const back = await sendBack({ sql: h.sql, body: { token: parentToken } })
     expect(back.status).toBe(200)
@@ -146,13 +152,14 @@ describe('the Stage 2 three-phase chain against tokens', () => {
     const chapter = await makeChapter(h.sql)
     const { token: parentToken } = await seedLead(chapter)
     await startStage2({ sql: h.sql, body: { token: parentToken } })
-    const parentSaved = await saveParentSection({
+    await saveParentSection({
       sql: h.sql,
       body: { token: parentToken, answers: { childName: 'D', guardianName: 'P', guardianEmail: 'parent-d@example.test' } },
     })
+    const linked = await createStudentLink({ sql: h.sql, body: { token: parentToken } })
     const res = await saveStudentSection({
       sql: h.sql,
-      body: { token: parentSaved.body.studentToken!, answers: { fullName: 'smuggled' } },
+      body: { token: linked.body.studentToken, answers: { fullName: 'smuggled' } },
     })
     expect(res.status).toBe(400)
   })
