@@ -6,18 +6,18 @@
 // -------------------------------------------------------------------------
 
 /**
- * The duplicate-suppression window for POST /public/apply. A second application
- * on the same `(guardian_email, applicant_name)` received within this many
- * milliseconds of the first is treated as a resubmission and suppressed. The
- * public form is idempotent within a submission session, but a family who
- * genuinely re-applies a season later is not blocked.
+ * The duplicate-suppression window for the Stage 1 public lead write
+ * (`LeadService.submitLead`, POST /public/leads). A second lead on the same
+ * `email` received within this many milliseconds of the first is treated as a
+ * resubmission and suppressed, returning the existing lead. A parent who
+ * genuinely re-enquires a season later is not blocked.
  *
  * NOTE: rate limiting per IP and per email, and the edge bot-check (Cloudflare
  * Turnstile or equivalent), are HTTP-layer concerns (05-api-surface "Abuse
  * handling") and are deliberately NOT implemented in this framework-agnostic
- * layer. Only the (guardian_email, applicant_name) dedupe lives here.
+ * layer. Only the email dedupe lives here.
  */
-export const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000 // 24 hours
+export const LEAD_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 /**
  * The consent types granted by a signed enrollment form (coupling D). These are
@@ -104,7 +104,8 @@ export function guardianNamesMatch(a: string, b: string): boolean {
 }
 
 export interface AppConfig {
-  dedupeWindowMs: number
+  /** The Stage 1 lead email dedupe window in ms (LeadService.submitLead). */
+  leadDedupeWindowMs: number
   /** Consent types created form-sourced on enrollment (coupling D). */
   formSourcedConsentTypes: readonly FormSourcedConsentType[]
   /** The consent `reason` for a form-sourced grant (never safeguarding here). */
@@ -126,7 +127,7 @@ export interface AppConfig {
 }
 
 export const defaultConfig: AppConfig = {
-  dedupeWindowMs: DEDUPE_WINDOW_MS,
+  leadDedupeWindowMs: LEAD_DEDUPE_WINDOW_MS,
   formSourcedConsentTypes: FORM_SOURCED_CONSENT_TYPES,
   formSourcedConsentReason: 'standard',
   signedFormKeyPrefix: SIGNED_FORM_KEY_PREFIX,

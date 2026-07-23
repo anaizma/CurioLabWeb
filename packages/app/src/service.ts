@@ -1,7 +1,6 @@
 import type { Sql } from 'postgres'
 import { canTransition, type AuthContext, type Resource } from '@curiolab/core'
 import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
-import { type AppConfig, defaultConfig } from './config.js'
 import { writeApplicationEvent, type EventWriter } from './events.js'
 import { ApplicationNotFoundError, IllegalTransitionError } from './errors.js'
 
@@ -20,31 +19,11 @@ export type AuthorizeFn = <T = void>(
 export interface ApplicationServiceDeps {
   sql: Sql
   authorize: AuthorizeFn
-  /** Optional overrides for the config-not-code tunables. */
-  config?: Partial<AppConfig>
   /** Injectable event-append seam (defaults to the real insert). */
   eventWriter?: EventWriter
 }
 
 export type ApplicationKind = 'student' | 'university_role'
-
-export interface SubmitApplicationInput {
-  kind: ApplicationKind
-  chapterId: string
-  applicantName: string
-  applicantContactEmail: string
-  guardianName?: string | null
-  guardianEmail?: string | null
-  guardianSignatureRef?: string | null
-  track?: string | null
-  githubUrl?: string | null
-}
-
-export interface SubmitApplicationResult {
-  applicationId: string
-  /** True when an in-window duplicate suppressed the write; no new row created. */
-  suppressed: boolean
-}
 
 /** An ops-transition request against an existing application. */
 export interface TransitionInput {
@@ -74,58 +53,19 @@ interface ApplicationRow {
 export class ApplicationService {
   private readonly sql: Sql
   private readonly authorize: AuthorizeFn
-  private readonly config: AppConfig
   private readonly eventWriter: EventWriter
 
   constructor(deps: ApplicationServiceDeps) {
     this.sql = deps.sql
     this.authorize = deps.authorize
-    this.config = { ...defaultConfig, ...deps.config }
     this.eventWriter = deps.eventWriter ?? writeApplicationEvent
   }
 
-  /**
-   * POST /public/apply — the unauthenticated, INERT public write. Creates
-   * exactly one `application` row in status `submitted` (no account, no edge),
-   * with duplicate suppression on `(guardian_email, applicant_name)` within the
-   * configured window. Safe to call with NO AuthContext: it does not go through
-   * `authorize` (it is one of the enumerated actor-less inert endpoints in
-   * 05-api-surface) and creates only a row that carries no authority.
-   *
-   * Rate limiting, per-IP/per-email throttling, and the bot check are HTTP-layer
-   * concerns and are intentionally not handled here (see config.ts).
-   */
-  async submitApplication(input: SubmitApplicationInput): Promise<SubmitApplicationResult> {
-    const guardianEmail = input.guardianEmail ?? null
-
-    // Duplicate suppression: same applicant_name AND same guardian_email
-    // (NULL-safe) received within the window. `is not distinct from` matches a
-    // NULL guardian_email to a NULL guardian_email for university-role apps.
-    const cutoff = new Date(Date.now() - this.config.dedupeWindowMs)
-    const existing = await this.sql`
-      select id from application
-      where applicant_name = ${input.applicantName}
-        and guardian_email is not distinct from ${guardianEmail}
-        and created_at >= ${cutoff}
-      order by created_at desc
-      limit 1
-    `
-    if (existing.length > 0) {
-      return { applicationId: existing[0]!.id as string, suppressed: true }
-    }
-
-    const [row] = await this.sql`
-      insert into application (
-        kind, chapter_id, status, applicant_name, applicant_contact_email,
-        guardian_name, guardian_email, guardian_signature_ref, track, github_url
-      ) values (
-        ${input.kind}, ${input.chapterId}, 'submitted', ${input.applicantName},
-        ${input.applicantContactEmail}, ${input.guardianName ?? null}, ${guardianEmail},
-        ${input.guardianSignatureRef ?? null}, ${input.track ?? null}, ${input.githubUrl ?? null}
-      ) returning id
-    `
-    return { applicationId: row!.id as string, suppressed: false }
-  }
+  // NOTE: the old public `submitApplication` write is GONE. The public surface
+  // is now Stage 1 lead capture (`LeadService.submitLead`), which creates an
+  // `application_lead`, never an `application`. The `application` row is created
+  // only at 2C submit (part B). This service now owns only the ops transitions
+  // below, which operate on an `application` once it exists.
 
   // ---- Ops transitions (PATCH /ops/applications/:id) -----------------------
   // Each is gated through the injected `authorize` wrapper under

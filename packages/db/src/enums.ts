@@ -109,6 +109,25 @@ export const applicationStatusEnum = pgEnum('application_status', [
   'declined',
   'withdrawn',
 ])
+// --- Application-funnel v2 (Milestone 1 part A) ---
+export const applicationLeadStatusEnum = pgEnum('application_lead_status', [
+  'new',
+  'stage2_started',
+  'converted',
+  'deleted',
+])
+export const applicationDraftPhaseEnum = pgEnum('application_draft_phase', [
+  '2a',
+  '2b',
+  '2c',
+  'submitted',
+])
+export const applicationDraftStatusEnum = pgEnum('application_draft_status', [
+  'in_progress',
+  '2b_saved',
+  'sent_back',
+  'submitted',
+])
 export const relationshipEnum = pgEnum('relationship', ['parent', 'guardian', 'other'])
 export const guardianshipStatusEnum = pgEnum('guardianship_status', [
   'pending',

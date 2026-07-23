@@ -11,8 +11,6 @@ export type {
   ApplicationServiceDeps,
   AuthorizeFn,
   ApplicationKind,
-  SubmitApplicationInput,
-  SubmitApplicationResult,
   TransitionInput,
   TransitionOutcome,
   ReopenOutcome,
@@ -66,8 +64,14 @@ export {
   type PutObjectInput,
   type R2Config,
 } from './storage.js'
+export { LeadService } from './lead.js'
+export type {
+  LeadServiceDeps,
+  SubmitLeadInput,
+  SubmitLeadResult,
+} from './lead.js'
 export {
-  DEDUPE_WINDOW_MS,
+  LEAD_DEDUPE_WINDOW_MS,
   defaultConfig,
   type AppConfig,
   FORM_SOURCED_CONSENT_TYPES,
@@ -137,9 +141,9 @@ export {
   type RetentionConfig,
 } from './retention.js'
 export {
-  sweepUnconsentedApplications,
-  type SweepUnconsentedApplicationsDeps,
-  type SweepUnconsentedApplicationsResult,
+  sweepUnconvertedLeads,
+  type SweepUnconvertedLeadsDeps,
+  type SweepUnconvertedLeadsResult,
 } from './retention-sweep.js'
 export { DeletionFulfillmentService } from './deletion-fulfillment.js'
 export type {

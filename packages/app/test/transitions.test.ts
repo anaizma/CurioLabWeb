@@ -22,23 +22,29 @@ function service(overrides: Record<string, unknown> = {}) {
   return new ApplicationService({ sql: h.sql, authorize, ...overrides })
 }
 
-/** A chapter director actor in the given chapter, plus a fresh submitted app. */
+/**
+ * A chapter director actor in the given chapter, plus a `submitted` application
+ * created directly in a fixture. The public write no longer creates an
+ * `application` (that path became `LeadService.submitLead`; the `application`
+ * row is minted only at 2C submit, part B), so the ops transitions are exercised
+ * against an application seeded straight into the table.
+ */
 async function seed() {
   const chapter = await makeChapter(h.sql)
   const directorId = await makeAdult(h.sql)
   const director = baseCtx(directorId, new Date(), [mem('chapter_director', chapter)])
-  // A distinct applicant per seed so dedupe suppression never collapses two
-  // tests onto the same application row.
   const tag = randomUUID().slice(0, 8)
   const applicantName = `Gideon Plumtangle ${tag}`
-  const { applicationId } = await service().submitApplication({
-    kind: 'student',
-    chapterId: chapter,
-    applicantName,
-    applicantContactEmail: `plum.${tag}@example.test`,
-    guardianName: 'Guardian Plumtangle',
-    guardianEmail: `plum.${tag}@example.test`,
-  })
+  const [row] = await h.sql`
+    insert into application (
+      kind, chapter_id, status, applicant_name, applicant_contact_email,
+      guardian_name, guardian_email
+    ) values (
+      'student', ${chapter}, 'submitted', ${applicantName}, ${`plum.${tag}@example.test`},
+      'Guardian Plumtangle', ${`plum.${tag}@example.test`}
+    ) returning id
+  `
+  const applicationId = row!.id as string
   return { chapter, director, applicationId, applicantName }
 }
 

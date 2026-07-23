@@ -32,7 +32,10 @@ import {
 import { sql } from 'drizzle-orm'
 import {
   accountStatusEnum,
+  applicationDraftPhaseEnum,
+  applicationDraftStatusEnum,
   applicationKindEnum,
+  applicationLeadStatusEnum,
   applicationStatusEnum,
   chapterStatusEnum,
   chapterTierEnum,
@@ -225,6 +228,51 @@ export const applicationEvent = pgTable('application_event', {
   at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: createdAt(),
 })
+
+// --- Application funnel v2 (Milestone 1 part A) ----------------------------
+// Stage 1 lead capture and Stage 2 draft persistence. The lead holds ONLY a
+// parent email/chapter/referral (no child data); the draft is populated by
+// part B (the 2A/2B/2C flow) and created here as the table. See migration
+// 0010_application_funnel.sql for the authoritative DDL.
+
+export const applicationLead = pgTable(
+  'application_lead',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: citext('email').notNull(),
+    chapterId: uuid('chapter_id').references(() => chapter.id),
+    referralSource: text('referral_source').notNull(),
+    status: applicationLeadStatusEnum('status').notNull().default('new'),
+    tokenHash: text('token_hash'),
+    convertedApplicationId: uuid('converted_application_id').references(() => application.id),
+    createdAt: createdAt(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('application_lead_email_idx').on(t.email),
+    index('application_lead_status_created_idx').on(t.status, t.createdAt),
+  ],
+)
+
+export const applicationDraft = pgTable(
+  'application_draft',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    leadId: uuid('lead_id')
+      .notNull()
+      .references(() => applicationLead.id),
+    parentTokenHash: text('parent_token_hash').notNull(),
+    studentTokenHash: text('student_token_hash'),
+    phase: applicationDraftPhaseEnum('phase').notNull(),
+    parentAnswers: jsonb('parent_answers'),
+    studentAnswers: jsonb('student_answers'),
+    status: applicationDraftStatusEnum('status').notNull(),
+    convertedApplicationId: uuid('converted_application_id').references(() => application.id),
+    createdAt: createdAt(),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  },
+  (t) => [index('application_draft_lead_idx').on(t.leadId)],
+)
 
 export const enrollmentRecord = pgTable('enrollment_record', {
   id: uuid('id').primaryKey().defaultRandom(),

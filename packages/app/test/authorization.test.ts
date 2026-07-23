@@ -16,18 +16,25 @@ afterAll(async () => {
   await h?.end()
 })
 
+/**
+ * A `submitted` application created directly in a fixture. The public write no
+ * longer mints an `application` (that path became `LeadService.submitLead`; the
+ * `application` is created only at 2C submit, part B), so authorization on the
+ * ops transitions is exercised against a directly-seeded application.
+ */
 async function submittedApplication() {
   const chapter = await makeChapter(h.sql)
   const tag = randomUUID().slice(0, 8)
-  const { applicationId } = await new ApplicationService({ sql: h.sql, authorize }).submitApplication({
-    kind: 'student',
-    chapterId: chapter,
-    applicantName: `Persimmon Wobblethorpe ${tag}`,
-    applicantContactEmail: `wob.${tag}@example.test`,
-    guardianName: 'Guardian Wobblethorpe',
-    guardianEmail: `wob.${tag}@example.test`,
-  })
-  return { chapter, applicationId }
+  const [row] = await h.sql`
+    insert into application (
+      kind, chapter_id, status, applicant_name, applicant_contact_email,
+      guardian_name, guardian_email
+    ) values (
+      'student', ${chapter}, 'submitted', ${`Persimmon Wobblethorpe ${tag}`},
+      ${`wob.${tag}@example.test`}, 'Guardian Wobblethorpe', ${`wob.${tag}@example.test`}
+    ) returning id
+  `
+  return { chapter, applicationId: row!.id as string }
 }
 
 async function statusOf(id: string): Promise<string> {
