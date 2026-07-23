@@ -170,3 +170,15 @@ export const exportRequestStatusEnum = pgEnum('export_request_status', [
   'requested',
   'fulfilled',
 ])
+
+// --- Community content (Milestone 2.1: the feed / The Lab) ---
+export const postTypeEnum = pgEnum('post_type', [
+  'wip',
+  'finished_project',
+  'question',
+  'session_recap',
+  'milestone',
+])
+// One lifecycle for both post and comment ("Same machine as post").
+export const contentStatusEnum = pgEnum('content_status', ['published', 'hidden', 'removed'])
+export const reactionTargetTypeEnum = pgEnum('reaction_target_type', ['post', 'comment'])

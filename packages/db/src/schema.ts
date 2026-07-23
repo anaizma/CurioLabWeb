@@ -44,6 +44,7 @@ import {
   consentReasonEnum,
   consentSourceEnum,
   consentTypeEnum,
+  contentStatusEnum,
   credentialOwnerEnum,
   deletionRequestStatusEnum,
   deletionScopeEnum,
@@ -56,6 +57,8 @@ import {
   maturationStateEnum,
   membershipStatusEnum,
   paymentStatusEnum,
+  postTypeEnum,
+  reactionTargetTypeEnum,
   relationshipEnum,
   roleEnum,
   sessionModeEnum,
@@ -522,4 +525,83 @@ export const deletionRequest = pgTable(
       sql`${t.status} <> 'refused' OR ${t.decisionReason} IS NOT NULL`,
     ),
   ],
+)
+
+// --- Community content (Milestone 2.1: the feed / The Lab) -----------------
+// The typed projection of the feed content tables. The guarantees (the reaction
+// uniqueness index, the timeline_entry append-only trigger + role-level REVOKE)
+// live in migration 0013_feed_content.sql, not here. Authorship is by
+// membership so a row carries the author's capacity and scope.
+
+export const post = pgTable(
+  'post',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chapterId: uuid('chapter_id')
+      .notNull()
+      .references(() => chapter.id),
+    podId: uuid('pod_id').references(() => pod.id),
+    authorMembershipId: uuid('author_membership_id')
+      .notNull()
+      .references(() => membership.id),
+    type: postTypeEnum('type').notNull(),
+    body: text('body').notNull(),
+    status: contentStatusEnum('status').notNull().default('published'),
+    systemGenerated: boolean('system_generated').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('post_chapter_created_idx').on(t.chapterId, t.createdAt),
+    index('post_pod_created_idx').on(t.podId, t.createdAt),
+  ],
+)
+
+export const comment = pgTable(
+  'comment',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => post.id),
+    authorMembershipId: uuid('author_membership_id')
+      .notNull()
+      .references(() => membership.id),
+    body: text('body').notNull(),
+    status: contentStatusEnum('status').notNull().default('published'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('comment_post_created_idx').on(t.postId, t.createdAt)],
+)
+
+export const reaction = pgTable(
+  'reaction',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    targetType: reactionTargetTypeEnum('target_type').notNull(),
+    // Polymorphic reference discriminated by target_type; carries no FK.
+    targetId: uuid('target_id').notNull(),
+    membershipId: uuid('membership_id')
+      .notNull()
+      .references(() => membership.id),
+    kind: text('kind').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('reaction_unique').on(t.targetType, t.targetId, t.membershipId, t.kind),
+  ],
+)
+
+export const timelineEntry = pgTable(
+  'timeline_entry',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => account.id),
+    kind: text('kind').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    ref: uuid('ref'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('timeline_entry_account_occurred_idx').on(t.accountId, t.occurredAt)],
 )
