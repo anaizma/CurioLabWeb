@@ -11,12 +11,13 @@ const SAMPLE_SUMMARY: DashboardSummary = {
   isSample: true,
 };
 
-/** No chapter-summary GET exists yet (see director-portal-read-endpoints.md).
- *  Return the representative summary until GET /api/ops/dashboard (or the list
- *  GETs it derives from) land; isSample stays true so the banner shows. */
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const ctx = await getDirectorContext();
   if (!ctx) return SAMPLE_SUMMARY;
-  // Wire real counts here once the surface GETs exist.
-  return SAMPLE_SUMMARY;
+  try {
+    const res = await fetch(`${ctx.origin}/api/ops/dashboard`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
+    if (!res.ok) return SAMPLE_SUMMARY;
+    const d = (await res.json()) as Partial<DashboardSummary>;
+    return { newApplications: d.newApplications ?? 0, pendingInvites: d.pendingInvites ?? 0, guardianshipsToVerify: d.guardianshipsToVerify ?? 0, mediaToReview: d.mediaToReview ?? 0, openRequests: d.openRequests ?? 0, activeMembers: d.activeMembers ?? 0, isSample: false };
+  } catch { return SAMPLE_SUMMARY; }
 }

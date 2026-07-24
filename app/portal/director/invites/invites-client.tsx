@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { InviteRow } from "@/lib/portal/director/types";
 
 type Kind = "guardian" | "mentor" | "staff";
-const KIND_LABEL: Record<InviteRow["kind"], string> = { guardian: "Guardian", mentor: "Mentor", staff: "Staff" };
+const KIND_LABEL: Record<InviteRow["kind"], string> = { guardian: "Guardian", mentor: "Mentor", staff: "Staff", director: "Director", admin: "Admin" };
 const inputCls = "w-full rounded-lg border border-ink/15 px-3 py-2 text-sm bg-white";
 
 export default function InvitesClient({ chapterId, invites, isSample }: { chapterId: string | null; invites: InviteRow[]; isSample: boolean }) {

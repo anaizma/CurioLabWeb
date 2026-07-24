@@ -2,7 +2,7 @@ export type InviteStatus = "pending" | "accepted" | "expired" | "superseded";
 
 export interface InviteRow {
   inviteId: string;
-  kind: "guardian" | "mentor" | "staff";
+  kind: "guardian" | "mentor" | "staff" | "director" | "admin";
   targetEmail: string | null;
   status: InviteStatus;
   issuedLabel: string;
