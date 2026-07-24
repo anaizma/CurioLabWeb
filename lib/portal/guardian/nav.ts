@@ -5,6 +5,7 @@ export const GUARDIAN_NAV: PortalNavItem[] = [
   { label: "Consent", href: "/portal/parent/consent" },
   { label: "Activity", href: "/portal/parent/activity" },
   { label: "Attendance", href: "/portal/parent/attendance" },
+  { label: "Calendar", href: "/portal/parent/calendar" },
   { label: "Messages", href: "/portal/parent/messages" },
 ];
 
