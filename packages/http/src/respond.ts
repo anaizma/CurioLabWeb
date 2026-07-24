@@ -68,6 +68,8 @@ const NOT_FOUND = new Set([
   // §5 consent GRANT ledger: an unknown grant subject or publication hold.
   'GrantSubjectNotFoundError',
   'PublicationHoldNotFoundError',
+  // Shared chapter calendar (Feature 1): edit/cancel of an unknown event.
+  'CalendarEventNotFoundError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */
@@ -149,6 +151,8 @@ const BAD_REQUEST = new Set([
   'CredentialWitnessIsGuardianError',
   // §5 Rule 2: under-13 public_publication captured with a weak method / no artifact.
   'GrantStrongMethodRequiredError',
+  // Shared chapter calendar (Feature 1): a bad time range / audience set / kind.
+  'CalendarValidationError',
 ])
 
 /**

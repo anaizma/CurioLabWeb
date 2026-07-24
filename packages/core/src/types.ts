@@ -328,3 +328,15 @@ export type Capability =
   // conduct). Chapter-scoped write, chapter_director; platform_admin via override.
   // The READ of a mentor's eligibility reuses the P1 `membership.read` roster read.
   | 'mentor.manage_eligibility'
+  // shared chapter calendar (guardian/director portal work order, Feature 1). The
+  // director-authored, audience-scoped chapter calendar. calendar.manage is the
+  // chapter-scoped WRITE (create/edit/cancel; chapter_director, platform_admin via
+  // override). calendar.view is the chapter-scoped staff READ floor (teaching roles:
+  // a mentor sees mentor-audience events, a director sees all — the audience
+  // refinement is a service concern on top of this role/scope floor; writes:false,
+  // so both platform overrides reach it). guardian.view_calendar is the guardian-
+  // scoped READ of the child's-chapter parent-audience events (like
+  // guardian.view_digest), matched against ctx.guardianOf.
+  | 'calendar.manage'
+  | 'calendar.view'
+  | 'guardian.view_calendar'

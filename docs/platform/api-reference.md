@@ -859,6 +859,49 @@ Mentor eligibility is recorded as **STATE**: an append-only `mentor_eligibility`
 
 ---
 
+## 6c. Shared chapter calendar (guardian/director portal, Feature 1)
+
+The director-authored, **audience-scoped** chapter calendar. A `chapter_director` authors a chapter's calendar of events, each tagged with the **audiences** (`parent` | `mentor` | `director`) that scope who may read it, and precise UTC timestamps. A `kind: "session"` event is the **source of truth for attendance** (Feature 2 reads its real `startsAt`/`endsAt` — the frontend stops hardcoding "Saturday 10:00").
+
+**Append-only / auditable (platform invariant).** The calendar is an event-sourced revision log (`calendar_event`, migration `0026`): one row per `(event, revision)` with a stable `event_id` identity, a bumped `version`, a `status` (`active` | `canceled`), and the full field snapshot (including the `audiences[]` enum array — so every revision carries its own audience set for the trail). An **edit** is a new `active` revision; a **cancel** is a new `canceled` tombstone — never a destructive UPDATE or a hard DELETE (enforced by the shared `reject_append_only_mutation()` trigger + role REVOKE). Reads return the current non-canceled state via the `calendar_event_current` projection view (latest revision per `event_id`, carrying the **original** `createdBy`/`createdAt` forward). Every create/edit/cancel writes an `audit_entry` (`action = calendar.{created,edited,canceled}`) **and** an `access_ledger` row of the same event, **including the audience set** in `detail`.
+
+**Event object** (all surfaces; timestamps ISO-8601 UTC):
+```
+{ id, chapterId, title, kind, startsAt, endsAt, audiences, location, notes, createdByAccountId, createdAt }
+```
+`id` is the **stable event identity** (the target of PATCH/DELETE), not the internal revision id. `kind ∈ {session, orientation, meeting, other}`; `audiences` is a non-empty subset of `{parent, mentor, director}`; `location`/`notes` are nullable. Lists are the `{ items: [event, ...] }` envelope.
+
+**Capabilities (added to the registry with allow/deny fixtures):**
+- **`calendar.manage`** — chapter-scoped **write**, `chapter_director` (`platform_admin` via override; a read-only `platform_staff` cannot). The three mutating routes are manifested against it.
+- **`calendar.view`** — chapter-scoped **read floor**, roles `TEACHING` (`junior_mentor`, `senior_instructor`, `lead_instructor`, `chapter_director`), `writes:false` (both platform overrides reach it). `can` gates the role+scope floor; the **audience refinement is a service concern** on top: a non-director teaching member (a mentor) sees only `mentor`-audience events, while a **director of the chapter (or a platform reader) sees every audience**. `director`-tagged events are readable by the directors + `platform_admin` **of that event's chapter only**, never cross-chapter.
+- **`guardian.view_calendar`** — guardian-scoped read (roles `[]`; the guardianship is the authority, matched against `ctx.guardianOf`), `writes:false`, no read-log (it returns a chapter schedule, not the composed minor record). Mirrors `guardian.view_digest`.
+
+### `POST /api/ops/calendar` — create an event (`calendar.manage`)
+- **Auth:** session — `calendar.manage`. Cross-chapter → opaque `403`.
+- **Request body:** `chapterId` (required — must match the director's chapter, or admin override), `title` (required), `kind` (required), `startsAt` (required ISO), `endsAt` (required ISO — validated **strictly after** `startsAt`), `audiences` (required non-empty subset), `location?`, `notes?`.
+- **Response `201`:** the created event object. **Errors:** `400` bad `kind`/`audiences` (empty or invalid)/`time_range`; `403`.
+
+### `PATCH /api/ops/calendar/{id}` — edit (a new revision; `calendar.manage`)
+- **Auth:** session — `calendar.manage`, resolved against the event's chapter (same-chapter check; another chapter → `403`).
+- **Path param:** `id` (the `event_id`). **Body:** any subset of `title`, `kind`, `startsAt`, `endsAt`, `audiences`, `location`, `notes` (omitted fields keep the current revision's value; merged `endsAt > startsAt` enforced).
+- **Response `200`:** the updated event (version bumped). **Errors:** `400`; `403`; `404` `CalendarEventNotFoundError`.
+
+### `DELETE /api/ops/calendar/{id}` — cancel (a tombstone; `calendar.manage`)
+- **Auth:** session — `calendar.manage`, same-chapter check.
+- **Response `200`:** `{ id, status: "canceled", version }`. The event drops out of all reads; the prior revision **and** the tombstone both remain (append-only). **Errors:** `403`; `404`.
+
+### `GET /api/ops/calendar?chapterId=` — the staff view (`calendar.view`; GET-exempt)
+- **Auth:** session — `calendar.view`. A caller not staff of `chapterId` → opaque `403`; cross-chapter leakage is impossible (server-side membership check).
+- **Query:** `chapterId` (optional — defaults to the caller's in-force teaching chapter(s)). Returns non-canceled events, **audience-filtered by the caller's role**: a mentor sees `mentor`-audience events; a director (or platform reader) sees every audience.
+- **Response `200`:** `{ items: [event, ...] }`.
+
+### `GET /api/guardian/calendar` — the guardian view (`guardian.view_calendar`; GET-exempt)
+- **Auth:** session — `guardian.view_calendar`, matched against the guardian's verified children. A session with **no verified child** → opaque `403`.
+- Resolves each verified child to their active chapter and returns the **`parent`-audience** non-canceled events across them, each tagged with its `chapterId` (a guardian with children in multiple chapters sees the **union**).
+- **Response `200`:** `{ items: [event, ...] }`.
+
+---
+
 ## 7. Platform admin
 
 ### `POST /api/admin/chapters`

@@ -42,6 +42,9 @@ import {
   assistRecoveryInC1,
   ledgerReadC1,
   mentorEligibilityC1,
+  calendarManageC1,
+  calendarViewC1,
+  guardianCalendarOfS,
   childRecord18,
   safetyReport,
   ordinaryReport,
@@ -742,6 +745,41 @@ describe('mentor.manage_eligibility (§6 record a mentor eligibility clearance)'
   })
   test('a read-only platform_staff is denied a write cap (out_of_scope)', () => {
     expectDeny(actors.platform_staff, 'mentor.manage_eligibility', mentorEligibilityC1, 'out_of_scope')
+  })
+})
+
+// ===========================================================================
+// Shared chapter calendar (guardian/director portal, Feature 1): the three new
+// capabilities.
+//   - calendar.manage (chapter-scoped write, chapter_director; admin via override)
+//   - calendar.view   (chapter-scoped read floor, TEACHING roles; both platform
+//                       overrides reach it because writes:false)
+//   - guardian.view_calendar (guardian-scoped read of the child's-chapter parent
+//                       events; matched against ctx.guardianOf)
+// ===========================================================================
+describe('shared chapter calendar capabilities (Feature 1)', () => {
+  test('calendar.manage (director writes own chapter; admin via override; cross-chapter out_of_scope; non-director role_not_permitted; read-only staff out_of_scope)', () => {
+    expectAllow(actors.chapter_director_c1, 'calendar.manage', calendarManageC1)
+    expectAllow(actors.platform_admin, 'calendar.manage', calendarManageC1)
+    expectDeny(actors.chapter_director_c2, 'calendar.manage', calendarManageC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'calendar.manage', calendarManageC1, 'role_not_permitted')
+    expectDeny(actors.platform_staff, 'calendar.manage', calendarManageC1, 'out_of_scope')
+  })
+
+  test('calendar.view (a mentor OR director in the chapter reads; both platform overrides reach it; cross-chapter out_of_scope; a student role_not_permitted)', () => {
+    expectAllow(actors.junior_mentor_adult, 'calendar.view', calendarViewC1)
+    expectAllow(actors.lead_instructor_c1, 'calendar.view', calendarViewC1)
+    expectAllow(actors.chapter_director_c1, 'calendar.view', calendarViewC1)
+    expectAllow(actors.platform_admin, 'calendar.view', calendarViewC1)
+    // writes:false, so the read-only platform_staff override also grants it.
+    expectAllow(actors.platform_staff, 'calendar.view', calendarViewC1)
+    expectDeny(actors.chapter_director_c2, 'calendar.view', calendarViewC1, 'out_of_scope')
+    expectDeny(actors.student_18, 'calendar.view', calendarViewC1, 'role_not_permitted')
+  })
+
+  test('guardian.view_calendar (the child’s guardian reads; a stranger denies out_of_scope)', () => {
+    expectAllow(actors.guardian_of_S, 'guardian.view_calendar', guardianCalendarOfS)
+    expectDeny(actors.no_membership, 'guardian.view_calendar', guardianCalendarOfS, 'out_of_scope')
   })
 })
 

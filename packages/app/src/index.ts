@@ -373,6 +373,19 @@ export type {
   PodAssignmentResult,
   UnassignResult,
 } from './pod.js'
+export { CalendarService } from './calendar.js'
+export type {
+  CalendarServiceDeps,
+  CalendarAuthorizeFn,
+  CalendarCapability,
+  CalendarEvent,
+  CalendarEventKind,
+  CalendarAudience,
+  CreateCalendarEventInput,
+  EditCalendarEventInput,
+  CancelCalendarEventResult,
+  CalendarListQuery,
+} from './calendar.js'
 export { OpsReadService, displayFromFullName } from './ops-read.js'
 export type {
   OpsReadServiceDeps,
@@ -559,4 +572,6 @@ export {
   TotpSecretMissingError,
   InvalidTotpCodeError,
   TotpRateLimitedError,
+  CalendarEventNotFoundError,
+  CalendarValidationError,
 } from './errors.js'

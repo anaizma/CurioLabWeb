@@ -195,6 +195,21 @@ export type {
   UnassignPodInputHttp,
 } from './controllers/org.js'
 
+// Shared chapter calendar (guardian/director portal, Feature 1)
+export {
+  createCalendarEvent,
+  editCalendarEvent,
+  cancelCalendarEvent,
+  listStaffCalendar,
+  listGuardianCalendar,
+} from './controllers/calendar.js'
+export type {
+  CreateCalendarInput,
+  EditCalendarInput,
+  CancelCalendarInput,
+  StaffCalendarInput,
+} from './controllers/calendar.js'
+
 // Guardian portal
 export {
   viewChildRecord,

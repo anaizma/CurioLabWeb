@@ -443,6 +443,28 @@ export const ledgerReadC1: Resource = { chapter_id: C1 }
 // denies role_not_permitted, and a read-only platform_staff denies (writes:true).
 export const mentorEligibilityC1: Resource = { id: 'membership-mentor-1', chapter_id: C1 }
 
+// shared chapter calendar (guardian/director portal, Feature 1).
+// calendar.manage (chapter-scoped write, chapter_director; admin via override):
+// the resource is the event's chapter. A director in it writes; another chapter
+// denies out_of_scope; a non-director role denies role_not_permitted; a read-only
+// platform_staff denies out_of_scope (writes:true).
+export const calendarManageC1: Resource = { chapter_id: C1 }
+// calendar.view (chapter-scoped read floor, roles TEACHING): the resource is the
+// chapter whose calendar is read. A mentor OR the director in the chapter reads;
+// another chapter denies out_of_scope; a student denies role_not_permitted; both
+// platform overrides reach it (writes:false).
+export const calendarViewC1: Resource = { chapter_id: C1 }
+// guardian.view_calendar (guardian-scoped read): the resource names one of the
+// guardian's verified children; the child's guardian reads, a stranger denies
+// out_of_scope.
+export const guardianCalendarOfS: Resource = {
+  subjectAccountId: ID.childS,
+  subjectAge: 15,
+  subjectIsMinor: true,
+  subjectPodId: POD1,
+  chapter_id: C1,
+}
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,

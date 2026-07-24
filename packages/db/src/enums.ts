@@ -195,6 +195,26 @@ export const mentorEligibilityComponentEnum = pgEnum('mentor_eligibility_compone
   'signed_code_of_conduct',
 ])
 
+// --- Shared chapter calendar (guardian/director portal, Feature 1) ---
+// The director-authored, audience-scoped chapter calendar (migration 0026). A
+// db-only enum trio: the pure core does not model calendar events (a persistence
+// concern). `audiences` is stored as a calendar_audience[] array column.
+export const calendarEventKindEnum = pgEnum('calendar_event_kind', [
+  'session',
+  'orientation',
+  'meeting',
+  'other',
+])
+export const calendarAudienceEnum = pgEnum('calendar_audience', [
+  'parent',
+  'mentor',
+  'director',
+])
+export const calendarEventStatusEnum = pgEnum('calendar_event_status', [
+  'active',
+  'canceled',
+])
+
 // --- guardian-portal request and fee tables (Milestone 1 step 7) ---
 export const paymentStatusEnum = pgEnum('payment_status', [
   'none',

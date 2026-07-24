@@ -59,6 +59,14 @@ export type AccessLedgerEvent =
   | 'publication.objected'
   | 'publication.released'
   | 'publication.withheld'
+  // Shared chapter calendar (guardian/director portal, Feature 1). A director
+  // created, edited (a new revision), or canceled (a tombstone) a chapter calendar
+  // event — an access-provenance event, like the org-structure writes. actor is the
+  // recording director; the chapter is the event's chapter; detail carries the
+  // eventId, the audience set, and (for an edit/cancel) the version bump — never PII.
+  | 'calendar.created'
+  | 'calendar.edited'
+  | 'calendar.canceled'
 
 export interface AccessLedgerInput {
   event: AccessLedgerEvent

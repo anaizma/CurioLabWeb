@@ -38,6 +38,9 @@ import {
   applicationLeadFillerRoleEnum,
   applicationLeadStatusEnum,
   applicationStatusEnum,
+  calendarAudienceEnum,
+  calendarEventKindEnum,
+  calendarEventStatusEnum,
   chapterStatusEnum,
   chapterTierEnum,
   consentActionEnum,
@@ -565,6 +568,44 @@ export const mentorEligibility = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('mentor_eligibility_membership_component_idx').on(t.membershipId, t.component, t.seq)],
+)
+
+// --- Shared chapter calendar (guardian/director portal, Feature 1) ----------
+// The director-authored, audience-scoped chapter calendar as an append-only
+// revision log (migration 0026). One row per (event, revision): a stable event_id
+// identity, a bumped version, a status (active|canceled), and the full field
+// snapshot including the audiences[] enum array. An edit is a new active revision,
+// a cancel a new 'canceled' tombstone — never a mutation (append-only via the
+// reject_append_only_mutation() trigger + role REVOKE). The current state per event
+// is the calendar_event_current view (not modeled here). The DDL + guarantees live
+// in migration 0026, not here.
+export const calendarEvent = pgTable(
+  'calendar_event',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'bigint' }).notNull().unique(),
+    eventId: uuid('event_id').notNull(),
+    chapterId: uuid('chapter_id')
+      .notNull()
+      .references(() => chapter.id),
+    version: integer('version').notNull().default(1),
+    status: calendarEventStatusEnum('status').notNull().default('active'),
+    title: text('title').notNull(),
+    kind: calendarEventKindEnum('kind').notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    audiences: calendarAudienceEnum('audiences').array().notNull(),
+    location: text('location'),
+    notes: text('notes'),
+    createdByAccountId: uuid('created_by_account_id').references(() => account.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('calendar_event_event_seq_idx').on(t.eventId, t.seq),
+    index('calendar_event_chapter_idx').on(t.chapterId, t.seq),
+    check('calendar_event_time_order', sql`${t.endsAt} > ${t.startsAt}`),
+    check('calendar_event_audiences_nonempty', sql`cardinality(${t.audiences}) >= 1`),
+  ],
 )
 
 // --- Audit -----------------------------------------------------------------

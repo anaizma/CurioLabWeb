@@ -1238,3 +1238,33 @@ export class PublicationGrantRequiredError extends Error {
     this.grantType = grantType
   }
 }
+
+// -------------------------------------------------------------------------
+// Shared chapter calendar (guardian/director portal, Feature 1).
+// -------------------------------------------------------------------------
+
+/** The referenced calendar event does not exist (edit/cancel of an unknown id). */
+export class CalendarEventNotFoundError extends Error {
+  readonly eventId: string
+  constructor(eventId: string) {
+    super(`calendar event not found: ${eventId}`)
+    this.name = 'CalendarEventNotFoundError'
+    this.eventId = eventId
+  }
+}
+
+/**
+ * A calendar event write failed validation before any authorization decision:
+ * `time_range` (endsAt is not strictly after startsAt), `audiences` (empty or an
+ * invalid value — must be a non-empty subset of parent|mentor|director), or
+ * `kind` (not one of session|orientation|meeting|other). Distinct from a Forbidden
+ * (an authorization failure); mappable to a 400.
+ */
+export class CalendarValidationError extends Error {
+  readonly field: 'time_range' | 'audiences' | 'kind'
+  constructor(field: 'time_range' | 'audiences' | 'kind', message?: string) {
+    super(message ?? `invalid calendar event: ${field}`)
+    this.name = 'CalendarValidationError'
+    this.field = field
+  }
+}

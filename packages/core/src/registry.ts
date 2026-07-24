@@ -698,4 +698,43 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+
+  // ---- shared chapter calendar (guardian/director portal, Feature 1) --------
+  // The director-authored, audience-scoped chapter calendar.
+  //
+  // calendar.manage: the chapter-scoped WRITE (create an event, edit a new
+  // revision, cancel a tombstone). Chapter_director in THEIR chapter (another
+  // chapter denies out_of_scope); platform_admin via the override (writes:true,
+  // so a read-only platform_staff does NOT reach it), mirroring term.manage /
+  // pod.manage.
+  'calendar.manage': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+  // calendar.view: the chapter-scoped staff READ FLOOR. Roles TEACHING (a pod
+  // mentor / instructor, or the chapter director) so a mentor can read their
+  // chapter's calendar; the AUDIENCE refinement (a non-director teaching role sees
+  // only mentor-audience events, a director sees every audience) is a Calendar
+  // service concern layered on top of this role+scope floor — `can` gates the
+  // floor, the service filters by audience, mirroring how project.create gates the
+  // chapter+role floor and the service enforces the `own` bound. writes:false, so
+  // BOTH platform overrides (admin + read-only staff) reach it, and a platform
+  // reader sees every audience like a director.
+  'calendar.view': {
+    scope: 'chapter',
+    roles: TEACHING,
+    writes: false,
+  },
+  // guardian.view_calendar: the guardian-scoped READ of the child's-chapter
+  // parent-audience events. roles [] — guardianship itself is the authority,
+  // matched against ctx.guardianOf by the guardian scope; a lapsed/revoked edge is
+  // absent so it denies. writes:false, no logsRead (it returns a chapter schedule,
+  // not the composed minor record). Authorized against one of the guardian's
+  // verified children, like guardian.view_digest / guardian.list_children.
+  'guardian.view_calendar': {
+    scope: 'guardian',
+    roles: [],
+    writes: false,
+  },
 }

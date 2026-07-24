@@ -411,6 +411,15 @@ export const ROUTE_MANIFEST: RouteManifest = [
     path: '/api/ops/mentors/[membershipId]/eligibility',
     capability: 'mentor.manage_eligibility',
   },
+  // Shared chapter calendar (guardian/director portal, Feature 1): the director-
+  // authored, audience-scoped calendar. All three writes gate through
+  // calendar.manage (chapter_director; platform_admin via override). The two GET
+  // reads (staff GET /api/ops/calendar via calendar.view, guardian GET
+  // /api/guardian/calendar via guardian.view_calendar) are GET-exempt from the
+  // manifest. An edit is a new revision; a cancel a tombstone (append-only).
+  { method: 'POST', path: '/api/ops/calendar', capability: 'calendar.manage' },
+  { method: 'PATCH', path: '/api/ops/calendar/[id]', capability: 'calendar.manage' },
+  { method: 'DELETE', path: '/api/ops/calendar/[id]', capability: 'calendar.manage' },
   { method: 'POST', path: '/api/ops/maturations/[id]/confirm', capability: 'maturation.confirm' },
   { method: 'POST', path: '/api/ops/accounts/[id]/reissue-setup', capability: 'account.recover' },
   // §9: the logged mentor/director-assisted minor recovery (distinct from
