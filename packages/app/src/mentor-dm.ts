@@ -48,6 +48,7 @@ import {
   DmClosedHoursError,
   DmEnablePreconditionError,
   DmNotAuthorizedForPairError,
+  DmThreadFrozenError,
   DmThreadNotFoundError,
   SafetyOfficerPeerConflictError,
 } from './errors.js'
@@ -462,8 +463,15 @@ export class DmThreadService {
    * a thread iff it is one of the two participants (the mentor via their membership,
    * or the student), the chapter safety officer, or a VERIFIED guardian of the
    * student. Everyone else is denied.
+   *
+   * A guardian's standing access is SUSPENDABLE (design C.8): while an ACTIVE
+   * guardian-visibility suspension exists for this student (an initiated row that is
+   * acknowledged, unexpired at `now`, and not revoked, scoped student-wide or to
+   * this thread), the guardian is treated as NOT a party — they cannot read; the
+   * mentor/student/safety-officer parties are unaffected. Auto-restores after expiry
+   * (no fresh initiation), which is why the check is `expires_at > now`.
    */
-  async isPartyToThread(threadId: string, accountId: string): Promise<boolean> {
+  async isPartyToThread(threadId: string, accountId: string, now: Date = new Date()): Promise<boolean> {
     const [row] = await this.sql`
       with th as (select * from dm_thread where id = ${threadId})
       select
@@ -483,6 +491,23 @@ export class DmThreadService {
           select 1 from th
           join guardianship g on g.student_account_id = th.student_account_id
           where g.guardian_account_id = ${accountId} and g.status = 'verified'
+        )
+        and not exists (
+          -- an ACTIVE guardian-visibility suspension removes the guardian party (C.8)
+          select 1 from th
+          join dm_visibility_suspension i
+            on i.student_account_id = th.student_account_id
+           and i.event = 'initiated'
+           and (i.thread_id is null or i.thread_id = th.id)
+           and i.expires_at > ${now}
+          where exists (
+                  select 1 from dm_visibility_suspension a
+                  where a.suspension_id = i.suspension_id and a.event = 'acknowledged'
+                )
+            and not exists (
+                  select 1 from dm_visibility_suspension r
+                  where r.suspension_id = i.suspension_id and r.event = 'revoked'
+                )
         ) as is_guardian
     `
     if (row === undefined || row.thread_exists !== true) return false
@@ -492,6 +517,27 @@ export class DmThreadService {
       row.is_safety_officer === true ||
       row.is_guardian === true
     )
+  }
+
+  /**
+   * Whether the thread for this mentor<->student pair is FROZEN (design C.15): a
+   * mentor-departure freeze row exists. A frozen thread accepts no new messages
+   * (even if the pair is later re-enabled) but remains readable and is never
+   * deleted. Returns the thread id when a thread exists, and whether it is frozen.
+   */
+  private async pairThreadFreeze(
+    db: Db,
+    mentorMembershipId: string,
+    studentAccountId: string,
+  ): Promise<{ threadId: string | null; frozen: boolean }> {
+    const [row] = await db`
+      select t.id as thread_id, (f.id is not null) as frozen
+      from dm_thread t
+      left join dm_thread_freeze f on f.thread_id = t.id
+      where t.mentor_membership_id = ${mentorMembershipId} and t.student_account_id = ${studentAccountId}
+    `
+    if (row === undefined) return { threadId: null, frozen: false }
+    return { threadId: row.thread_id as string, frozen: row.frozen === true }
   }
 
   /**
@@ -539,6 +585,13 @@ export class DmThreadService {
     const isSender = isMentor.length > 0 || senderAccountId === args.studentAccountId
     if (!isSender) throw new Forbidden()
 
+    // Mentor-departure freeze (design C.15): a FROZEN thread accepts no new
+    // messages, even if canDirectMessage is (again) true for the pair, unless it is
+    // explicitly reactivated. Reject BEFORE any write; the thread still reads and is
+    // never deleted.
+    const freeze = await this.pairThreadFreeze(this.sql, args.mentorMembershipId, args.studentAccountId)
+    if (freeze.frozen && freeze.threadId !== null) throw new DmThreadFrozenError(freeze.threadId)
+
     // Closed hours (design C.4): a SEND is refused outside the chapter's allowed
     // LOCAL window (default 07:00-21:00, per-chapter overridable). Deterministic —
     // computed from the chapter timezone at the injected `now`. Reads are NEVER
@@ -575,18 +628,32 @@ export class DmThreadService {
         threadId = t!.id as string
       }
       const [m] = await tx`
-        insert into dm_message (thread_id, sender_account_id, body)
-        values (${threadId}, ${senderAccountId}, ${tx.json(envelope as unknown as Parameters<typeof tx.json>[0])})
+        insert into dm_message (thread_id, sender_account_id, body, sent_at)
+        values (${threadId}, ${senderAccountId}, ${tx.json(envelope as unknown as Parameters<typeof tx.json>[0])}, ${now})
         returning id
       `
       const messageId = m!.id as string
       // Record the content flags (append-only dm_flag), routed to the safety officer
-      // (Phase 3 queue). The send is NOT blocked by a flag.
+      // (Phase 3 reading queue). The send is NOT blocked by a flag. Every matched
+      // category flags (design C.5) — contact_info, secrecy_framing,
+      // in_person_arrangement, romantic_appearance, home_life_probing — one row per
+      // category. `detail` is the matched KIND, never the raw text. Each raise also
+      // appends a `dm.flag_raised` monitoring-ledger entry (design C.7) so the
+      // quarterly report can count flags raised from the ledger, not only dm_flag.
       for (const flag of contentFlags) {
-        await tx`
+        const [fr] = await tx`
           insert into dm_flag (thread_id, message_id, category, detail)
           values (${threadId}, ${messageId}, ${flag.category}, ${flag.detail})
+          returning id
         `
+        await writeAccessLedger(tx, {
+          event: 'dm.flag_raised',
+          actorAccountId: senderAccountId,
+          realActorAccountId: ctx.session.impersonation?.real_actor_account_id ?? null,
+          subjectAccountId: args.studentAccountId,
+          chapterId: args.chapterId,
+          detail: { threadId, messageId, flagId: fr!.id as string, category: flag.category },
+        })
       }
       await writeAccessLedger(tx, {
         event: 'dm.message_sent',
@@ -703,12 +770,35 @@ export class DmThreadService {
   async readThread(
     threadId: string,
     readerAccountId: string,
+    now: Date = new Date(),
   ): Promise<{ visibilityHeader: string; messages: DmDecryptedMessage[] }> {
     const [thread] = await this.sql`
-      select visibility_header_text from dm_thread where id = ${threadId}
+      select visibility_header_text, chapter_id, student_account_id
+      from dm_thread where id = ${threadId}
     `
     if (thread === undefined) throw new DmThreadNotFoundError(threadId)
-    if (!(await this.isPartyToThread(threadId, readerAccountId))) throw new Forbidden()
+    // The four-party read, suspension-aware at `now` (a suspended guardian is not a
+    // party — design C.8).
+    if (!(await this.isPartyToThread(threadId, readerAccountId, now))) throw new Forbidden()
+
+    // Monitoring ledger (design C.7): a GUARDIAN read of a thread is logged (who,
+    // when, which thread). A verified guardian who reached this point is not
+    // suspended, so this records a genuine guardian open (the guardian-supervision
+    // signal). Participant/officer reads are logged on their own paths.
+    const isGuardian = await this.sql`
+      select 1 from guardianship
+      where student_account_id = ${thread.student_account_id} and guardian_account_id = ${readerAccountId}
+        and status = 'verified' limit 1
+    `
+    if (isGuardian.length > 0) {
+      await writeAccessLedger(this.sql, {
+        event: 'dm.read_by_guardian',
+        actorAccountId: readerAccountId,
+        subjectAccountId: thread.student_account_id as string,
+        chapterId: thread.chapter_id as string,
+        detail: { threadId },
+      })
+    }
 
     const rows = await this.sql`
       select id, seq, sender_account_id, body, sent_at from dm_message

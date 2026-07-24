@@ -466,6 +466,21 @@ export const ROUTE_MANIFEST: RouteManifest = [
   { method: 'POST', path: '/api/ops/dm/attestations', capability: 'dm.enable' },
   { method: 'POST', path: '/api/ops/dm/enable', capability: 'dm.enable' },
   { method: 'POST', path: '/api/guardian/children/[id]/dm-consent', capability: 'consent.grant' },
+  // Phase 3 (detection & oversight, built DARK). The safety officer's read-receipt
+  // and flag disposition both gate through dm.oversee; the two-adult guardian-
+  // visibility suspension initiate/acknowledge gate through the two Phase-3 caps.
+  // The reading queue (GET /api/ops/dm/queue) and the quarterly oversight report
+  // (GET /api/ops/dm/oversight-report) are GETs (read-exempt from the manifest);
+  // the queue logs officer reads to the monitoring ledger, the existing read-logging
+  // precedent. The mentor-departure freeze is a sweep-composed service (no route).
+  { method: 'POST', path: '/api/ops/dm/threads/[threadId]/read', capability: 'dm.oversee' },
+  { method: 'POST', path: '/api/ops/dm/flags/[flagId]/review', capability: 'dm.oversee' },
+  { method: 'POST', path: '/api/ops/dm/suspensions', capability: 'dm.suspend_guardian_visibility' },
+  {
+    method: 'POST',
+    path: '/api/ops/dm/suspensions/[id]/acknowledge',
+    capability: 'dm.acknowledge_visibility_suspension',
+  },
   // Phase 2 (structural constraints, built DARK). The pre-send contact-info check
   // (design C.4) is a session-gated PURE detector over a draft body — it writes
   // NOTHING and calls no `authorize`, so it is INERT (POST only because the draft

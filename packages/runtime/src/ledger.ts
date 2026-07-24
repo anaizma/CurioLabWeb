@@ -95,6 +95,23 @@ export type AccessLedgerEvent =
   | 'dm.insurance_attested'
   | 'dm.chapter_enabled'
   | 'dm.message_sent'
+  // Mentor-student direct messaging Phase 3 (detection & oversight, design C.7).
+  // The MONITORING LEDGER: every safety-officer read and every guardian read of a
+  // DM thread, every flag raised/reviewed, every read-receipt, and the full
+  // guardian-visibility-suspension lifecycle append here (who, when, which thread).
+  // The officer CANNOT modify it (append-only: role REVOKE + the trigger backstop).
+  // A quarterly export (dmOversightReport) aggregates these for the board. detail
+  // carries ids only -- NEVER the message body / any PII.
+  | 'dm.read_by_officer'
+  | 'dm.read_by_guardian'
+  | 'dm.flag_raised'
+  | 'dm.flag_reviewed'
+  | 'dm.receipt_recorded'
+  | 'dm.visibility_suspended'
+  | 'dm.visibility_acknowledged'
+  | 'dm.visibility_revoked'
+  | 'dm.visibility_restored'
+  | 'dm.thread_frozen'
 
 export interface AccessLedgerInput {
   event: AccessLedgerEvent

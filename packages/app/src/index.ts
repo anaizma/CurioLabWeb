@@ -611,12 +611,21 @@ export {
   DmEnablePreconditionError,
   DmNotAuthorizedForPairError,
   DmThreadNotFoundError,
+  DmThreadFrozenError,
+  DmSuspensionReasonRequiredError,
+  DmSuspensionNotFoundError,
+  DmSuspensionSecondAdultInvalidError,
+  DmSuspensionNotAcknowledgeableError,
+  DmFlagNotFoundError,
 } from './errors.js'
 export {
   MENTOR_DM_ENABLED,
   DM_OPEN_HOUR_DEFAULT,
   DM_CLOSE_HOUR_DEFAULT,
   DM_RETENTION_MS,
+  DM_FULL_REVIEW_MAX_WEEKLY_MESSAGES,
+  DM_VISIBILITY_SUSPENSION_MS,
+  DM_REPORTER_CHECKPOINT,
 } from './config.js'
 export {
   SafetyOfficerService,
@@ -638,3 +647,22 @@ export type {
   DmThreadExport,
 } from './mentor-dm.js'
 export { DmClosedHoursError } from './errors.js'
+export {
+  DmOversightService,
+  DmVisibilitySuspensionService,
+  dmOversightReport,
+  runDmFreezeOnDeparture,
+} from './dm-oversight.js'
+export type {
+  DmOversightServiceDeps,
+  DmOversightAuthorizeFn,
+  DmQueueItem,
+  DmThreadCoverage,
+  DmReadingQueue,
+  DmOversightReport,
+  DmVisibilitySuspensionServiceDeps,
+  DmSuspensionInitiateInput,
+  DmSuspensionInitiateResult,
+  RunDmFreezeOnDepartureArgs,
+  RunDmFreezeOnDepartureResult,
+} from './dm-oversight.js'

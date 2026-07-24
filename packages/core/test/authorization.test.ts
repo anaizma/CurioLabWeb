@@ -933,6 +933,30 @@ describe('mentor-student DM capabilities (Phase 1)', () => {
     // writes:true, so the read-only platform_staff override does NOT reach it.
     expectDeny(actors.platform_staff, 'dm.oversee', dmChapterC1, 'out_of_scope')
   })
+
+  test('dm.suspend_guardian_visibility (only the safety officer initiates; a director role_not_permitted; cross-chapter out_of_scope; read-only override barred)', () => {
+    expectAllow(actors.safety_officer_c1, 'dm.suspend_guardian_visibility', dmChapterC1)
+    // platform_admin reaches it via the write override.
+    expectAllow(actors.platform_admin, 'dm.suspend_guardian_visibility', dmChapterC1)
+    // a director is NOT the initiator (only the safety officer initiates, C.8).
+    expectDeny(actors.chapter_director_c1, 'dm.suspend_guardian_visibility', dmChapterC1, 'role_not_permitted')
+    expectDeny(actors.junior_mentor_adult, 'dm.suspend_guardian_visibility', dmChapterC1, 'role_not_permitted')
+    expectDeny(actors.safety_officer_c2, 'dm.suspend_guardian_visibility', dmChapterC1, 'out_of_scope')
+    // writes:true, so the read-only platform_staff override does NOT reach it.
+    expectDeny(actors.platform_staff, 'dm.suspend_guardian_visibility', dmChapterC1, 'out_of_scope')
+  })
+
+  test('dm.acknowledge_visibility_suspension (a director or another safety officer may acknowledge; a mentor role_not_permitted; cross-chapter out_of_scope; read-only override barred)', () => {
+    expectAllow(actors.chapter_director_c1, 'dm.acknowledge_visibility_suspension', dmChapterC1)
+    expectAllow(actors.safety_officer_c1, 'dm.acknowledge_visibility_suspension', dmChapterC1)
+    expectAllow(actors.platform_admin, 'dm.acknowledge_visibility_suspension', dmChapterC1)
+    // a mentor is not an eligible second adult (the not-a-mentor rule is floored
+    // here by the role set, then re-checked in the service).
+    expectDeny(actors.junior_mentor_adult, 'dm.acknowledge_visibility_suspension', dmChapterC1, 'role_not_permitted')
+    expectDeny(actors.chapter_director_c2, 'dm.acknowledge_visibility_suspension', dmChapterC1, 'out_of_scope')
+    // writes:true, so the read-only platform_staff override does NOT reach it.
+    expectDeny(actors.platform_staff, 'dm.acknowledge_visibility_suspension', dmChapterC1, 'out_of_scope')
+  })
 })
 
 // ===========================================================================

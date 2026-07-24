@@ -407,3 +407,15 @@ export type Capability =
   | 'dm.message'
   | 'dm.read_own'
   | 'dm.oversee'
+  // mentor-student DM Phase 3 (detection & oversight, design C.7/C.8; built DARK).
+  // dm.suspend_guardian_visibility is the safety officer's guarded, two-adult
+  // suspension of a guardian's standing read access (chapter-scoped write,
+  // [safety_officer]); the reason + second-adult-not-a-mentor + 90-day expiry +
+  // reporter checkpoint are DmVisibilitySuspensionService concerns on top of this
+  // floor. dm.acknowledge_visibility_suspension is the SECOND adult's
+  // acknowledgement authority (chapter-scoped write, [chapter_director,
+  // safety_officer] — never a mentor of the student; the distinct-from-initiator
+  // + not-a-mentor rules are service-enforced). Both are staff-only (no student
+  // party) and ride the existing guardian-staff exemption in the no-DM guard.
+  | 'dm.suspend_guardian_visibility'
+  | 'dm.acknowledge_visibility_suspension'

@@ -823,6 +823,104 @@ export const dmFlag = pgTable(
   ],
 )
 
+// --- Mentor-student DM Phase 3 (detection & oversight, migration 0032; DARK) ---
+// All four are APPEND-ONLY (shared reject_append_only_mutation trigger +
+// SELECT/INSERT-only grants), like dm_thread/dm_message/dm_flag.
+
+// dm_read_receipt (C.6): a reader (the safety officer) marking a thread read up to
+// a `seq`. Coverage is COMPUTED (a message is read iff seq <= max up_to_seq).
+export const dmReadReceipt = pgTable(
+  'dm_read_receipt',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => dmThread.id),
+    readerAccountId: uuid('reader_account_id')
+      .notNull()
+      .references(() => account.id),
+    upToSeq: bigint('up_to_seq', { mode: 'bigint' }).notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('dm_read_receipt_thread_idx').on(t.threadId, t.upToSeq),
+    index('dm_read_receipt_reader_idx').on(t.readerAccountId),
+  ],
+)
+
+// dm_flag_review (C.7): the safety officer's disposition of a raised dm_flag. A
+// review is a NEW record (dm_flag is append-only). `note` is a reference, not PII.
+export const dmFlagReview = pgTable(
+  'dm_flag_review',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    flagId: uuid('flag_id')
+      .notNull()
+      .references(() => dmFlag.id),
+    reviewedBy: uuid('reviewed_by')
+      .notNull()
+      .references(() => account.id),
+    disposition: text('disposition').notNull(),
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('dm_flag_review_flag_idx').on(t.flagId)],
+)
+
+// dm_visibility_suspension (C.8): the two-adult guardian-visibility suspension,
+// EVENT-SOURCED as append-only lifecycle rows grouped by suspension_id
+// (initiated -> acknowledged -> revoked). "Active" is computed by the service. A
+// CHECK requires an initiation to carry its reason + initiator + expiry.
+export const dmVisibilitySuspension = pgTable(
+  'dm_visibility_suspension',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    event: text('event').notNull(),
+    suspensionId: uuid('suspension_id').notNull(),
+    studentAccountId: uuid('student_account_id')
+      .notNull()
+      .references(() => account.id),
+    threadId: uuid('thread_id').references(() => dmThread.id),
+    initiatedBySafetyOfficerId: uuid('initiated_by_safety_officer_id').references(() => account.id),
+    reason: text('reason'),
+    secondAdultAccountId: uuid('second_adult_account_id').references(() => account.id),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    reporterCheckpointAck: boolean('reporter_checkpoint_ack').notNull().default(false),
+    actorAccountId: uuid('actor_account_id').references(() => account.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('dm_visibility_suspension_student_idx').on(t.studentAccountId),
+    index('dm_visibility_suspension_group_idx').on(t.suspensionId, t.event),
+    check('event', sql`${t.event} IN ('initiated','acknowledged','revoked')`),
+    check(
+      'dm_visibility_suspension_initiated_requires_reason',
+      sql`${t.event} <> 'initiated' OR (${t.reason} IS NOT NULL AND ${t.initiatedBySafetyOfficerId} IS NOT NULL AND ${t.expiresAt} IS NOT NULL)`,
+    ),
+  ],
+)
+
+// dm_thread_freeze (C.15): the mentor-departure freeze/preserve record. A thread
+// is FROZEN iff a row exists (one per thread). handoff_decision is REQUIRED.
+export const dmThreadFreeze = pgTable(
+  'dm_thread_freeze',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => dmThread.id),
+    mentorMembershipId: uuid('mentor_membership_id')
+      .notNull()
+      .references(() => membership.id),
+    reason: text('reason'),
+    handoffDecision: text('handoff_decision').notNull(),
+    frozenByAccountId: uuid('frozen_by_account_id').references(() => account.id),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('dm_thread_freeze_thread_unique').on(t.threadId)],
+)
+
 // --- Audit -----------------------------------------------------------------
 
 export const auditEntry = pgTable(

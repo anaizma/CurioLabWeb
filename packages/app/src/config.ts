@@ -310,6 +310,47 @@ export const DM_CLOSE_HOUR_DEFAULT = 21
 export const DM_RETENTION_MS = 30 * 365 * 24 * 60 * 60 * 1000 // ~30 years (PLACEHOLDER, pending counsel)
 
 /**
+ * Mentor-student DM full-review TRANSITION THRESHOLD (design C.6; Phase 3) — a
+ * clearly-labelled PLACEHOLDER pending the program lead. At this scale the safety
+ * officer reads EVERYTHING (a complete chronological queue with read-receipts);
+ * behavioral ranking / sampling is a deliberately DEFERRED, scale-triggered future
+ * capability. This is the weekly-message-volume above which full review is deemed
+ * infeasible and sampling/ranking would be DESIGNED. The oversight surface only
+ * EXPOSES whether the chapter is over/under this line so the officer/board sees
+ * when the model must change; nothing samples now. NOT YET set by the program lead
+ * — do not treat as final. A value, not a literal (compliance-coppa.md Part 3).
+ */
+export const DM_FULL_REVIEW_MAX_WEEKLY_MESSAGES = 500 // PLACEHOLDER, pending the program lead
+
+/**
+ * Mentor-student DM guardian-visibility suspension expiry (design C.8; Phase 3).
+ * A safety-officer suspension of a guardian's standing read access EXPIRES after
+ * this interval, after which guardian visibility auto-restores UNLESS affirmatively
+ * re-authorized (a new suspension). It never persists silently. 90 days, per the
+ * board decision (design decision 6). A value, not a literal.
+ */
+export const DM_VISIBILITY_SUSPENSION_MS = 90 * 24 * 60 * 60 * 1000 // 90 days
+
+/**
+ * Mentor-student DM mandatory-reporter checkpoint (design C.8; Phase 3) — the
+ * content the suspension flow surfaces at the moment a safety officer suspends
+ * guardian visibility, because suspending on the theory that the guardian may be
+ * the risk is very likely already reportable-suspicion territory. The BACKEND
+ * returns this content in the initiation payload AND records that it was surfaced
+ * (dm_visibility_suspension.reporter_checkpoint_ack); the interface shows it. The
+ * hotline details/wording are a PLACEHOLDER pending confirmation (design "Open").
+ */
+export const DM_REPORTER_CHECKPOINT = {
+  title: 'Mandatory-reporter checkpoint',
+  body:
+    'Suspending guardian visibility on the theory that the guardian may be the risk ' +
+    'is very likely already reportable-suspicion territory. As a mandatory reporter, ' +
+    'consider whether this must be reported now — do not leave it to later judgment.',
+  // PLACEHOLDER pending confirmation of the exact Ohio hotline details (design "Open").
+  ohioHotline: '1-855-O-H-CHILD (1-855-642-4453)',
+} as const
+
+/**
  * §5 Rule 3 — the notify-and-object window. A standing `public_publication` grant
  * is not blanket pre-approval: a nominated item publishes only if the guardian
  * does not object within N days (default 5). A value, not a literal.
@@ -467,6 +508,10 @@ export interface AppConfig {
   dmCloseHourDefault: number
   /** C.11: the DM retention interval from DOB (PLACEHOLDER, pending counsel; ~age 30). */
   dmRetentionMs: number
+  /** C.6: the weekly-message threshold above which full review is infeasible (PLACEHOLDER). */
+  dmFullReviewMaxWeeklyMessages: number
+  /** C.8: the guardian-visibility suspension expiry in ms (90 days). */
+  dmVisibilitySuspensionMs: number
   /** §5 Rule 3: the notify-and-object hold window in ms (default 5 days). */
   publicationHoldWindowMs: number
   /** §5: the renewal clock per grant type (null = standing). */
@@ -507,6 +552,8 @@ export const defaultConfig: AppConfig = {
   dmOpenHourDefault: DM_OPEN_HOUR_DEFAULT,
   dmCloseHourDefault: DM_CLOSE_HOUR_DEFAULT,
   dmRetentionMs: DM_RETENTION_MS,
+  dmFullReviewMaxWeeklyMessages: DM_FULL_REVIEW_MAX_WEEKLY_MESSAGES,
+  dmVisibilitySuspensionMs: DM_VISIBILITY_SUSPENSION_MS,
   publicationHoldWindowMs: PUBLICATION_HOLD_WINDOW_MS,
   grantRenewalMsByType: GRANT_RENEWAL_MS_BY_TYPE,
 }

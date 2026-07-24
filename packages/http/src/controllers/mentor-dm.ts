@@ -18,9 +18,14 @@
 import {
   ConsentGrantService,
   DmEnableService,
+  DmOversightService,
   DmThreadService,
+  DmVisibilitySuspensionService,
   SafetyOfficerService,
   type DmDraftCheckResult,
+  type DmOversightReport,
+  type DmReadingQueue,
+  type DmSuspensionInitiateResult,
   type DmThreadExport,
   type GrantResult,
   type SafetyOfficerAssignResult,
@@ -151,5 +156,146 @@ export function exportDmThread(input: ExportDmThreadInput): Promise<ControllerRe
     const now = input.now ?? new Date()
     const result = await new DmThreadService({ sql }).exportThread(threadId, ctx.account.id, now)
     return { status: 200, body: result }
+  })
+}
+
+// ---- Phase 3: detection & oversight (design C.6, C.7, C.8) -----------------
+// All DARK behind MENTOR_DM_ENABLED — the services refuse with the flag off.
+//
+//   readDmQueue            GET  /api/ops/dm/queue                          (dm.oversee; GET read-exempt, logs monitoring ledger)
+//   readDmOversightReport  GET  /api/ops/dm/oversight-report              (dm.oversee; GET read-exempt)
+//   markDmThreadRead       POST /api/ops/dm/threads/:threadId/read        (dm.oversee)
+//   reviewDmFlag           POST /api/ops/dm/flags/:flagId/review          (dm.oversee)
+//   initiateDmSuspension   POST /api/ops/dm/suspensions                   (dm.suspend_guardian_visibility)
+//   acknowledgeDmSuspension POST /api/ops/dm/suspensions/:id/acknowledge  (dm.acknowledge_visibility_suspension)
+
+/** A query value may arrive as a single string or (repeatable) an array. */
+type QueryValue = string | string[] | undefined
+
+export interface ReadDmQueueInput extends AuthedInputBase {
+  query?: Record<string, QueryValue>
+}
+
+/**
+ * GET /api/ops/dm/queue?chapterId=… — the safety officer's FULL-COVERAGE reading
+ * queue for their chapter (design C.6): the complete chronological, decrypted queue
+ * with flags pinned + per-thread coverage + the weekly-volume threshold flag. GET
+ * (read-exempt from the manifest); it LOGS officer reads to the monitoring ledger,
+ * which is the existing read-logging precedent for a GET. Dark-gated. A non-officer
+ * / another chapter's officer gets an opaque 403 from `dm.oversee`.
+ */
+export function readDmQueue(input: ReadDmQueueInput): Promise<ControllerResult<DmReadingQueue>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const chapterId = reqStr(optStr(input.query?.chapterId), 'chapterId')
+    const now = input.now ?? new Date()
+    const result = await new DmOversightService({ sql, authorize }).readingQueue(chapterId, ctx, now)
+    return { status: 200, body: result }
+  })
+}
+
+export interface ReadDmOversightReportInput extends AuthedInputBase {
+  query?: Record<string, QueryValue>
+}
+
+/**
+ * GET /api/ops/dm/oversight-report?chapterId=&from=&to= — the QUARTERLY
+ * officer-oversight export for the board (design C.7): coverage, flags raised +
+ * disposition, suspensions, review counts over the window. GET (read-exempt), dark-
+ * gated, gated on `dm.oversee`.
+ */
+export function readDmOversightReport(
+  input: ReadDmOversightReportInput,
+): Promise<ControllerResult<DmOversightReport>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const chapterId = reqStr(optStr(input.query?.chapterId), 'chapterId')
+    const from = new Date(reqStr(optStr(input.query?.from), 'from'))
+    const to = new Date(reqStr(optStr(input.query?.to), 'to'))
+    const result = await new DmOversightService({ sql, authorize }).oversightReport({ chapterId, from, to }, ctx)
+    return { status: 200, body: result }
+  })
+}
+
+export interface MarkDmThreadReadInput extends AuthedInputBase {
+  params: { threadId?: unknown }
+}
+
+/** POST /api/ops/dm/threads/:threadId/read — record a read-receipt to the latest seq (dm.oversee). */
+export function markDmThreadRead(
+  input: MarkDmThreadReadInput,
+): Promise<ControllerResult<{ receiptId: string; upToSeq: string }>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const threadId = reqStr(input.params?.threadId, 'threadId')
+    const now = input.now ?? new Date()
+    const result = await new DmOversightService({ sql, authorize }).markThreadRead(threadId, ctx, now)
+    return { status: 201, body: result }
+  })
+}
+
+export interface ReviewDmFlagInput extends AuthedInputBase {
+  params: { flagId?: unknown }
+  body: { disposition?: unknown; note?: unknown }
+}
+
+/** POST /api/ops/dm/flags/:flagId/review — record a safety-officer flag disposition (dm.oversee). */
+export function reviewDmFlag(input: ReviewDmFlagInput): Promise<ControllerResult<{ reviewId: string }>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const flagId = reqStr(input.params?.flagId, 'flagId')
+    const disposition = reqStr(input.body?.disposition, 'disposition')
+    const now = input.now ?? new Date()
+    const result = await new DmOversightService({ sql, authorize }).reviewFlag(flagId, disposition, ctx, {
+      note: optStr(input.body?.note),
+      now,
+    })
+    return { status: 201, body: result }
+  })
+}
+
+export interface InitiateDmSuspensionInput extends AuthedInputBase {
+  body: { studentAccountId?: unknown; chapterId?: unknown; threadId?: unknown; reason?: unknown }
+}
+
+/**
+ * POST /api/ops/dm/suspensions — the safety officer INITIATES a guardian-visibility
+ * suspension (dm.suspend_guardian_visibility). Requires a recorded reason; returns
+ * the mandatory-reporter checkpoint content (design C.8). It does not take effect
+ * until a second adult acknowledges.
+ */
+export function initiateDmSuspension(
+  input: InitiateDmSuspensionInput,
+): Promise<ControllerResult<DmSuspensionInitiateResult>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const now = input.now ?? new Date()
+    const result = await new DmVisibilitySuspensionService({ sql, authorize }).initiate(
+      {
+        studentAccountId: reqStr(input.body?.studentAccountId, 'studentAccountId'),
+        chapterId: reqStr(input.body?.chapterId, 'chapterId'),
+        threadId: optStr(input.body?.threadId),
+        reason: reqStr(input.body?.reason, 'reason'),
+      },
+      ctx,
+      now,
+    )
+    return { status: 201, body: result }
+  })
+}
+
+export interface AcknowledgeDmSuspensionInput extends AuthedInputBase {
+  params: { id?: unknown }
+}
+
+/**
+ * POST /api/ops/dm/suspensions/:id/acknowledge — the SECOND adult acknowledges,
+ * bringing the suspension into effect (dm.acknowledge_visibility_suspension). The
+ * service enforces that the acknowledger is not a mentor in the chapter and is
+ * distinct from the initiating officer (design C.8).
+ */
+export function acknowledgeDmSuspension(
+  input: AcknowledgeDmSuspensionInput,
+): Promise<ControllerResult<{ acknowledged: true }>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const suspensionId = reqStr(input.params?.id, 'id')
+    const now = input.now ?? new Date()
+    const result = await new DmVisibilitySuspensionService({ sql, authorize }).acknowledge(suspensionId, ctx, now)
+    return { status: 201, body: result }
   })
 }

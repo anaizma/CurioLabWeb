@@ -1437,6 +1437,92 @@ export class DmClosedHoursError extends Error {
   }
 }
 
+// -------------------------------------------------------------------------
+// Mentor-student direct messaging (Phase 3 — detection & oversight, DARK).
+// -------------------------------------------------------------------------
+
+/**
+ * A DM SEND was refused because the thread is FROZEN (design C.15): the mentor's
+ * assignment/eligibility was revoked and the thread was frozen/preserved. A frozen
+ * thread accepts NO new messages (even if the pair is later re-enabled, unless
+ * explicitly reactivated) but remains readable to the authorized parties and is
+ * never deleted. Distinct from a Forbidden — a structural refusal; maps to 409.
+ */
+export class DmThreadFrozenError extends Error {
+  readonly threadId: string
+  constructor(threadId: string) {
+    super(`dm thread is frozen (mentor departed); it accepts no new messages: ${threadId}`)
+    this.name = 'DmThreadFrozenError'
+    this.threadId = threadId
+  }
+}
+
+/**
+ * A guardian-visibility suspension initiation omitted the required recorded REASON
+ * (design C.8). Suspending guardian standing read access is a guarded action that
+ * MUST carry a reason; the database CHECK is the floor, this is the service-layer
+ * pre-check that fails cleanly. Maps to 400.
+ */
+export class DmSuspensionReasonRequiredError extends Error {
+  constructor() {
+    super('a guardian-visibility suspension requires a recorded reason')
+    this.name = 'DmSuspensionReasonRequiredError'
+  }
+}
+
+/** The referenced guardian-visibility suspension does not exist (acknowledge of an unknown id). */
+export class DmSuspensionNotFoundError extends Error {
+  readonly suspensionId: string
+  constructor(suspensionId: string) {
+    super(`dm visibility suspension not found: ${suspensionId}`)
+    this.name = 'DmSuspensionNotFoundError'
+    this.suspensionId = suspensionId
+  }
+}
+
+/**
+ * A second-adult acknowledgement of a guardian-visibility suspension was refused
+ * because the acknowledger is not an ELIGIBLE second adult (design C.8): they are
+ * a mentor in that chapter (the second adult must NOT be a mentor — independence
+ * from the mentored pair is the point), or they are the SAME safety officer who
+ * initiated it (a genuine second adult is required). Maps to 409.
+ */
+export class DmSuspensionSecondAdultInvalidError extends Error {
+  readonly reason: 'is_mentor_in_chapter' | 'same_as_initiator'
+  constructor(reason: 'is_mentor_in_chapter' | 'same_as_initiator') {
+    super(`the account is not an eligible second adult for this suspension (${reason})`)
+    this.name = 'DmSuspensionSecondAdultInvalidError'
+    this.reason = reason
+  }
+}
+
+/**
+ * An acknowledgement was attempted against a suspension that is not in an
+ * acknowledgeable state (design C.8): it is already acknowledged, already revoked,
+ * or has expired. Only a live, unacknowledged initiation may be acknowledged.
+ * Maps to 409.
+ */
+export class DmSuspensionNotAcknowledgeableError extends Error {
+  readonly suspensionId: string
+  readonly reason: 'already_acknowledged' | 'revoked' | 'expired'
+  constructor(suspensionId: string, reason: 'already_acknowledged' | 'revoked' | 'expired') {
+    super(`dm visibility suspension is not acknowledgeable (${reason}): ${suspensionId}`)
+    this.name = 'DmSuspensionNotAcknowledgeableError'
+    this.suspensionId = suspensionId
+    this.reason = reason
+  }
+}
+
+/** The referenced dm_flag does not exist (review of an unknown id). */
+export class DmFlagNotFoundError extends Error {
+  readonly flagId: string
+  constructor(flagId: string) {
+    super(`dm flag not found: ${flagId}`)
+    this.name = 'DmFlagNotFoundError'
+    this.flagId = flagId
+  }
+}
+
 /**
  * A calendar event write failed validation before any authorization decision:
  * `time_range` (endsAt is not strictly after startsAt), `audiences` (empty or an

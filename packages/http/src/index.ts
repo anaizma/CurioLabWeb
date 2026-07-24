@@ -248,6 +248,12 @@ export {
   captureMentorDmConsent,
   checkDmDraft,
   exportDmThread,
+  readDmQueue,
+  readDmOversightReport,
+  markDmThreadRead,
+  reviewDmFlag,
+  initiateDmSuspension,
+  acknowledgeDmSuspension,
 } from './controllers/mentor-dm.js'
 export type {
   AssignSafetyOfficerInput,
@@ -256,6 +262,12 @@ export type {
   CaptureMentorDmConsentInput,
   CheckDmDraftInput,
   ExportDmThreadInput,
+  ReadDmQueueInput,
+  ReadDmOversightReportInput,
+  MarkDmThreadReadInput,
+  ReviewDmFlagInput,
+  InitiateDmSuspensionInput,
+  AcknowledgeDmSuspensionInput,
 } from './controllers/mentor-dm.js'
 
 // Guardian portal

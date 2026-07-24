@@ -62,3 +62,95 @@ describe('detectDmContentFlags — contact info (design C.4)', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Phase 3 — the remaining grooming-pattern categories (design C.5). Each is a
+// human-routed flag (never an auto-block); `detail` is the matched KIND, never
+// the raw substring. Ordinary mentoring text must NOT trip any of them.
+// ---------------------------------------------------------------------------
+describe('detectDmContentFlags — secrecy framing (design C.5)', () => {
+  test.each([
+    "let's keep this between us ok",
+    'don\'t tell your mom about our chats',
+    'this is our little secret',
+    'delete this message after you read it',
+    "don't tell anyone we talk like this",
+  ])('flags secrecy framing: %s', (body) => {
+    const flags = detectDmContentFlags(body)
+    expect(flags.some((f) => f.category === 'secrecy_framing')).toBe(true)
+  })
+
+  test('ordinary text is not secrecy framing', () => {
+    expect(detectDmContentFlags('great job keeping the code organized this week')).toEqual([])
+  })
+})
+
+describe('detectDmContentFlags — in-person arrangement (design C.5)', () => {
+  test.each([
+    'i can give you a ride to the mall on saturday',
+    "let's meet up outside of the program sometime",
+    'i got you a gift, meet me after',
+    'want to hang out just the two of us this weekend',
+    'i can pick you up so your parents don\'t have to know',
+  ])('flags in-person arrangement: %s', (body) => {
+    const flags = detectDmContentFlags(body)
+    expect(flags.some((f) => f.category === 'in_person_arrangement')).toBe(true)
+  })
+
+  test('an on-program session reference is not an off-program arrangement', () => {
+    expect(detectDmContentFlags('see you at the pod session on wednesday')).toEqual([])
+  })
+})
+
+describe('detectDmContentFlags — romantic / appearance language (design C.5)', () => {
+  test.each([
+    'you are so beautiful when you smile',
+    'i think i have a crush on you',
+    'you looked really cute today',
+    'i love you, you know that right',
+    'you are so mature for your age',
+  ])('flags romantic/appearance language: %s', (body) => {
+    const flags = detectDmContentFlags(body)
+    expect(flags.some((f) => f.category === 'romantic_appearance')).toBe(true)
+  })
+
+  test('praising work is not romantic/appearance language', () => {
+    expect(detectDmContentFlags('your project looks great and the design is clean')).toEqual([])
+  })
+})
+
+describe('detectDmContentFlags — home-life probing (design C.5)', () => {
+  test.each([
+    'are you ever home alone after school',
+    'do your parents check your phone',
+    'is anyone else there right now',
+    'do you get along with your parents',
+    'when are your parents not home',
+  ])('flags home-life probing: %s', (body) => {
+    const flags = detectDmContentFlags(body)
+    expect(flags.some((f) => f.category === 'home_life_probing')).toBe(true)
+  })
+
+  test('asking about the project at home is not isolation-probing', () => {
+    expect(detectDmContentFlags('did you get a chance to test the robot at home')).toEqual([])
+  })
+})
+
+describe('detectDmContentFlags — one send, one flag per matched category', () => {
+  test('a body matching two categories yields one flag each', () => {
+    const flags = detectDmContentFlags("keep this between us — are you home alone")
+    const cats = flags.map((f) => f.category).sort()
+    expect(cats).toContain('secrecy_framing')
+    expect(cats).toContain('home_life_probing')
+    // deduped by category+detail, not doubled
+    expect(new Set(flags.map((f) => `${f.category}:${f.detail}`)).size).toBe(flags.length)
+  })
+
+  test('detail carries the matched KIND, never the raw body text', () => {
+    const flags = detectDmContentFlags('this is our little secret, delete this')
+    for (const f of flags) {
+      expect(f.detail.length).toBeLessThan(40)
+      expect(f.detail).not.toContain(' secret')
+    }
+  })
+})

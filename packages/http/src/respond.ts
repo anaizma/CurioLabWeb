@@ -76,6 +76,9 @@ const NOT_FOUND = new Set([
   'MessageThreadNotFoundError',
   // Mentor-student DM (Phase 1): read/send against an unknown thread.
   'DmThreadNotFoundError',
+  // Mentor-student DM (Phase 3): acknowledge/review of an unknown suspension/flag.
+  'DmSuspensionNotFoundError',
+  'DmFlagNotFoundError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */
@@ -123,6 +126,11 @@ const CONFLICT = new Set([
   'DmNotAuthorizedForPairError',
   // Mentor-student DM (Phase 2): a send outside the chapter's allowed hours (C.4).
   'DmClosedHoursError',
+  // Mentor-student DM (Phase 3): a send to a frozen thread (C.15); an ineligible
+  // second adult or a non-acknowledgeable suspension (C.8).
+  'DmThreadFrozenError',
+  'DmSuspensionSecondAdultInvalidError',
+  'DmSuspensionNotAcknowledgeableError',
 ])
 
 /** Too-many-requests: the per-issuer invite rate limit (P2 §4) + the §10 TOTP attempt limit -> 429. */
@@ -168,6 +176,8 @@ const BAD_REQUEST = new Set([
   'GrantStrongMethodRequiredError',
   // Mentor-student DM (Phase 1): mentor_dm captured without a signed_form + artifact.
   'GrantSignedFormRequiredError',
+  // Mentor-student DM (Phase 3): a guardian-visibility suspension with no reason.
+  'DmSuspensionReasonRequiredError',
   // Shared chapter calendar (Feature 1): a bad time range / audience set / kind.
   'CalendarValidationError',
   // Attendance (Feature 2): a bad type / session / consent / slots / arrive_at.

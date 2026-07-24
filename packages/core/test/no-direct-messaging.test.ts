@@ -112,6 +112,30 @@ describe('no-direct-messaging guard (compliance 1.8)', () => {
     ).toEqual([])
   })
 
+  // Phase 3 adds two more staff-only DM caps: the safety-officer guardian-
+  // visibility suspension and the second-adult acknowledgement. Both are
+  // chapter-scoped with a non-empty staff-role floor that excludes student —
+  // no student is ever a party — so they ride the same staff-channel exemption
+  // (a `dm` segment name alone must not trip; the def SHAPE is what admits them).
+  test('the Phase-3 staff DM caps (dm.suspend_guardian_visibility, dm.acknowledge_visibility_suspension) are exempt', () => {
+    expect(
+      directMessagingCapabilities({
+        'dm.suspend_guardian_visibility': { scope: 'chapter', roles: ['safety_officer'], writes: true },
+        'dm.acknowledge_visibility_suspension': {
+          scope: 'chapter',
+          roles: ['chapter_director', 'safety_officer'],
+          writes: true,
+        },
+      }),
+    ).toEqual([])
+  })
+
+  test('the real REGISTRY contains the Phase-3 DM caps and still trips nothing', () => {
+    expect('dm.suspend_guardian_visibility' in REGISTRY).toBe(true)
+    expect('dm.acknowledge_visibility_suspension' in REGISTRY).toBe(true)
+    expect(directMessagingCapabilities(REGISTRY)).toEqual([])
+  })
+
   test('a student-to-student dm cap STILL trips even if marked pairGated (no mentor party)', () => {
     expect(
       directMessagingCapabilities({ 'dm.peer': { scope: 'chapter', roles: ['student'], writes: true, pairGated: true } }),

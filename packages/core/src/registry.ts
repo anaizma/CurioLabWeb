@@ -893,4 +893,30 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['safety_officer'],
     writes: true,
   },
+  // ---- mentor-student DM Phase 3 (detection & oversight; design C.7/C.8, DARK) ----
+  // dm.suspend_guardian_visibility: the safety officer's GUARDED suspension of a
+  // guardian's standing read access (design C.8). Chapter-scoped write, roles
+  // [safety_officer] — the ONLY role that may initiate (C.8: "and only the safety
+  // officer"). The recorded reason, the second-adult acknowledgement, the 90-day
+  // expiry, and the mandatory-reporter checkpoint are DmVisibilitySuspensionService
+  // concerns on top of this floor. writes:true, so a read-only platform override
+  // cannot suspend. Staff-only (no student party), so it rides the guardian-staff
+  // exemption in the no-DM guard.
+  'dm.suspend_guardian_visibility': {
+    scope: 'chapter',
+    roles: ['safety_officer'],
+    writes: true,
+  },
+  // dm.acknowledge_visibility_suspension: the SECOND adult's acknowledgement that
+  // brings a suspension into effect (design C.8). Chapter-scoped write, roles
+  // [chapter_director, safety_officer] — a director or another safety officer, i.e.
+  // NOT one of the student-mentoring teaching roles; the service additionally
+  // enforces that the acknowledger is not a mentor in the chapter AND is distinct
+  // from the initiating officer. writes:true. Staff-only (no student party), so it
+  // rides the guardian-staff exemption in the no-DM guard.
+  'dm.acknowledge_visibility_suspension': {
+    scope: 'chapter',
+    roles: ['chapter_director', 'safety_officer'],
+    writes: true,
+  },
 }
