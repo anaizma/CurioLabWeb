@@ -230,6 +230,12 @@ export {
   type SweepExpiredLeadsDeps,
   type SweepExpiredLeadsResult,
 } from './retention-sweep.js'
+export {
+  runTimeBoxSweep,
+  TIME_BOX_AUDIT_ACTION,
+  type RunTimeBoxSweepDeps,
+  type RunTimeBoxSweepResult,
+} from './time-box-sweep.js'
 export { DeletionFulfillmentService } from './deletion-fulfillment.js'
 export type {
   DeletionFulfillmentServiceDeps,

@@ -17,6 +17,24 @@ The morning ledger of the overnight build. Everything below I ran and verified m
 | **M4 — scale + advanced compliance (buildable parts)** | Maturation flow + 90-day backstop + `account.recover` + 16+ `self_private`; per-request RLS (Mechanism B) on the high-risk tables; second-chapter isolation proof (no leak; multi-membership resolution verified). |
 | **Post-M4 hardening** | Deferred auth/onboarding/account-lifecycle/audit HTTP routes; `impersonation.start` + `audit.view` made first-class capabilities; `guardianship.revoke` + safeguarding consent suspension; guardian-portal revoke now fires C1/C2; `credential_token` store making password reset + account recovery functional; org management (chapters/terms/pods CRUD); the build-time route-manifest guard (both invariant guards now active). |
 
+## P5 — time-boxing of volunteer/staff access (§7)
+
+Former-mentor/instructor/volunteer access closes automatically at term end rather than lingering. This phase was mostly **confirm-and-close-gaps**: the decision-time half already existed; the missing half was making the closure a real, auditable, roster-visible status flip.
+
+**Already existed (confirmed, not rebuilt):**
+- `can`'s `inForce` (`packages/core/src/can.ts`) already treats a membership that is not `status = 'active'` (or is outside its `[active_from, active_until)` window) as conferring **no** capability — `pickMembership` skips it, so every student-facing capability denies. Decision-time term-end/expiry was already in place.
+- The membership state machine already defines the `active -> inactive` "window elapsed — system bookkeeping, no capability" edge — the exact legal edge a term-end sweep takes.
+- The `membership` row already carries `term_id` (term linkage), `active_from`, `active_until`. **No migration was needed.**
+- `writeAudit` + `writeAccessLedger` (`@curiolab/runtime`) already exist.
+
+**Added this phase:**
+- **`runTimeBoxSweep({ sql }, now)`** — the job body (`packages/app/src/time-box-sweep.ts`). In one transaction it flips every **privileged** (non-student/alumni, via `PRIVILEGED_ROLES`) membership that is still `active` but whose bound term's `ends_on` is before `now` (`t.ends_on < now::date` — a member keeps access through the end date itself) from `active -> inactive`; clears its pod links (deletes its `pod_assignment` rows, nulls `membership.pod_id`, and nulls any `pod.mentor_membership_id` pointing at it); and writes a **system-actor** (`actor = null`) `audit_entry` (`action = membership.time_box_revoked`) + `access_ledger` row (`event = membership.time_box_revoked`), each carrying `reason = term_ended` and references only (no PII). Returns `{ revokedCount, revokedMembershipIds }`. **Idempotent** — an already-`inactive` row no longer matches, so a re-run writes nothing.
+- A new `AccessLedgerEvent` value `membership.time_box_revoked` (`packages/runtime/src/ledger.ts`). The ledger `event` column is `text`, so no DB migration.
+
+**Scope guardrails:** STUDENT (and alumni) memberships are never time-boxed here — students lapse via graduation/maturation, a separate flow. No new HTTP endpoint or capability was added: a manual per-membership director offboard was left out deliberately (the existing registry has no `member.offboard`; reusing `member.activate` would be semantically wrong, and inventing a capability for an optional surface is out of scope for P5). pg-boss scheduling of the sweep stays a separate go-live wiring step (see below).
+
+**Tests:** `packages/app/test/time-box-sweep.test.ts` (5, embedded-Postgres, deterministic clock) — ended-term mentor flips / current-term mentor untouched; `can` denies a lapsed mentor the `student.view_record` an active mentor is allowed; per-revocation audit + access-ledger rows with `reason = term_ended` and a second run idempotent; a student membership is untouched; a lapsed mentor's pod assignment is cleared.
+
 ## Notable behavior change to review
 
 - **Guardian reads of an 18+ child persist until the edge lapses.** The age-18 bar was corrected to guardian *writes* only, so a guardian still *reads* their 18+ child's record during the maturation window (soft landing), ending at staff-confirm or the 90-day backstop. Matches 04-state-machines / Flow D; loosens an M1 behavior on purpose. See `packages/core/src/can.ts`, `maturation.ts`.
@@ -38,7 +56,7 @@ The morning ledger of the overnight build. Everything below I ran and verified m
 
 - **Mailer** — every send is a seam (invites, Stage-2 tokens, receipts, newsletter, password reset, recovery); the `resend` dep is installed; delivery needs the key + authenticated domains.
 - **Activate RLS on the app path** — policies + `withRlsContext` exist and are proven via the `curiolab_rls` role; connecting the app as that role and threading the per-request GUC through every read is a deliberate broad refactor, not done overnight.
-- **Job scheduling** — the sweep/escalation/scheduled-publish/backstop job bodies exist; pg-boss scheduling is a wiring step.
+- **Job scheduling** — the sweep/escalation/scheduled-publish/backstop/time-box job bodies exist (incl. `runTimeBoxSweep`, §7); pg-boss scheduling is a wiring step.
 - **Rate limiting** on the unauthenticated write set — an edge/middleware concern.
 
 ## Open questions for you (small, non-blocking)

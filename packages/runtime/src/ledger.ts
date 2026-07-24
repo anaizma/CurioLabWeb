@@ -32,6 +32,12 @@ export type AccessLedgerEvent =
   // provenance, like the recovery events — who proved a second factor, and when.
   | 'totp.enrolled'
   | 'login.two_factor'
+  // Time-boxing (admin/director backend §7): a privileged (non-student) membership
+  // whose term ended (or whose eligibility lapsed) is auto-revoked by the sweep —
+  // its access closes rather than lingering. actor is null (a system job); the
+  // subject is the membership's account; detail carries the reason (term_ended /
+  // eligibility_lapsed) and the membership id.
+  | 'membership.time_box_revoked'
 
 export interface AccessLedgerInput {
   event: AccessLedgerEvent
