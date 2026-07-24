@@ -1,7 +1,8 @@
 @import "tailwindcss";
+@import "./portal/portal-theme.css";
 
 @theme {
-  --color-cream: #FBF8F4;
+  --color-cream: #fffdfb;
   --color-ink: #032344;
   --color-muted: #6B6058;
   --color-coral: #E56252;

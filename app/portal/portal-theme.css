@@ -1,0 +1,43 @@
+/* Per-role portal accent tokens. Base CurioLab cream/ink is unchanged; only the
+   accent swaps by data-portal. Student is finalized; others are ready stubs. */
+[data-portal] {
+  --pt-accent: #3F7A54;
+  --pt-accent-soft: #E6EFE6;
+  --pt-accent-fg: #2C5A3D;
+  --pt-accent-border: #C4DBC7;
+  --pt-on-accent: #ffffff;
+  --pt-chip: #9CB89C;
+  --pt-banner: linear-gradient(105deg, #032344, #231E54 55%, #3F7A54);
+}
+[data-portal="student"] {
+  --pt-accent: #3F7A54; --pt-accent-soft: #E6EFE6; --pt-accent-fg: #2C5A3D;
+  --pt-accent-border: #C4DBC7; --pt-on-accent: #fff; --pt-chip: #9CB89C;
+  --pt-banner: linear-gradient(105deg, #032344, #231E54 55%, #3F7A54);
+}
+[data-portal="parent"] {
+  --pt-accent: #C56A1E; --pt-accent-soft: #FBEBD2; --pt-accent-fg: #9A5214;
+  --pt-accent-border: #F1D3A6; --pt-on-accent: #fff; --pt-chip: #FBAE36;
+  --pt-banner: linear-gradient(105deg, #032344, #7A3F0E 60%, #C56A1E);
+}
+[data-portal="mentor"] {
+  --pt-accent: #143886; --pt-accent-soft: #DEEAF6; --pt-accent-fg: #143886;
+  --pt-accent-border: #B9CFEA; --pt-on-accent: #fff; --pt-chip: #1CABB0;
+  --pt-banner: linear-gradient(105deg, #031a3f, #143886 60%, #1CABB0);
+}
+[data-portal="director"] {
+  --pt-accent: #C94F40; --pt-accent-soft: #F7E2DE; --pt-accent-fg: #A63A2D;
+  --pt-accent-border: #EEC3BB; --pt-on-accent: #fff; --pt-chip: #E56252;
+  --pt-banner: linear-gradient(105deg, #032344, #7a271c 60%, #C94F40);
+}
+[data-portal="admin"] {
+  --pt-accent: #032344; --pt-accent-soft: #FFF3CC; --pt-accent-fg: #032344;
+  --pt-accent-border: #F3DE93; --pt-on-accent: #FFCF3E; --pt-chip: #FFCF3E;
+  --pt-banner: linear-gradient(105deg, #000914, #032344 55%, #B58900);
+}
+@media (prefers-color-scheme: dark) {
+  [data-portal] { --pt-accent-soft: rgba(63,122,84,.16); --pt-accent-fg: #a9cbb0; --pt-accent-border: rgba(255,255,255,.12); }
+  [data-portal="parent"] { --pt-accent-soft: rgba(197,106,30,.16); --pt-accent-fg: #f0b877; }
+  [data-portal="mentor"] { --pt-accent-soft: rgba(28,171,176,.16); --pt-accent-fg: #7fc9cd; }
+  [data-portal="director"] { --pt-accent-soft: rgba(201,79,64,.16); --pt-accent-fg: #f0a397; }
+  [data-portal="admin"] { --pt-accent-soft: rgba(255,207,62,.16); --pt-accent-fg: #FFCF3E; }
+}
