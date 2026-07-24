@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getApplicationDetail } from "@/lib/portal/director/applications-data";
 import SampleBanner from "@/components/portal/SampleBanner";
+import OpsActionButton from "@/components/portal/director/OpsActionButton";
 
 const ACTIONS = ["Screen", "Schedule interview", "Accept", "Decline"];
 
@@ -29,14 +30,25 @@ export default async function ApplicationDetailPage({ params }: { params: Promis
         ))}
       </div>
       <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap gap-2">
-          {ACTIONS.map((label) => (
-            <button key={label} type="button" disabled className="rounded-lg px-3 py-1.5 text-sm font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-ink/40">Actions activate once GET /api/ops/applications connects live data.</p>
+        {isSample ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {ACTIONS.map((label) => (
+                <button key={label} type="button" disabled className="rounded-lg px-3 py-1.5 text-sm font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-ink/40">Actions activate once GET /api/ops/applications connects live data.</p>
+          </>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "screen" }} label="Screen" variant="outline" />
+            <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "schedule-interview" }} label="Schedule interview" variant="outline" />
+            <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "accept" }} label="Accept" variant="accent" />
+            <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "decline" }} label="Decline" variant="outline" confirmText="Decline this application?" />
+          </div>
+        )}
       </div>
     </div>
   );

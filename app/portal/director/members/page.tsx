@@ -1,5 +1,6 @@
 import { getMembersView, type MemberStatus } from "@/lib/portal/director/members-data";
 import SampleBanner from "@/components/portal/SampleBanner";
+import OpsActionButton from "@/components/portal/director/OpsActionButton";
 
 const STATUS_BG: Record<MemberStatus, string> = {
   active: "#e7f2ea",
@@ -30,11 +31,14 @@ export default async function MembersPage() {
               <span className="text-[11px] font-semibold rounded-full px-2 py-0.5" style={{ background: STATUS_BG[m.status], color: "#44515f" }}>
                 {m.status}
               </span>
-              {m.status === "pending" && (
-                <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">
-                  Activate
-                </button>
-              )}
+              {m.status === "pending" &&
+                (isSample ? (
+                  <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">
+                    Activate
+                  </button>
+                ) : (
+                  <OpsActionButton method="POST" url={`/api/ops/memberships/${m.membershipId}/activate`} label="Activate" variant="accent" />
+                ))}
             </div>
           </div>
         ))}

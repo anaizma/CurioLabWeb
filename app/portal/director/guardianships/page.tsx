@@ -1,5 +1,6 @@
 import { getGuardianshipsView } from "@/lib/portal/director/guardianships-data";
 import SampleBanner from "@/components/portal/SampleBanner";
+import OpsActionButton from "@/components/portal/director/OpsActionButton";
 
 export default async function GuardianshipsPage() {
   const { guardianships, isSample } = await getGuardianshipsView();
@@ -29,12 +30,18 @@ export default async function GuardianshipsPage() {
                 <span className="text-[11px] font-semibold rounded-full px-2 py-0.5" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
                   {g.status}
                 </span>
-                {g.status === "pending" && (
-                  <div className="flex gap-2">
-                    <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">Verify</button>
-                    <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">Revoke</button>
-                  </div>
-                )}
+                {g.status === "pending" &&
+                  (isSample ? (
+                    <div className="flex gap-2">
+                      <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">Verify</button>
+                      <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">Revoke</button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <OpsActionButton method="POST" url={`/api/ops/guardianships/${g.guardianshipId}/verify`} label="Verify" variant="accent" />
+                      <OpsActionButton method="POST" url={`/api/ops/guardianships/${g.guardianshipId}/revoke`} label="Revoke" variant="outline" confirmText="Revoke this guardianship?" />
+                    </div>
+                  ))}
               </div>
             </div>
           );

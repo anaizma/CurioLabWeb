@@ -1,5 +1,6 @@
 import { getMediaView } from "@/lib/portal/director/media-data";
 import SampleBanner from "@/components/portal/SampleBanner";
+import OpsActionButton from "@/components/portal/director/OpsActionButton";
 
 const ACTIONS = ["Confirm depiction", "Clear", "Remove"];
 
@@ -25,13 +26,24 @@ export default async function MediaPage() {
                 </div>
                 {m.flaggedReason && <div className="text-[11px] mt-1" style={{ color: "var(--pt-accent-fg)" }}>{m.flaggedReason}</div>}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {ACTIONS.map((label) => (
-                  <button key={label} type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">
-                    {label}
-                  </button>
-                ))}
-              </div>
+              {isSample ? (
+                <div className="flex flex-wrap gap-2">
+                  {ACTIONS.map((label) => (
+                    <button key={label} type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">Confirm depiction</button>
+                    <OpsActionButton method="POST" url={`/api/ops/media/${m.mediaId}/clear`} label="Clear" variant="accent" />
+                    <OpsActionButton method="POST" url={`/api/ops/media/${m.mediaId}/remove`} label="Remove" variant="outline" confirmText="Remove this media?" />
+                  </div>
+                  <span className="text-[10px] text-ink/40">Confirm depiction available in the review detail.</span>
+                </div>
+              )}
             </div>
           ))}
         </div>

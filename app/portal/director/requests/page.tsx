@@ -1,5 +1,6 @@
 import { getRequestsView } from "@/lib/portal/director/requests-data";
 import SampleBanner from "@/components/portal/SampleBanner";
+import OpsActionButton from "@/components/portal/director/OpsActionButton";
 
 export default async function RequestsPage() {
   const { deletions, exportRequests, isSample } = await getRequestsView();
@@ -22,10 +23,18 @@ export default async function RequestsPage() {
                 <div className="text-sm font-medium">{d.subjectName}</div>
                 <div className="text-xs text-ink/50">{d.status} · requested {d.requestedLabel}</div>
               </div>
-              <div className="flex gap-2 shrink-0">
-                <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">Review</button>
-                <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">Fulfill</button>
-              </div>
+              {isSample ? (
+                <div className="flex gap-2 shrink-0">
+                  <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">Review</button>
+                  <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">Fulfill</button>
+                </div>
+              ) : (
+                <div className="flex gap-2 shrink-0">
+                  <OpsActionButton method="POST" url={`/api/ops/deletion-requests/${d.deletionRequestId}/review`} label="Review" variant="outline" />
+                  <OpsActionButton method="POST" url={`/api/ops/deletion-requests/${d.deletionRequestId}/fulfill`} body={{ decision: "full" }} label="Fulfill (full)" variant="accent" confirmText="Fulfill full deletion? This cannot be undone." />
+                  <OpsActionButton method="POST" url={`/api/ops/deletion-requests/${d.deletionRequestId}/fulfill`} body={{ decision: "refused" }} label="Refuse" variant="outline" confirmText="Refuse this deletion request?" />
+                </div>
+              )}
             </div>
           ))
         )}
@@ -42,7 +51,13 @@ export default async function RequestsPage() {
                 <div className="text-sm font-medium">{x.subjectName}</div>
                 <div className="text-xs text-ink/50">{x.status} · requested {x.requestedLabel}</div>
               </div>
-              <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60 shrink-0">Fulfill</button>
+              {isSample ? (
+                <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60 shrink-0">Fulfill</button>
+              ) : (
+                <span className="shrink-0">
+                  <OpsActionButton method="POST" url={`/api/ops/export-requests/${x.exportRequestId}/fulfill`} label="Fulfill" variant="accent" confirmText="Fulfill this export request?" />
+                </span>
+              )}
             </div>
           ))
         )}
