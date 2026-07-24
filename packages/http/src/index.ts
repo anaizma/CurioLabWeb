@@ -210,6 +210,20 @@ export type {
   StaffCalendarInput,
 } from './controllers/calendar.js'
 
+// Attendance & make-up check-ins (guardian/director portal, Feature 2)
+export {
+  submitAttendance,
+  viewChildAttendance,
+  listStaffAttendance,
+  completeMakeup,
+} from './controllers/attendance.js'
+export type {
+  SubmitAttendanceInput,
+  ChildAttendanceInput,
+  StaffAttendanceInput,
+  CompleteMakeupInput,
+} from './controllers/attendance.js'
+
 // Guardian portal
 export {
   viewChildRecord,

@@ -45,6 +45,11 @@ import {
   calendarManageC1,
   calendarViewC1,
   guardianCalendarOfS,
+  attendanceSubmitForS,
+  attendanceSubmitFor18,
+  attendanceViewChildOfS,
+  attendanceViewC1,
+  attendanceResolveC1,
   childRecord18,
   safetyReport,
   ordinaryReport,
@@ -780,6 +785,50 @@ describe('shared chapter calendar capabilities (Feature 1)', () => {
   test('guardian.view_calendar (the child’s guardian reads; a stranger denies out_of_scope)', () => {
     expectAllow(actors.guardian_of_S, 'guardian.view_calendar', guardianCalendarOfS)
     expectDeny(actors.no_membership, 'guardian.view_calendar', guardianCalendarOfS, 'out_of_scope')
+  })
+})
+
+// ===========================================================================
+// Attendance & make-up check-ins (guardian/director portal, Feature 2): the four
+// new capabilities.
+//   - attendance.submit     (guardian-scoped write; own verified child, barred at 18)
+//   - attendance.view_child  (guardian-scoped read; persists past majority)
+//   - attendance.view        (chapter-scoped staff read floor, TEACHING; both
+//                             platform overrides reach it because writes:false)
+//   - attendance.resolve     (chapter-scoped staff write, TEACHING; read-only
+//                             platform_staff barred because writes:true)
+// ===========================================================================
+describe('attendance & make-up capabilities (Feature 2)', () => {
+  test('attendance.submit (a guardian submits for their own verified minor child; a stranger out_of_scope; barred at 18)', () => {
+    expectAllow(actors.guardian_of_S, 'attendance.submit', attendanceSubmitForS)
+    expectDeny(actors.no_membership, 'attendance.submit', attendanceSubmitForS, 'out_of_scope')
+    // writes:true, so the guardian write authority ends at the child's majority.
+    expectDeny(actors.guardian_of_S, 'attendance.submit', attendanceSubmitFor18, 'out_of_scope')
+  })
+
+  test('attendance.view_child (the child’s guardian reads; a stranger out_of_scope)', () => {
+    expectAllow(actors.guardian_of_S, 'attendance.view_child', attendanceViewChildOfS)
+    expectDeny(actors.no_membership, 'attendance.view_child', attendanceViewChildOfS, 'out_of_scope')
+  })
+
+  test('attendance.view (a mentor OR director in the chapter reads the roster; both platform overrides reach it; cross-chapter out_of_scope; a student role_not_permitted)', () => {
+    expectAllow(actors.junior_mentor_adult, 'attendance.view', attendanceViewC1)
+    expectAllow(actors.chapter_director_c1, 'attendance.view', attendanceViewC1)
+    expectAllow(actors.platform_admin, 'attendance.view', attendanceViewC1)
+    // writes:false, so the read-only platform_staff override also grants it.
+    expectAllow(actors.platform_staff, 'attendance.view', attendanceViewC1)
+    expectDeny(actors.chapter_director_c2, 'attendance.view', attendanceViewC1, 'out_of_scope')
+    expectDeny(actors.student_18, 'attendance.view', attendanceViewC1, 'role_not_permitted')
+  })
+
+  test('attendance.resolve (a mentor OR director completes a make-up; a read-only platform_staff barred; cross-chapter out_of_scope; a student role_not_permitted)', () => {
+    expectAllow(actors.junior_mentor_adult, 'attendance.resolve', attendanceResolveC1)
+    expectAllow(actors.chapter_director_c1, 'attendance.resolve', attendanceResolveC1)
+    expectAllow(actors.platform_admin, 'attendance.resolve', attendanceResolveC1)
+    // writes:true, so the read-only platform_staff override does NOT reach it.
+    expectDeny(actors.platform_staff, 'attendance.resolve', attendanceResolveC1, 'out_of_scope')
+    expectDeny(actors.chapter_director_c2, 'attendance.resolve', attendanceResolveC1, 'out_of_scope')
+    expectDeny(actors.student_18, 'attendance.resolve', attendanceResolveC1, 'role_not_permitted')
   })
 })
 

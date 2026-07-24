@@ -38,9 +38,11 @@ import {
   applicationLeadFillerRoleEnum,
   applicationLeadStatusEnum,
   applicationStatusEnum,
+  attendanceExceptionTypeEnum,
   calendarAudienceEnum,
   calendarEventKindEnum,
   calendarEventStatusEnum,
+  makeupStatusEnum,
   chapterStatusEnum,
   chapterTierEnum,
   consentActionEnum,
@@ -605,6 +607,53 @@ export const calendarEvent = pgTable(
     index('calendar_event_chapter_idx').on(t.chapterId, t.seq),
     check('calendar_event_time_order', sql`${t.endsAt} > ${t.startsAt}`),
     check('calendar_event_audiences_nonempty', sql`cardinality(${t.audiences}) >= 1`),
+  ],
+)
+
+// --- Attendance & make-up check-ins (guardian/director portal, Feature 2) ---
+// The guardian-submitted, staff-resolved attendance exception as an append-only
+// revision log (migration 0027). One row per (exception, revision): a stable
+// exception_id identity, a bumped version, a type (absent|late), and the full
+// snapshot including makeup_slots[]. A make-up COMPLETION is a new revision
+// (makeup_status -> 'completed') — never a mutation (append-only via the
+// reject_append_only_mutation() trigger + role REVOKE). The current state per
+// exception is the attendance_exception_current view (not modeled here).
+// session_event_id references the calendar SESSION's stable event_id (logical, not
+// a FK — event_id is not unique). The DDL + guarantees live in migration 0027.
+export const attendanceException = pgTable(
+  'attendance_exception',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'bigint' }).notNull().unique(),
+    exceptionId: uuid('exception_id').notNull(),
+    studentAccountId: uuid('student_account_id')
+      .notNull()
+      .references(() => account.id),
+    sessionEventId: uuid('session_event_id').notNull(),
+    version: integer('version').notNull().default(1),
+    type: attendanceExceptionTypeEnum('type').notNull(),
+    reason: text('reason'),
+    arriveAt: timestamp('arrive_at', { withTimezone: true }),
+    makeupConsent: boolean('makeup_consent').notNull().default(false),
+    makeupSlots: timestamp('makeup_slots', { withTimezone: true }).array().notNull().default([]),
+    makeupStatus: makeupStatusEnum('makeup_status'),
+    createdByGuardianAccountId: uuid('created_by_guardian_account_id')
+      .notNull()
+      .references(() => account.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('attendance_exception_exc_seq_idx').on(t.exceptionId, t.seq),
+    index('attendance_exception_student_seq_idx').on(t.studentAccountId, t.seq),
+    index('attendance_exception_session_idx').on(t.sessionEventId, t.seq),
+    check(
+      'attendance_late_no_makeup',
+      sql`${t.type} <> 'late' OR (${t.makeupStatus} IS NULL AND cardinality(${t.makeupSlots}) = 0)`,
+    ),
+    check(
+      'attendance_absent_has_status',
+      sql`${t.type} <> 'absent' OR ${t.makeupStatus} IS NOT NULL`,
+    ),
   ],
 )
 

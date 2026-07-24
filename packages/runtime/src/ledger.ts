@@ -67,6 +67,15 @@ export type AccessLedgerEvent =
   | 'calendar.created'
   | 'calendar.edited'
   | 'calendar.canceled'
+  // Attendance & make-up check-ins (guardian/director portal, Feature 2). A
+  // guardian submitted an attendance exception (an absent/late over a chapter
+  // session), or a mentor/director completed a make-up check-in (a new append-only
+  // revision, makeup_status -> completed) — an access-provenance event, like the
+  // calendar writes. For a submission the actor is the guardian and the subject the
+  // student; for a completion the actor is the resolving staff member. detail
+  // carries the exceptionId, sessionEventId, type, and make-up status — never PII.
+  | 'attendance.exception_submitted'
+  | 'attendance.makeup_completed'
 
 export interface AccessLedgerInput {
   event: AccessLedgerEvent

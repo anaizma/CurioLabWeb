@@ -215,6 +215,21 @@ export const calendarEventStatusEnum = pgEnum('calendar_event_status', [
   'canceled',
 ])
 
+// --- Attendance & make-up check-ins (guardian/director portal, Feature 2) ---
+// The guardian-submitted, staff-resolved attendance exception (migration 0027). A
+// db-only enum pair: the pure core does not model attendance (a persistence
+// concern). An absent exception carries a make-up (makeup_status); a late one an
+// arrive_at and no make-up. `makeup_slots` is stored as a timestamptz[] array.
+export const attendanceExceptionTypeEnum = pgEnum('attendance_exception_type', [
+  'absent',
+  'late',
+])
+export const makeupStatusEnum = pgEnum('makeup_status', [
+  'pending',
+  'scheduled',
+  'completed',
+])
+
 // --- guardian-portal request and fee tables (Milestone 1 step 7) ---
 export const paymentStatusEnum = pgEnum('payment_status', [
   'none',

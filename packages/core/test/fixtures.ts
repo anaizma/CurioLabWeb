@@ -465,6 +465,42 @@ export const guardianCalendarOfS: Resource = {
   chapter_id: C1,
 }
 
+// attendance & make-up check-ins (guardian/director portal, Feature 2).
+// attendance.submit (guardian-scoped write): the resource names one of the
+// guardian's verified children; the child's guardian submits, a stranger denies
+// out_of_scope, and (writes:true) the age-18 bar denies for an 18+ former child.
+export const attendanceSubmitForS: Resource = {
+  subjectAccountId: ID.childS,
+  subjectAge: 15,
+  subjectIsMinor: true,
+  chapter_id: C1,
+}
+// attendance.submit for the now-18 child: guardian WRITE is barred at majority.
+export const attendanceSubmitFor18: Resource = {
+  subjectAccountId: ID.child18,
+  subjectAge: 18,
+  subjectIsMinor: false,
+  chapter_id: C1,
+}
+// attendance.view_child (guardian-scoped read): the child's guardian reads, a
+// stranger denies out_of_scope. Read persists past majority (age-not-bounded).
+export const attendanceViewChildOfS: Resource = {
+  subjectAccountId: ID.childS,
+  subjectAge: 15,
+  subjectIsMinor: true,
+  chapter_id: C1,
+}
+// attendance.view (chapter-scoped staff read floor, roles TEACHING): the resource
+// is the chapter whose roster is read. A mentor OR the director in the chapter
+// reads; another chapter denies out_of_scope; a student denies role_not_permitted;
+// both platform overrides reach it (writes:false).
+export const attendanceViewC1: Resource = { chapter_id: C1 }
+// attendance.resolve (chapter-scoped staff write, roles TEACHING): the resource is
+// the exception's chapter. A mentor OR director in it completes a make-up; another
+// chapter denies out_of_scope; a student denies role_not_permitted; a read-only
+// platform_staff denies out_of_scope (writes:true).
+export const attendanceResolveC1: Resource = { id: 'attendance-exception-1', chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,

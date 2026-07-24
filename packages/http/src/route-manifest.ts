@@ -420,6 +420,23 @@ export const ROUTE_MANIFEST: RouteManifest = [
   { method: 'POST', path: '/api/ops/calendar', capability: 'calendar.manage' },
   { method: 'PATCH', path: '/api/ops/calendar/[id]', capability: 'calendar.manage' },
   { method: 'DELETE', path: '/api/ops/calendar/[id]', capability: 'calendar.manage' },
+  // Attendance & make-up check-ins (guardian/director portal, Feature 2). The
+  // guardian submit gates through attendance.submit (guardian-scoped, matched
+  // against ctx.guardianOf); the staff make-up-complete through attendance.resolve
+  // (chapter-scoped teaching roles; platform_admin via override). The two GET reads
+  // (guardian GET /api/guardian/children/[id]/attendance via attendance.view_child,
+  // staff GET /api/ops/attendance via attendance.view) are GET-exempt from the
+  // manifest. A completion is a new append-only revision (makeup_status -> completed).
+  {
+    method: 'POST',
+    path: '/api/guardian/children/[id]/attendance',
+    capability: 'attendance.submit',
+  },
+  {
+    method: 'POST',
+    path: '/api/ops/attendance/[id]/makeup-complete',
+    capability: 'attendance.resolve',
+  },
   { method: 'POST', path: '/api/ops/maturations/[id]/confirm', capability: 'maturation.confirm' },
   { method: 'POST', path: '/api/ops/accounts/[id]/reissue-setup', capability: 'account.recover' },
   // §9: the logged mentor/director-assisted minor recovery (distinct from

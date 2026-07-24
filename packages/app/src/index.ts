@@ -386,6 +386,19 @@ export type {
   CancelCalendarEventResult,
   CalendarListQuery,
 } from './calendar.js'
+export { AttendanceService } from './attendance.js'
+export type {
+  AttendanceServiceDeps,
+  AttendanceAuthorizeFn,
+  AttendanceCapability,
+  AttendanceException,
+  AttendanceExceptionType,
+  MakeupStatus,
+  StaffRosterItem,
+  AttendanceCounts,
+  SubmitExceptionInput,
+  AttendanceListQuery,
+} from './attendance.js'
 export { OpsReadService, displayFromFullName } from './ops-read.js'
 export type {
   OpsReadServiceDeps,
@@ -574,4 +587,7 @@ export {
   TotpRateLimitedError,
   CalendarEventNotFoundError,
   CalendarValidationError,
+  AttendanceExceptionNotFoundError,
+  AttendanceValidationError,
+  AttendanceMakeupNotApplicableError,
 } from './errors.js'

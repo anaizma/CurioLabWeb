@@ -902,6 +902,50 @@ The director-authored, **audience-scoped** chapter calendar. A `chapter_director
 
 ---
 
+## 6d. Attendance & make-up check-ins (guardian/director portal, Feature 2)
+
+Guardian-submitted, staff-resolved attendance exceptions over a chapter **session** (a `kind: "session"` `calendar_event` from Feature 1, referenced by its stable `event_id`/`sessionEventId` — the same id `GET /api/ops/calendar` returns as `id`). A guardian records that their child was **absent** or **late**; an absence carries a **make-up** (a 30-minute virtual check-in the student completes after finishing that session's assignment, scheduled **before the chapter's next session**), which a mentor/director later marks **done**.
+
+**Append-only / auditable (platform invariant).** Attendance is an event-sourced revision log (`attendance_exception`, migration `0027`): one row per `(exception, revision)` with a stable `exception_id` identity, a bumped `version`, and the full snapshot (type, reason, `arrive_at`, `makeup_consent`, `makeup_slots[]`, `makeup_status`). A **make-up completion** is a **new revision** (`makeup_status → "completed"`) — never a destructive UPDATE or hard DELETE (enforced by the shared `reject_append_only_mutation()` trigger + role REVOKE). Reads return the current state via the `attendance_exception_current` projection (latest revision per `exception_id`, carrying the **original** guardian/`createdAt` forward). Every submission and completion writes an `audit_entry` **and** an `access_ledger` row (events `attendance.exception_submitted` / `attendance.makeup_completed`), `detail` carrying the `exceptionId`, `sessionEventId`, and `type` — never PII.
+
+**Exception object** (all surfaces; timestamps ISO-8601 UTC):
+```
+{ id, studentAccountId, sessionEventId, type, reason, arriveAt, makeupConsent, makeupSlots, makeupStatus, createdByGuardianAccountId, createdAt }
+```
+`id` is the **stable exception identity** (the target of make-up-complete), not the internal revision id. `type ∈ {absent, late}`; `makeupSlots` is an array of ISO timestamps; `makeupStatus ∈ {pending, scheduled, completed}` for an absence and `null` for a late. `reason`/`arriveAt` are nullable (`arriveAt` is late-only).
+
+**Counts envelope** (exact field names): `{ totalAbsences, outstanding, madeUp, late }` where `totalAbsences` = absences, `madeUp` = absences whose `makeupStatus = "completed"`, `outstanding` = `totalAbsences − madeUp`, `late` = late exceptions. The guardian read aggregates the child's exceptions across **all** terms; the staff `?chapterId=&termId=` roster scopes the counts to **one term** (a session's term is resolved by **date-range containment** — the term in the session's chapter whose `[starts_on, ends_on]` contains the session's `startsAt`, not the student's enrollment term).
+
+**The make-up validation rule (server-side, never trusts the client).** Each chosen `makeupSlot` must be **strictly after** the missed session's `startsAt` (you cannot make up before missing) **and strictly before** the chapter's **next** `kind: "session"` event's `startsAt` (the next active, non-canceled session in the same chapter after the missed one). If there is **no next session** (the missed one is the last of the term), the fallback requires each slot to be **on or before** the term's `ends_on` (end of that day, UTC). An **absent** exception additionally requires `makeupConsent = true` **and at least one** valid slot; on submit it lands `makeupStatus = "scheduled"`. A **late** exception carries `arriveAt`, has **no** make-up (`makeupStatus = null`, `makeupSlots = []`, `makeupConsent` irrelevant).
+
+**Capabilities (added to the registry with allow/deny fixtures):**
+- **`attendance.submit`** — guardian-scoped **write** (roles `[]`; the guardianship is the authority, matched against `ctx.guardianOf`); `writes:true`, so the age-18 bar applies (a guardian cannot submit for an 18+ former child). Mirrors `consent.grant` / `publication.object`.
+- **`attendance.view_child`** — guardian-scoped **read** (roles `[]`), `writes:false`, no read-log (attendance facts, not the composed minor record). Persists past the child's majority (ends at the edge's lapse).
+- **`attendance.view`** — chapter-scoped **read floor**, roles `TEACHING` (`junior_mentor`, `senior_instructor`, `lead_instructor`, `chapter_director`), `writes:false` (both platform overrides reach it). The staff roster.
+- **`attendance.resolve`** — chapter-scoped **write**, roles `TEACHING` (`chapter_director` + that chapter's mentors; `platform_admin` via override; a read-only `platform_staff` cannot). A **distinct** write capability from `attendance.view` — a read-only reader may view the roster but must not complete a make-up. The two mutating routes are manifested against `attendance.submit` / `attendance.resolve`.
+
+### `POST /api/guardian/children/{id}/attendance` — submit an exception (`attendance.submit`)
+- **Auth:** session — `attendance.submit`. `{id}` = the child's **student account id**; gated on the caller being the **verified guardian** of that child (a different guardian → opaque `403`).
+- **Request body:** `sessionEventId` (required — the calendar session's `event_id`), `type` (required; `absent`|`late`), `reason?`, `arriveAt?` (ISO — late only), `makeupConsent?` (boolean — required `true` for an absence), `makeupSlots?` (array of ISO timestamps — required non-empty for an absence). *(Divergence from the shape list: `makeupConsent` is a body field so the consent-required-for-absent rule has an input; a late submit ignores it.)*
+- **Validation:** the session must resolve to an active `kind:"session"` event **in the child's chapter** (a session in another chapter, or a nonexistent/canceled one, is one opaque `400`); slots after-missed and before-next-session (fallback: term `ends_on`); consent + ≥1 slot for an absence; `arriveAt` for a late.
+- **Response `201`:** the created exception object. **Errors:** `400` bad `type`/`session`/`consent`/`slots`/`arrive_at`; `403`.
+
+### `GET /api/guardian/children/{id}/attendance` — the child's exceptions + counts (`attendance.view_child`; GET-exempt)
+- **Auth:** session — `attendance.view_child`, guardian-scoped to that child (another guardian's child → opaque `403`).
+- **Response `200`:** `{ items: [exception, ...], counts: { totalAbsences, outstanding, madeUp, late } }`.
+
+### `GET /api/ops/attendance` — the staff roster (`attendance.view`; GET-exempt)
+- **Auth:** session — `attendance.view`. A caller not staff (teaching role) of the resolved chapter → opaque `403`; cross-chapter leakage is impossible (server-side membership check).
+- **Query:** `?sessionEventId=` → who is absent/late for that one session (with pending make-ups); `?chapterId=&termId=` → the chapter's exceptions for that term (by date-range containment). Roster items carry the student `displayName` (first name + last initial — minor PII floor), never a raw last name/school.
+- **Response `200`:** `{ items: [{ ...exception, displayName }, ...], counts: { totalAbsences, outstanding, madeUp, late } }`.
+
+### `POST /api/ops/attendance/{id}/makeup-complete` — mark the check-in done (`attendance.resolve`)
+- **Auth:** session — `attendance.resolve`, resolved against the exception's session chapter (same-chapter check; another chapter → `403`). `{id}` = the stable `exception_id`.
+- **Behavior:** writes a **new** append-only revision with `makeupStatus → "completed"` (the prior revision is retained); the absence moves outstanding → made-up. **Idempotent** — completing an already-completed exception is a no-op (no new row). A **late** exception has no make-up and is refused.
+- **Response `200`:** the completed exception object. **Errors:** `403`; `404` `AttendanceExceptionNotFoundError`; `409` `AttendanceMakeupNotApplicableError` (a late exception).
+
+---
+
 ## 7. Platform admin
 
 ### `POST /api/admin/chapters`

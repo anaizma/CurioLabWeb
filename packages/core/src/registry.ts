@@ -737,4 +737,53 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: [],
     writes: false,
   },
+
+  // ---- attendance & make-up check-ins (guardian/director portal, Feature 2) --
+  // The guardian-submitted, staff-resolved attendance exception over a chapter
+  // session (a kind='session' calendar_event from Feature 1).
+  //
+  // attendance.submit: the guardian-scoped WRITE — a guardian records an absent /
+  // late exception for their OWN verified child. roles [] (guardianship itself is
+  // the authority, matched against ctx.guardianOf by the guardian scope); a
+  // lapsed/revoked edge is absent so it denies. writes:true, so the age-18 bar
+  // applies (a guardian cannot submit for an 18+ former child), mirroring
+  // consent.grant / publication.object.
+  'attendance.submit': {
+    scope: 'guardian',
+    roles: [],
+    writes: true,
+  },
+  // attendance.view_child: the guardian-scoped READ of the child's exceptions +
+  // counts. roles [] (guardianship is the authority), writes:false, NO logsRead —
+  // it returns attendance facts (not the composed minor record, which stays
+  // guardian.view_child_record with its minor_record.read obligation). Guardian
+  // READ persists through the child's majority (age-not-bounded, like
+  // guardian.view_calendar), ending only at the edge's lapse.
+  'attendance.view_child': {
+    scope: 'guardian',
+    roles: [],
+    writes: false,
+  },
+  // attendance.view: the chapter-scoped staff READ floor. Roles TEACHING (a pod
+  // mentor / instructor, or the chapter director) so the staff running a session
+  // can see who is absent/late with pending make-ups; writes:false, so BOTH
+  // platform overrides (admin + read-only staff) reach it. The display-name (minor
+  // PII floor) and the sessionId/termId scoping are service concerns on top, like
+  // calendar.view's audience refinement.
+  'attendance.view': {
+    scope: 'chapter',
+    roles: TEACHING,
+    writes: false,
+  },
+  // attendance.resolve: the chapter-scoped staff WRITE — a mentor / director marks
+  // the 30-minute make-up check-in DONE (a new append-only revision, makeup_status
+  // -> completed). A DISTINCT write capability from attendance.view: reads and
+  // writes are not equivalent here (a read-only platform_staff may VIEW the roster
+  // but must NOT complete a make-up), so completing is writes:true (a read-only
+  // override does not reach it), mirroring calendar.manage vs calendar.view.
+  'attendance.resolve': {
+    scope: 'chapter',
+    roles: TEACHING,
+    writes: true,
+  },
 }

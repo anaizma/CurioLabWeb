@@ -1253,6 +1253,57 @@ export class CalendarEventNotFoundError extends Error {
   }
 }
 
+// -------------------------------------------------------------------------
+// Attendance & make-up check-ins (guardian/director portal, Feature 2).
+// -------------------------------------------------------------------------
+
+/** The referenced attendance exception does not exist (make-up-complete of an unknown id). */
+export class AttendanceExceptionNotFoundError extends Error {
+  readonly exceptionId: string
+  constructor(exceptionId: string) {
+    super(`attendance exception not found: ${exceptionId}`)
+    this.name = 'AttendanceExceptionNotFoundError'
+    this.exceptionId = exceptionId
+  }
+}
+
+/**
+ * An attendance submission failed validation before/around the authorization
+ * decision:
+ *   - `type`     — not one of absent|late;
+ *   - `session`  — the sessionEventId does not resolve to an active kind='session'
+ *                  calendar event IN THE CHILD'S CHAPTER (nonexistent, canceled,
+ *                  non-session, or another chapter — one opaque signal, no leak);
+ *   - `consent`  — an absent exception without makeup_consent = true;
+ *   - `slots`    — an absent exception with no slot, or a slot not strictly after
+ *                  the missed session AND strictly before the chapter's next session
+ *                  (or, if none, on/before the term's ends_on);
+ *   - `arrive_at`— a late exception without arriveAt.
+ * Distinct from a Forbidden (an authorization failure); mappable to a 400.
+ */
+export class AttendanceValidationError extends Error {
+  readonly field: 'type' | 'session' | 'consent' | 'slots' | 'arrive_at'
+  constructor(field: 'type' | 'session' | 'consent' | 'slots' | 'arrive_at', message?: string) {
+    super(message ?? `invalid attendance submission: ${field}`)
+    this.name = 'AttendanceValidationError'
+    this.field = field
+  }
+}
+
+/**
+ * A make-up completion was attempted on an exception that has no make-up — a LATE
+ * exception (which carries an arrive_at and never a make-up). Distinct from a
+ * Forbidden (the actor IS an authorized resolver); a route maps this to a 409.
+ */
+export class AttendanceMakeupNotApplicableError extends Error {
+  readonly exceptionId: string
+  constructor(exceptionId: string) {
+    super(`no make-up applies to this attendance exception (it is not an absence): ${exceptionId}`)
+    this.name = 'AttendanceMakeupNotApplicableError'
+    this.exceptionId = exceptionId
+  }
+}
+
 /**
  * A calendar event write failed validation before any authorization decision:
  * `time_range` (endsAt is not strictly after startsAt), `audiences` (empty or an

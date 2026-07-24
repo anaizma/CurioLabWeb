@@ -70,6 +70,8 @@ const NOT_FOUND = new Set([
   'PublicationHoldNotFoundError',
   // Shared chapter calendar (Feature 1): edit/cancel of an unknown event.
   'CalendarEventNotFoundError',
+  // Attendance (Feature 2): make-up-complete of an unknown exception.
+  'AttendanceExceptionNotFoundError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */
@@ -108,6 +110,8 @@ const CONFLICT = new Set([
   'GrantRevocationEndsEnrollmentError',
   'GrantNotActiveError',
   'PublicationGrantRequiredError',
+  // Attendance (Feature 2): completing a late exception (no make-up applies).
+  'AttendanceMakeupNotApplicableError',
 ])
 
 /** Too-many-requests: the per-issuer invite rate limit (P2 §4) + the §10 TOTP attempt limit -> 429. */
@@ -153,6 +157,8 @@ const BAD_REQUEST = new Set([
   'GrantStrongMethodRequiredError',
   // Shared chapter calendar (Feature 1): a bad time range / audience set / kind.
   'CalendarValidationError',
+  // Attendance (Feature 2): a bad type / session / consent / slots / arrive_at.
+  'AttendanceValidationError',
 ])
 
 /**

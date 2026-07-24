@@ -340,3 +340,19 @@ export type Capability =
   | 'calendar.manage'
   | 'calendar.view'
   | 'guardian.view_calendar'
+  // attendance & make-up check-ins (guardian/director portal work order, Feature 2).
+  // The guardian-submitted, staff-resolved attendance exception over a chapter
+  // session (a kind='session' calendar event from Feature 1). attendance.submit is
+  // the guardian-scoped WRITE (record an absent/late exception for the guardian's
+  // own verified child; matched against ctx.guardianOf, like publication.object).
+  // attendance.view_child is the guardian-scoped READ of that child's exceptions +
+  // counts (writes:false, no logsRead — it returns attendance facts, not the
+  // composed minor record). attendance.view is the chapter-scoped staff READ floor
+  // (teaching roles: a director or that chapter's mentors; writes:false, so both
+  // platform overrides reach it). attendance.resolve is the chapter-scoped staff
+  // WRITE (a mentor/director marks the make-up check-in done — a distinct write cap
+  // so a read-only platform_staff cannot complete a make-up).
+  | 'attendance.submit'
+  | 'attendance.view_child'
+  | 'attendance.view'
+  | 'attendance.resolve'
