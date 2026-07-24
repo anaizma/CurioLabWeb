@@ -1,9 +1,9 @@
-import { getGuardianView } from "@/lib/portal/guardian/guardian-data";
+import { getGuardianMessages } from "@/lib/portal/guardian/messages-data";
 import SampleBanner from "@/components/portal/SampleBanner";
 import MessagesClient from "./messages-client";
 
 export default async function GuardianMessagesPage() {
-  const v = await getGuardianView();
+  const v = await getGuardianMessages();
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -13,7 +13,7 @@ export default async function GuardianMessagesPage() {
         </p>
       </div>
       {v.isSample && <SampleBanner />}
-      <MessagesClient seed={v.messages} />
+      <MessagesClient seed={v.messages} threadId={v.threadId} live={v.live} />
     </div>
   );
 }
