@@ -36,7 +36,7 @@ function prettyKey(k: string): string {
 function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgba(3,35,68,.4)" }} onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl max-h-[86vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg rounded-2xl bg-white p-7 shadow-xl max-h-[86vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
@@ -317,9 +317,9 @@ export default function AttendanceClient({
 
       {sel && (
         <Overlay onClose={close}>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-5">
           <div className="flex items-center justify-between">
-            <div className="text-[14.5px] font-bold">{DOW[sel.getDay()]}, {MON[sel.getMonth()]} {sel.getDate()} · session</div>
+            <div className="text-lg font-bold">{DOW[sel.getDay()]}, {MON[sel.getMonth()]} {sel.getDate()} · session</div>
             <button type="button" onClick={close} className="text-[11.5px] font-semibold text-muted">Close</button>
           </div>
           <div className="flex gap-2">
@@ -328,7 +328,7 @@ export default function AttendanceClient({
                 key={t}
                 type="button"
                 onClick={() => setMode(t)}
-                className="flex-1 rounded-md border px-3 py-1.5 text-[12.5px] font-semibold"
+                className="flex-1 rounded-md border px-3 py-2.5 text-[13px] font-semibold"
                 style={mode === t ? { background: "var(--pt-accent-soft)", borderColor: "var(--pt-accent-border)", color: "var(--pt-accent-fg)" } : { background: "#f7f4f0", borderColor: "rgba(3,35,68,.10)", color: "#6B6058" }}
               >
                 {t === "absent" ? "Absent" : "Arriving late"}
@@ -337,28 +337,28 @@ export default function AttendanceClient({
           </div>
 
           {mode === "late" && (
-            <div className="flex flex-col gap-2.5">
-              <label className="flex flex-col gap-1 text-[12.5px]">
+            <div className="flex flex-col gap-4">
+              <label className="flex flex-col gap-1.5 text-[13px]">
                 <span className="text-muted">When will {childName} arrive?</span>
                 <input type="time" value={arrive} onChange={(e) => setArrive(e.target.value)} className="rounded-md border border-black/[.12] px-3 py-1.5 text-[13px] bg-white" />
               </label>
-              <button type="button" onClick={saveLate} disabled={busy} className="self-start rounded-md px-3.5 py-1.5 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
+              <button type="button" onClick={saveLate} disabled={busy} className="self-start rounded-md px-4 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
                 {busy ? "Saving…" : "Save late notice"}
               </button>
             </div>
           )}
 
           {mode === "absent" && (
-            <div className="flex flex-col gap-2.5">
-              <label className="flex flex-col gap-1 text-[12.5px]">
+            <div className="flex flex-col gap-4">
+              <label className="flex flex-col gap-1.5 text-[13px]">
                 <span className="text-muted">Why will {childName} be absent?</span>
-                <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="A short note is all we need." className="rounded-md border border-black/[.12] px-3 py-1.5 text-[13px] bg-white min-h-14" />
+                <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="A short note is all we need." className="rounded-md border border-black/[.12] px-3 py-2 text-[13px] bg-white min-h-24" />
               </label>
-              <label className="flex gap-2 items-start text-[11.5px]">
+              <label className="flex gap-2.5 items-start text-[12.5px] leading-relaxed">
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5" />
                 <span>I consent to {childName} making up this session with a <b>30-minute virtual check-in</b>, completed after {childName} finishes the session&apos;s assignment.</span>
               </label>
-              <div className="flex flex-col gap-1.5 text-[12.5px]">
+              <div className="flex flex-col gap-2 text-[13px]">
                 <span className="text-muted">Pick times you&apos;re available. The check-in must happen <b>before the next session</b> ({nsLabel}).</span>
                 <div className="flex flex-wrap gap-1.5">
                   {slots.map((s) => (
@@ -366,7 +366,7 @@ export default function AttendanceClient({
                       key={s.value}
                       type="button"
                       onClick={() => setChosen((c) => ({ ...c, [s.value]: !c[s.value] }))}
-                      className="rounded-full px-2.5 py-1 text-[11.5px] font-medium border"
+                      className="rounded-full px-3 py-1.5 text-[12px] font-medium border"
                       style={chosen[s.value] ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)", borderColor: "transparent" } : { background: "#f7f4f0", color: "#6B6058", borderColor: "rgba(3,35,68,.10)" }}
                     >
                       {s.label}
@@ -374,7 +374,7 @@ export default function AttendanceClient({
                   ))}
                 </div>
               </div>
-              <button type="button" disabled={!absentValid || busy} onClick={saveAbsent} className="self-start rounded-md px-3.5 py-1.5 text-[12.5px] font-semibold disabled:opacity-45" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
+              <button type="button" disabled={!absentValid || busy} onClick={saveAbsent} className="self-start rounded-md px-4 py-2 text-[13px] font-semibold disabled:opacity-45" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
                 {busy ? "Submitting…" : "Submit absence & make-up plan"}
               </button>
             </div>
