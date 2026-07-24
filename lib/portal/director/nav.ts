@@ -1,7 +1,13 @@
 import type { PortalNavGroup } from "@/components/portal/PortalShell";
 
 export const DIRECTOR_NAV: PortalNavGroup[] = [
-  { title: "Overview", items: [{ label: "Dashboard", href: "/portal/director" }] },
+  {
+    title: "Overview",
+    items: [
+      { label: "Dashboard", href: "/portal/director" },
+      { label: "Calendar", href: "/portal/director/calendar" },
+    ],
+  },
   {
     title: "Intake",
     items: [
