@@ -10,11 +10,16 @@ export const REPRESENTATIVE_GUARDIAN_VIEW: GuardianView = {
     { grantType: "emergency_medical_pickup", label: "Emergency medical & pickup", description: "Emergency contact, medical, and authorized-pickup information. Required to participate.", status: "granted", method: "click", renewalLabel: "Renews each term", expiresLabel: "Active", revocable: false },
     { grantType: "verification_link_sharing", label: "Verification-link sharing", description: "Ari can share a private link that verifies their CurioLab work to a college or program.", status: "granted", method: "click", renewalLabel: "Standing", expiresLabel: "Active", revocable: true },
   ],
-  publicItems: [
-    { id: "pub_1", title: "Weather station dashboard", kind: "project", surfaceLabel: "Community page", dateLabel: "Jul 18" },
+  activity: [
+    { id: "act_1", title: "Recycling robot — build log #3", kind: "post", visibility: "chapter", visibilityLabel: "Chapter only", dateLabel: "Jul 22" },
+    { id: "act_2", title: "Weather station dashboard", kind: "project", visibility: "community", visibilityLabel: "Community page", dateLabel: "Jul 18" },
+    { id: "act_3", title: "My first data visualization", kind: "post", visibility: "newsletter", visibilityLabel: "Newsletter", dateLabel: "Jul 10" },
   ],
-  nominations: [
-    { id: "nom_1", itemTitle: "Recycling robot", surfaceLabel: "newsletter", publishesInLabel: "5 days" },
+  messages: [
+    { id: "m1", who: "them", name: "Ms. Alvarez (Mentor)", text: "Hi! Ari did great building the sensor circuit today — bring a USB-C cable next Saturday if you have one.", timeLabel: "Mon 4:12 PM" },
+    { id: "m2", who: "me", name: "You", text: "Thanks so much! We'll pack one. Quick question — is there a session the week of the 28th?", timeLabel: "Mon 6:40 PM" },
+    { id: "m3", who: "them", name: "Dr. Okoro (Director)", text: "Yes — Saturday as usual that week. I'll post the assignment on Sunday.", timeLabel: "Mon 7:05 PM" },
   ],
+  nominations: [{ id: "nom_1", itemTitle: "Recycling robot", surfaceLabel: "newsletter", publishesInLabel: "5 days" }],
   isSample: true,
 };

@@ -3,7 +3,9 @@ import type { PortalNavItem } from "@/components/portal/PortalShell";
 export const GUARDIAN_NAV: PortalNavItem[] = [
   { label: "Home", href: "/portal/parent" },
   { label: "Consent", href: "/portal/parent/consent" },
-  { label: "Child activity", href: "/portal/parent/activity" },
+  { label: "Activity", href: "/portal/parent/activity" },
+  { label: "Attendance", href: "/portal/parent/attendance" },
+  { label: "Messages", href: "/portal/parent/messages" },
 ];
 
 /** The nav href to highlight for a pathname: longest item href the path equals or

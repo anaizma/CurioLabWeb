@@ -19,12 +19,23 @@ export interface ConsentGrant {
   revocable: boolean;
 }
 
-export interface PublicItem {
+export type ActivityVisibility = "chapter" | "community" | "newsletter";
+
+export interface ActivityItem {
   id: string;
   title: string;
   kind: "post" | "project";
-  surfaceLabel: string;
+  visibility: ActivityVisibility;
+  visibilityLabel: string;
   dateLabel: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  who: "me" | "them";
+  name: string;
+  text: string;
+  timeLabel: string;
 }
 
 export interface Nomination {
@@ -37,7 +48,8 @@ export interface Nomination {
 export interface GuardianView {
   child: GuardianChild;
   grants: ConsentGrant[];
-  publicItems: PublicItem[];
+  activity: ActivityItem[];
+  messages: ChatMessage[];
   nominations: Nomination[];
   isSample: boolean;
 }
