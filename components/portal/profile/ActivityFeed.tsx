@@ -19,7 +19,7 @@ const LENS_NOTE: Record<Viewer, string> = {
 const BADGE: Record<TimelineItem["visibility"], { t: string; c: string; bg: string; bd: string }> = {
   draft: { t: "Draft", c: "var(--color-muted)", bg: "var(--color-ivory)", bd: "rgba(0,0,0,.1)" },
   community: { t: "Community", c: "var(--pt-accent-fg)", bg: "var(--pt-accent-soft)", bd: "var(--pt-accent-border)" },
-  newsletter: { t: "Newsletter", c: "#1B6E3A", bg: "#E7F5EC", bd: "#BFE3CC" },
+  newsletter: { t: "Newsletter", c: "var(--pt-newsletter-fg)", bg: "var(--pt-newsletter-soft)", bd: "var(--pt-newsletter-border)" },
 };
 
 export default function ActivityFeed({ p }: { p: StudentProfile }) {
@@ -71,17 +71,17 @@ export default function ActivityFeed({ p }: { p: StudentProfile }) {
                   <b className="block mb-1" style={{ color: "#5A3D06" }}>{i.nomination.by} nominated this for the newsletter</b>
                   {i.nomination.note}
                   <div className="flex gap-2 mt-2.5 flex-wrap">
-                    <button className="text-xs font-medium px-2.5 py-1 rounded-md text-[color:var(--pt-on-accent)]" style={{ background: "var(--pt-accent)" }}>Accept</button>
-                    <button className="text-xs font-medium px-2.5 py-1 rounded-md border border-black/15">No thanks</button>
-                    <button className="text-xs font-medium px-2.5 py-1 rounded-md border border-black/15">Run it without my name</button>
+                    <button type="button" className="text-xs font-medium px-2.5 py-1 rounded-md text-[color:var(--pt-on-accent)]" style={{ background: "var(--pt-accent)" }}>Accept</button>
+                    <button type="button" className="text-xs font-medium px-2.5 py-1 rounded-md border border-black/15">No thanks</button>
+                    <button type="button" className="text-xs font-medium px-2.5 py-1 rounded-md border border-black/15">Run it without my name</button>
                   </div>
                 </div>
               )}
               <div className="flex gap-1.5 border-t border-black/[.06] mt-3 pt-2.5 text-[12.5px] text-muted">
                 {i.isDraft ? (
-                  <><button className="px-2 py-1 rounded-full hover:bg-black/[.04]">Continue writing</button><button className="px-2 py-1 rounded-full hover:bg-black/[.04]">Delete</button></>
+                  <><button type="button" className="px-2 py-1 rounded-full hover:bg-black/[.04]">Continue writing</button><button type="button" className="px-2 py-1 rounded-full hover:bg-black/[.04]">Delete</button></>
                 ) : (
-                  <><button className="px-2 py-1 rounded-full hover:bg-black/[.04]">▲ Useful · {i.usefulCount}</button><button className="px-2 py-1 rounded-full hover:bg-black/[.04]">Comment · {i.commentCount}</button></>
+                  <><button type="button" className="px-2 py-1 rounded-full hover:bg-black/[.04]">▲ Useful · {i.usefulCount}</button><button type="button" className="px-2 py-1 rounded-full hover:bg-black/[.04]">Comment · {i.commentCount}</button></>
                 )}
               </div>
             </div>

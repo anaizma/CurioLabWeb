@@ -13,7 +13,7 @@ export default function PinnedProjects({ p }: { p: StudentProfile }) {
     <div className="bg-white border border-black/10 rounded-xl p-5">
       <div className="flex items-center justify-between mb-3">
         <div className="label">Pinned projects</div>
-        <button className="text-xs font-medium px-2.5 py-1 rounded-md border border-black/15 hover:bg-black/[.03]">Choose pins</button>
+        <button type="button" className="text-xs font-medium px-2.5 py-1 rounded-md border border-black/15 hover:bg-black/[.03]">Choose pins</button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {p.projects.map((pr) => {

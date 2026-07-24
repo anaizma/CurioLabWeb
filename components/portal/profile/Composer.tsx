@@ -45,7 +45,7 @@ export default function Composer({ p }: { p: StudentProfile }) {
       )}
       <div className="flex items-center justify-between gap-3 mt-3.5 flex-wrap">
         <span className="text-[13px] text-muted">Posting as <b className="text-ink">{p.displayName}</b> · under 18, so last name and school stay hidden</span>
-        <button className="px-3.5 py-2 rounded-md text-sm font-medium text-[color:var(--pt-on-accent)]" style={{ background: "var(--pt-accent)" }}>
+        <button type="button" className="px-3.5 py-2 rounded-md text-sm font-medium text-[color:var(--pt-on-accent)]" style={{ background: "var(--pt-accent)" }}>
           {dest === "draft" ? "Save draft" : "Post to community"}
         </button>
       </div>

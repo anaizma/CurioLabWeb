@@ -6,7 +6,7 @@ interface ApiProject { projectId?: string; title?: string; summary?: string | nu
 interface ApiProfile {
   subjectAccountId?: string; displayName?: string; tier?: string | null;
   membership?: { chapterName?: string } | null; projects?: ApiProject[]; mentorHours?: number;
-  narrative?: { body?: string; status?: string } | null;
+  narrative?: { body?: string } | null;
 }
 
 function mapStatus(s: string | undefined): ProjectStatus {
@@ -36,9 +36,9 @@ function mapProfile(p: ApiProfile): StudentProfile {
     joinedLabel: "",
     verified: verifiedCount > 0,
     stats: { verifiedProjects: verifiedCount, sessions: 0, inNewsletter: 0, tier: p.tier ?? "—" },
-    narrative: p.narrative?.body
-      ? { body: p.narrative.body, status: p.narrative.status === "published" ? "published" : "pending_review" }
-      : null,
+    // The profile endpoint only ever surfaces the PUBLISHED narrative (api-reference §4);
+    // there is no status to derive, so it is always published at this seam.
+    narrative: p.narrative?.body ? { body: p.narrative.body, status: "published" as const } : null,
     skills: [],
     projects,
     timeline: [],
@@ -51,8 +51,10 @@ export async function getStudentProfile(): Promise<StudentProfile> {
   try {
     const session = (await cookies()).get("cl_session");
     if (!session) return REPRESENTATIVE_PROFILE;
-    const host = (await headers()).get("host");
-    const origin = process.env.NEXT_PUBLIC_SITE_URL ?? (host ? `http://${host}` : "");
+    const h = await headers();
+    const host = h.get("host");
+    const proto = h.get("x-forwarded-proto") ?? "http";
+    const origin = process.env.NEXT_PUBLIC_SITE_URL ?? (host ? `${proto}://${host}` : "");
     if (!origin) return REPRESENTATIVE_PROFILE;
     const cookie = `cl_session=${session.value}`;
 

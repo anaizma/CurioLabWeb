@@ -23,7 +23,7 @@ export default function ProfileHero({ p }: { p: StudentProfile }) {
               CurioLab verified
             </span>
           )}
-          <button className="text-sm font-medium px-3 py-1.5 rounded-md border border-black/15 hover:bg-black/[.03]">Share profile</button>
+          <button type="button" className="text-sm font-medium px-3 py-1.5 rounded-md border border-black/15 hover:bg-black/[.03]">Share profile</button>
         </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-black/[.06]">
