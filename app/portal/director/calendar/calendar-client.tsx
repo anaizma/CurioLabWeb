@@ -14,6 +14,8 @@ const AUD: { key: CalendarAudience; label: string }[] = [
   { key: "director", label: "Directors" },
 ];
 const KINDS: CalendarKind[] = ["session", "orientation", "meeting", "other"];
+const CAT_LABEL: Record<CalendarAudience, string> = { parent: "Parents", mentor: "Mentors", director: "Directors" };
+const MENTOR_ROLES = ["junior_mentor", "senior_instructor", "lead_instructor"];
 type Unit = "day" | "week" | "month" | "year";
 type Ends = "never" | "on" | "after";
 type Freq = "none" | "daily" | "weekly" | "monthly" | "custom";
@@ -177,6 +179,10 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
   const [showCustom, setShowCustom] = useState(false);
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
+  const [guests, setGuests] = useState<string[]>([]);
+  const [guestInput, setGuestInput] = useState("");
+  const [activeCat, setActiveCat] = useState<CalendarAudience | null>(null);
+  const [members, setMembers] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -191,6 +197,38 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
     }
     setFreq(v as Freq);
     setCustom(null);
+  }
+
+  function addGuest(name: string) {
+    const n = name.trim();
+    if (n && !guests.includes(n)) setGuests((g) => [...g, n]);
+  }
+  async function loadCat(cat: CalendarAudience) {
+    if (activeCat === cat) { setActiveCat(null); return; }
+    setActiveCat(cat);
+    if (members[cat]) return;
+    try {
+      if (cat === "parent") {
+        const res = await fetch("/api/ops/guardianships", { cache: "no-store" });
+        if (res.ok) {
+          const d = (await res.json()) as { items?: { guardianDisplayName?: string }[] };
+          const names = Array.from(new Set((d.items ?? []).map((g) => g.guardianDisplayName).filter((x): x is string => Boolean(x))));
+          setMembers((m) => ({ ...m, parent: names }));
+        }
+      } else {
+        const res = await fetch("/api/ops/memberships", { cache: "no-store" });
+        if (res.ok) {
+          const d = (await res.json()) as { items?: { displayName?: string; role?: string }[] };
+          const names = (d.items ?? [])
+            .filter((x) => (cat === "director" ? x.role === "chapter_director" : MENTOR_ROLES.includes(x.role ?? "")))
+            .map((x) => x.displayName)
+            .filter((x): x is string => Boolean(x));
+          setMembers((m) => ({ ...m, [cat]: Array.from(new Set(names)) }));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -215,7 +253,7 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
         const res = await fetch("/api/ops/calendar", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ chapterId, title: title.trim(), kind, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), audiences, location: location.trim() || undefined, notes: notes.trim() || undefined }),
+          body: JSON.stringify({ chapterId, title: title.trim(), kind, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), audiences, location: location.trim() || undefined, notes: notes.trim() || undefined, guests: guests.length ? guests : undefined }),
         });
         if (!res.ok) {
           setError(res.status === 400 ? "Check the times — end must be after start." : res.status === 403 ? "You don't have permission." : "Could not create the event.");
@@ -281,6 +319,50 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
                 );
               })}
             </div>
+          </div>
+          <div className="flex flex-col gap-1.5 text-xs text-ink/60">
+            Add guests
+            <input
+              value={guestInput}
+              onChange={(e) => setGuestInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGuest(guestInput); setGuestInput(""); } }}
+              placeholder="Type a name and press Enter…"
+              className={inputCls}
+            />
+            <div className="flex gap-2 flex-wrap mt-1">
+              {AUD.map((a) => (
+                <button key={a.key} type="button" onClick={() => loadCat(a.key)} className="rounded-full px-3 py-1 text-xs font-medium border" style={activeCat === a.key ? { background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)", borderColor: "var(--pt-accent-border)" } : { background: "#f7f4f0", color: "#6B6058", borderColor: "rgba(3,35,68,.12)" }}>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+            {activeCat && (
+              <div className="rounded-lg border border-ink/10 p-1.5 max-h-40 overflow-y-auto">
+                <div className="text-[10px] uppercase tracking-wide text-ink/40 px-1.5 py-1">{CAT_LABEL[activeCat]} in this chapter</div>
+                {(members[activeCat] ?? []).length === 0 ? (
+                  <div className="text-xs text-ink/40 px-1.5 py-1">No one to show (or sign in as a director).</div>
+                ) : (
+                  (members[activeCat] ?? []).map((n) => {
+                    const added = guests.includes(n);
+                    return (
+                      <button key={n} type="button" disabled={added} onClick={() => addGuest(n)} className="block w-full text-left text-sm px-2 py-1.5 rounded hover:bg-cream disabled:text-ink/40">
+                        {n}{added ? " ✓" : ""}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+            {guests.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {guests.map((g, i) => (
+                  <span key={g} className="inline-flex items-center gap-1.5 text-xs rounded-full pl-3 pr-1.5 py-1" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
+                    {g}
+                    <button type="button" onClick={() => setGuests((prev) => prev.filter((_, idx) => idx !== i))} className="text-sm leading-none">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <input className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location (optional)" />
           <textarea className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes (optional)" />
