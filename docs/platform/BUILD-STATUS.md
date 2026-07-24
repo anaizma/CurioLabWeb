@@ -35,6 +35,36 @@ Former-mentor/instructor/volunteer access closes automatically at term end rathe
 
 **Tests:** `packages/app/test/time-box-sweep.test.ts` (5, embedded-Postgres, deterministic clock) — ended-term mentor flips / current-term mentor untouched; `can` denies a lapsed mentor the `student.view_record` an active mentor is allowed; per-revocation audit + access-ledger rows with `reason = term_ended` and a second run idempotent; a student membership is untouched; a lapsed mentor's pod assignment is cleared.
 
+## P6 part A — consent as an append-only GRANT ledger (§5, REVIEW-GATED)
+
+Consent captured as a set of **independent, append-only grant records** (COPPA: consent specific to each practice, independently revocable, on its own clock). **Built and fully tested, but the public-publication ENFORCEMENT is behind a config flag that defaults OFF** (`CONSENT_GRANT_LEDGER_ENFORCED=false`) pending legal review. **Purely ADDITIVE — the existing `consent` / `consent_current` block ledger and every gate it drives (membership activation, accept-student, the C1/C2/E consent rechecks) are untouched when the flag is off, and their suites still pass.**
+
+**Migration `0024_consent_grant_ledger.sql` (proved RED@0023 → GREEN@0024):**
+- `consent_grant` — append-only (shares `reject_append_only_mutation()` + role REVOKE, like `access_ledger`/`consent`). Row shape: `grant_type`, `subject_student_account_id`, `guardian_account_id` (null = self/system), `scope`, `method`, `granted_at`, `evidence_artifact_ref`, `expires_at`, `revoked_at`|null, `revoked_by`|null, `seq` bigserial.
+- Enum `consent_grant_type` = `program_participation`, `platform_account`, `public_publication`, `photo_video_likeness`, `emergency_medical_pickup`, `verification_link_sharing`. Enum `consent_grant_method` = `click`, `signed_form`, `monetary_transaction`, `video_call`, `id_verification`.
+- **DB trigger floor:** an under-13 `public_publication` GRANT with a `click`, or with no `evidence_artifact_ref`, is REFUSED (a revocation row is exempt).
+- `consent_grant_current` VIEW — latest row per (subject, type); `active = non-revoked AND non-expired` (decision-time `now()`).
+- `publication_hold` — the notify-and-object work table (NOT append-only; object/release UPDATE it).
+- Mechanism-A grants: app SELECT/INSERT `consent_grant` (not UPDATE/DELETE) + SELECT/INSERT/UPDATE `publication_hold`; analytics denied SELECT on both. Drizzle mirror in `enums.ts` / `schema.ts`.
+
+**Config (`packages/app/src/config.ts`):** `CONSENT_GRANT_LEDGER_ENFORCED` (default **false**; gates ONLY the public-publication publish gate + the notify-and-object window), `publicationHoldWindowMs` (default 5 days), `grantRenewalMsByType` (per-term / annual / standing), `STRONG_GRANT_METHODS`, `ENROLLMENT_REQUIRED_GRANT_TYPES`, `SELF_RECONFIRM_GRANT_TYPES`.
+
+**Service (`packages/app/src/consent-grant.ts`):** `ConsentGrantService` — `captureGrant`/`selfGrant` (gated `consent.grant`; Rule 2 strong-method enforcement; expiry per renewal clock), `revokeGrant` (gated `consent.revoke`; refuses enrollment-required types; `public_publication` cascades via `publicationGrantRevokeCascade`), the three guardian reads (`listChildren`/`viewChildGrants`/`viewChildPublicItems`), `objectPublicationHold` (gated `publication.object`). Standalone: `hasActiveGrant` (the publish-gate probe), `nominatePublicationHold` + `runPublicationHolds` (deterministic injected-`now` job body), `lapseGuardianGrantsOnMaturation` (Rule 4, hooked into `MaturationService.confirmMaturation`).
+
+**Publish gate wiring (behind the flag):** `ProjectService.publishPublic`, `NewsletterService.publish`, and `ProfileService.editNarrative`/`reviewNarrative` take an optional `config`; when the flag is on they ADDITIONALLY require an active `public_publication` grant (else `PublicationGrantRequiredError`), on top of the existing `external_publication` gates. Flag off (default) → existing behavior verbatim.
+
+**Capabilities added:** `guardian.list_children`, `guardian.view_grants`, `guardian.view_public_items` (guardian-scoped reads), `publication.object` (guardian write). Capture/revoke deliberately REUSE `consent.grant`/`consent.revoke` — the grant ledger does not fork the consent write authority.
+
+**Endpoints (manifested; §8 ledger events `grant.captured`/`grant.renewed`/`grant.revoked`/`grant.transferred`/`publication.notified`/`publication.objected`/`publication.released`):**
+- `POST /api/guardian/children/[id]/grants` → `consent.grant`
+- `POST /api/guardian/children/[id]/grants/[type]/revoke` → `consent.revoke`
+- `POST /api/guardian/children/[id]/publication-holds/[holdId]/object` → `publication.object`
+- `GET /api/guardian/children`, `GET …/[id]/grants`, `GET …/[id]/public-items` (reads, manifest-exempt).
+
+**Tests:** db `consent-grant-schema.test.ts` (18, RED@0023→GREEN@0024); app `consent-grant.test.ts` (19 — capture/renewal append-only, Rule 2 under-13 strong-method, Rule 5 per-grant revoke + cascade + enrollment-required refusal, guardian reads, Rule 3 notify-and-object release/withhold/idempotent, Rule 4 birthday transfer), `consent-grant-publish-gate.test.ts` (8 — flag on/off for project/newsletter/narrative); http `guardian.test.ts` (+3 end-to-end). Core authorization registry meta-test extended for the four new capabilities.
+
+**Deferred / not done:** the newsletter-item cascade redacts published items but does not archive the issue (kept minimal); `nominatePublicationHold` is a seam the frontend/ops call at nomination time (no auto-nomination wired into publish yet — that lands with the flag flip); artifact intake is an opaque `evidenceArtifactRef` string (no file storage, by design). **Public-publication capture stays OFF for production data until `CONSENT_GRANT_LEDGER_ENFORCED` is flipped post-legal-review.**
+
 ## Notable behavior change to review
 
 - **Guardian reads of an 18+ child persist until the edge lapses.** The age-18 bar was corrected to guardian *writes* only, so a guardian still *reads* their 18+ child's record during the maturation window (soft landing), ending at staff-confirm or the 90-day backstop. Matches 04-state-machines / Flow D; loosens an M1 behavior on purpose. See `packages/core/src/can.ts`, `maturation.ts`.

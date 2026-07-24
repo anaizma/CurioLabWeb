@@ -19,6 +19,11 @@ import {
   requestChildExport,
   requestChildDeletion,
   viewDigest,
+  listChildren,
+  viewChildGrants,
+  viewChildPublicItems,
+  captureChildGrant,
+  revokeChildGrant,
 } from '../src/index.js'
 
 let h: Harness
@@ -134,6 +139,69 @@ describe('grantChildConsent / revokeChildConsent', () => {
       body: { type: 'enrollment' },
     })
     expect(res.status).toBe(400)
+  })
+})
+
+describe('§5 grant ledger — capture / read / revoke through the controllers', () => {
+  test('capture a grant, list children, read grant statuses, then revoke', async () => {
+    const s = await onboardStudent(h.sql, { activate: true })
+    const { guardianToken } = await seedVerifiedGuardian(h.sql, s)
+
+    const captured = await captureChildGrant({
+      sql: h.sql,
+      sessionToken: guardianToken,
+      params: { id: s.accountId },
+      body: { grantType: 'platform_account', method: 'click' },
+    })
+    expect(captured.status).toBe(201)
+    expect(captured.body.grantType).toBe('platform_account')
+
+    const children = await listChildren({ sql: h.sql, sessionToken: guardianToken })
+    expect(children.status).toBe(200)
+    expect(children.body.items.some((c) => c.childAccountId === s.accountId)).toBe(true)
+
+    const grants = await viewChildGrants({ sql: h.sql, sessionToken: guardianToken, params: { id: s.accountId } })
+    expect(grants.status).toBe(200)
+    expect(grants.body.items).toHaveLength(6)
+    expect(grants.body.items.find((g) => g.grantType === 'platform_account')!.status).toBe('active')
+
+    const items = await viewChildPublicItems({ sql: h.sql, sessionToken: guardianToken, params: { id: s.accountId } })
+    expect(items.status).toBe(200)
+
+    const revoked = await revokeChildGrant({
+      sql: h.sql,
+      sessionToken: guardianToken,
+      params: { id: s.accountId, type: 'platform_account' },
+    })
+    expect(revoked.status).toBe(200)
+    const [cur] = await h.sql`
+      select active from consent_grant_current where subject_student_account_id = ${s.accountId} and grant_type = 'platform_account'
+    `
+    expect(cur!.active).toBe(false)
+  })
+
+  test('revoking an enrollment-required grant is a 409 (routed to the enrollment path)', async () => {
+    const s = await onboardStudent(h.sql, { activate: true })
+    const { guardianToken } = await seedVerifiedGuardian(h.sql, s)
+    const res = await revokeChildGrant({
+      sql: h.sql,
+      sessionToken: guardianToken,
+      params: { id: s.accountId, type: 'program_participation' },
+    })
+    expect(res.status).toBe(409)
+  })
+
+  test('a DIFFERENT guardian capturing is an opaque 403', async () => {
+    const mine = await onboardStudent(h.sql, { activate: true })
+    const other = await onboardStudent(h.sql, { activate: true })
+    const otherG = await seedVerifiedGuardian(h.sql, other)
+    const res = await captureChildGrant({
+      sql: h.sql,
+      sessionToken: otherG.guardianToken,
+      params: { id: mine.accountId },
+      body: { grantType: 'platform_account', method: 'click' },
+    })
+    expect(res.status).toBe(403)
   })
 })
 

@@ -37,6 +37,7 @@ import {
   type AuthorizeDeps,
 } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
+import { lapseGuardianGrantsOnMaturation } from './consent-grant.js'
 import {
   CredentialWitnessInvalidError,
   CredentialWitnessIsGuardianError,
@@ -266,6 +267,14 @@ export class MaturationService {
         returning id
       `
 
+      // §5 Rule 4 — the 18th-birthday transfer. Consent authority passes to the
+      // now-adult: their guardian's grants LAPSE here (a new revoking row per
+      // active guardian grant, never a mutation) and the adult must re-confirm
+      // the persisting ones (publication, likeness, verification-link) via the
+      // self-grant path. A no-op when no guardian grants exist (the grant ledger
+      // is additive and gated). Rides this transaction so it commits atomically.
+      const grantsLapsed = await lapseGuardianGrantsOnMaturation(tx, accountId)
+
       await writeAudit(tx, {
         action: 'maturation.confirm',
         subjectType: 'account',
@@ -273,7 +282,7 @@ export class MaturationService {
         actorAccountId: ctx.account.id,
         realActorAccountId: ctx.session.impersonation?.real_actor_account_id ?? null,
         chapterId,
-        detail: { edgesLapsed: lapsed.length },
+        detail: { edgesLapsed: lapsed.length, grantsLapsed: grantsLapsed.length },
       })
 
       return { accountId, chapterId, edgesLapsed: lapsed.length }

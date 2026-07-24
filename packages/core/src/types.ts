@@ -292,3 +292,15 @@ export type Capability =
   // overrides reach it), returning origination/access provenance with minor PII
   // hidden.
   | 'ledger.read'
+  // consent GRANT ledger (admin/director backend §5). Grant CAPTURE reuses the
+  // existing consent.grant, and per-grant REVOCATION the existing consent.revoke
+  // (both guardian/own-scoped) — the grant ledger does not fork the consent write
+  // authority. These are the ADDITIVE guardian-portal reads (the child list, the
+  // per-child grant statuses, the child's public-surface items) and the
+  // notify-and-object WITHHOLD write. All guardian-scoped; the reads are
+  // writes:false (no logsRead — display names / already-public items only), and
+  // publication.object is a guardian write that withholds one nominated item.
+  | 'guardian.list_children'
+  | 'guardian.view_grants'
+  | 'guardian.view_public_items'
+  | 'publication.object'

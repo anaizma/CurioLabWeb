@@ -32,10 +32,13 @@ import type { Sql } from 'postgres'
 import type { AuthContext, Resource } from '@curiolab/core'
 import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
 import type { Db } from './events.js'
+import { hasActiveGrant } from './consent-grant.js'
+import { type AppConfig, defaultConfig } from './config.js'
 import {
   IllegalNarrativeTransitionError,
   NarrativeNotFoundError,
   ProfileSubjectNotFoundError,
+  PublicationGrantRequiredError,
 } from './errors.js'
 
 /**
@@ -58,6 +61,14 @@ export type ProfileAuthorizeFn = <T = void>(
 export interface ProfileServiceDeps {
   sql: Sql
   authorize: ProfileAuthorizeFn
+  /**
+   * §5 Rule 1 REVIEW GATE. Defaults to the process config (flag OFF), so the
+   * existing narrative-publish behavior is unchanged. When
+   * `consentGrantLedgerEnforced` is true, a narrative becoming `published` (an
+   * adult self-edit, or a reviewer clearing a minor's) ADDITIONALLY requires an
+   * active `public_publication` grant for the subject.
+   */
+  config?: Partial<AppConfig>
 }
 
 /** One verified/public_listed project on the profile (title + date). */
@@ -148,10 +159,12 @@ function isoOrNull(value: unknown): string | null {
 export class ProfileService {
   private readonly sql: Sql
   private readonly authorize: ProfileAuthorizeFn
+  private readonly config: AppConfig
 
   constructor(deps: ProfileServiceDeps) {
     this.sql = deps.sql
     this.authorize = deps.authorize
+    this.config = { ...defaultConfig, ...deps.config }
   }
 
   /**
@@ -292,6 +305,15 @@ export class ProfileService {
     const resource: Resource = { ownerAccountId: subjectAccountId }
     await this.authorize(ctx, 'profile.edit_narrative', resource, { sql: this.sql })
 
+    // §5 Rule 1 REVIEW GATE (behind the flag). An adult self-edit that would
+    // publish directly ADDITIONALLY requires an active `public_publication`
+    // grant. Default (flag off): unchanged. A minor edit lands pending_review
+    // regardless (no public reach until reviewNarrative, itself gated).
+    if (status === 'published' && this.config.consentGrantLedgerEnforced) {
+      const ok = await hasActiveGrant(this.sql, subjectAccountId, 'public_publication')
+      if (!ok) throw new PublicationGrantRequiredError(subjectAccountId, 'public_publication')
+    }
+
     return this.sql.begin(async (tx) => {
       assertAuthorized() // runtime backstop: no mutation without a recorded decision
       const [existing] = await tx`
@@ -325,6 +347,14 @@ export class ProfileService {
     const chapterId = await this.resolveChapter(n.accountId)
     const resource: Resource = { id: narrativeId, chapter_id: chapterId }
     await this.authorize(ctx, 'narrative.review', resource, { sql: this.sql })
+
+    // §5 Rule 1 REVIEW GATE (behind the flag). Clearing a narrative to `published`
+    // ADDITIONALLY requires an active `public_publication` grant for the subject.
+    // Default (flag off): unchanged.
+    if (this.config.consentGrantLedgerEnforced) {
+      const ok = await hasActiveGrant(this.sql, n.accountId, 'public_publication')
+      if (!ok) throw new PublicationGrantRequiredError(n.accountId, 'public_publication')
+    }
 
     return this.sql.begin(async (tx) => {
       assertAuthorized()

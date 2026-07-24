@@ -194,6 +194,12 @@ export {
   requestChildExport,
   requestChildDeletion,
   viewDigest,
+  listChildren,
+  viewChildGrants,
+  viewChildPublicItems,
+  captureChildGrant,
+  revokeChildGrant,
+  objectPublicationHold,
 } from './controllers/guardian.js'
 
 // Public newsletter subscribe/confirm/unsubscribe (Milestone 3.6).

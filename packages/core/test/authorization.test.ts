@@ -422,6 +422,30 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectDeny(actors.no_membership, 'guardian.view_digest', guardianResourceOf(CHILD_S), 'out_of_scope')
   })
 
+  // §5 consent GRANT ledger — the additive guardian-portal reads + the object
+  // write. The reads (writes:false) resolve for the child's guardian and deny a
+  // stranger out_of_scope; publication.object (writes:true) additionally bars an
+  // 18+ child (guardian write authority ends at majority), like consent.revoke.
+  test('guardian.list_children (§5 grant-portal read)', () => {
+    expectAllow(actors.guardian_of_S, 'guardian.list_children', guardianResourceOf(CHILD_S))
+    expectDeny(actors.no_membership, 'guardian.list_children', guardianResourceOf(CHILD_S), 'out_of_scope')
+  })
+
+  test('guardian.view_grants (§5 grant-portal read)', () => {
+    expectAllow(actors.guardian_of_S, 'guardian.view_grants', guardianResourceOf(CHILD_S))
+    expectDeny(actors.no_membership, 'guardian.view_grants', guardianResourceOf(CHILD_S), 'out_of_scope')
+  })
+
+  test('guardian.view_public_items (§5 grant-portal read)', () => {
+    expectAllow(actors.guardian_of_S, 'guardian.view_public_items', guardianResourceOf(CHILD_S))
+    expectDeny(actors.no_membership, 'guardian.view_public_items', guardianResourceOf(CHILD_S), 'out_of_scope')
+  })
+
+  test('publication.object (§5 notify-and-object withhold; guardian write)', () => {
+    expectAllow(actors.guardian_of_S, 'publication.object', consentTargetChildS)
+    expectDeny(actors.guardian_of_S, 'publication.object', consentTargetChild18, 'out_of_scope')
+  })
+
   test('application.view (ops back office, chapter-scoped)', () => {
     expectAllow(actors.chapter_director_c1, 'application.view', applicationInC1)
     expectDeny(actors.lead_instructor_c1, 'application.view', applicationInC1, 'role_not_permitted')

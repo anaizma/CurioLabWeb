@@ -38,6 +38,20 @@ export type AccessLedgerEvent =
   // subject is the membership's account; detail carries the reason (term_ended /
   // eligibility_lapsed) and the membership id.
   | 'membership.time_box_revoked'
+  // Consent grant ledger (admin/director backend §5). Every grant capture,
+  // renewal, revocation, notify-and-object notification + outcome, and the
+  // 18th-birthday transfer is recorded here with its method + artifact reference
+  // — the audit/complaint defense. actor is the capturing guardian (or the
+  // now-adult on a self-grant; null on a system job). detail carries the
+  // grant_type, method, artifact ref, and outcome.
+  | 'grant.captured'
+  | 'grant.renewed'
+  | 'grant.revoked'
+  | 'grant.transferred'
+  | 'publication.notified'
+  | 'publication.objected'
+  | 'publication.released'
+  | 'publication.withheld'
 
 export interface AccessLedgerInput {
   event: AccessLedgerEvent

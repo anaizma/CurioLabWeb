@@ -1146,3 +1146,95 @@ export class PodNotFoundError extends Error {
     this.podId = podId
   }
 }
+
+// --- Consent GRANT ledger (admin/director backend §5) ----------------------
+
+/** The subject of a grant capture/revoke has no account (unknown id). */
+export class GrantSubjectNotFoundError extends Error {
+  readonly subjectAccountId: string
+  constructor(subjectAccountId: string) {
+    super(`grant subject account not found: ${subjectAccountId}`)
+    this.name = 'GrantSubjectNotFoundError'
+    this.subjectAccountId = subjectAccountId
+  }
+}
+
+/**
+ * A `public_publication` grant for a subject UNDER 13 was captured with a weak
+ * method (a `click`) or without an evidence artifact. COPPA permits email-plus
+ * (the portal checkbox) only when NOT publicly disclosing; this grant IS public
+ * disclosure, so an under-13 subject requires an FTC-approved strong method
+ * (signed_form / monetary_transaction / video_call / id_verification) AND a
+ * non-null evidence artifact reference. The database trigger enforces the same;
+ * this is the service-layer pre-check that fails cleanly with the reason.
+ */
+export class GrantStrongMethodRequiredError extends Error {
+  readonly subjectAccountId: string
+  readonly reason: 'weak_method' | 'artifact_missing'
+  constructor(subjectAccountId: string, reason: 'weak_method' | 'artifact_missing') {
+    super(
+      `public_publication for a subject under 13 requires a strong method with an evidence artifact (${reason})`,
+    )
+    this.name = 'GrantStrongMethodRequiredError'
+    this.subjectAccountId = subjectAccountId
+    this.reason = reason
+  }
+}
+
+/**
+ * A per-grant revoke was attempted on a grant type that cannot be revoked alone
+ * — revoking it ends enrollment (§5 detail table: program_participation /
+ * emergency_medical_pickup). The per-grant endpoint REFUSES it and routes to the
+ * existing enrollment-revoke path rather than silently ending participation.
+ */
+export class GrantRevocationEndsEnrollmentError extends Error {
+  readonly grantType: string
+  constructor(grantType: string) {
+    super(
+      `grant ${grantType} cannot be revoked alone (revoking it ends enrollment); use the enrollment-revoke path`,
+    )
+    this.name = 'GrantRevocationEndsEnrollmentError'
+    this.grantType = grantType
+  }
+}
+
+/** A per-grant revoke found no active grant of that type to revoke. */
+export class GrantNotActiveError extends Error {
+  readonly subjectAccountId: string
+  readonly grantType: string
+  constructor(subjectAccountId: string, grantType: string) {
+    super(`no active ${grantType} grant to revoke for ${subjectAccountId}`)
+    this.name = 'GrantNotActiveError'
+    this.subjectAccountId = subjectAccountId
+    this.grantType = grantType
+  }
+}
+
+/** The referenced publication_hold does not exist (object of an unknown id). */
+export class PublicationHoldNotFoundError extends Error {
+  readonly holdId: string
+  constructor(holdId: string) {
+    super(`publication hold not found: ${holdId}`)
+    this.name = 'PublicationHoldNotFoundError'
+    this.holdId = holdId
+  }
+}
+
+/**
+ * §5 Rule 1 (BEHIND THE FLAG): a publish was refused because the flag
+ * CONSENT_GRANT_LEDGER_ENFORCED is on and the student has no active
+ * `public_publication` grant (or, for internal access, no `platform_account`
+ * grant). When the flag is off this is never thrown — the existing consent gates
+ * are unchanged. Distinct from a Forbidden (an authorization failure): this is a
+ * missing-grant precondition, mappable to a 409.
+ */
+export class PublicationGrantRequiredError extends Error {
+  readonly subjectAccountId: string
+  readonly grantType: string
+  constructor(subjectAccountId: string, grantType: string) {
+    super(`publishing requires an active ${grantType} grant for ${subjectAccountId}`)
+    this.name = 'PublicationGrantRequiredError'
+    this.subjectAccountId = subjectAccountId
+    this.grantType = grantType
+  }
+}

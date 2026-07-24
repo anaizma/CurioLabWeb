@@ -355,6 +355,24 @@ export const ROUTE_MANIFEST: RouteManifest = [
     path: '/api/guardian/children/[id]/deletion',
     capability: 'guardian.request_deletion',
   },
+  // §5 consent GRANT ledger (admin/director backend §5). Grant CAPTURE reuses
+  // consent.grant, per-grant REVOKE reuses consent.revoke, and the notify-and-
+  // object WITHHOLD uses publication.object — all guardian-scoped. The three GET
+  // reads (children list, per-child grants, per-child public items) are exempt
+  // (read paths). The public-publication ENFORCEMENT these enable is gated behind
+  // CONSENT_GRANT_LEDGER_ENFORCED (default off); the capture/revoke/object writes
+  // are always available (they only write the grant ledger / hold row).
+  { method: 'POST', path: '/api/guardian/children/[id]/grants', capability: 'consent.grant' },
+  {
+    method: 'POST',
+    path: '/api/guardian/children/[id]/grants/[type]/revoke',
+    capability: 'consent.revoke',
+  },
+  {
+    method: 'POST',
+    path: '/api/guardian/children/[id]/publication-holds/[holdId]/object',
+    capability: 'publication.object',
+  },
 
   // ---- Operations back office (05 §Operations back office) ----
   { method: 'PATCH', path: '/api/ops/applications/[id]', capability: 'application.transition' },

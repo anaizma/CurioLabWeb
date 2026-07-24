@@ -316,6 +316,56 @@ Every method is **guardian-scoped**: the resource names the child, and the scope
 
 ---
 
+## 3a. Consent as an append-only GRANT ledger (§5 — REVIEW-GATED, additive)
+
+**Status: built-but-gated.** Consent is *also* stored as a set of independent, append-only **grant** records (table `consent_grant`, a PEER of the existing `consent` block ledger — the block ledger is untouched and still gates membership activation / accept-student). Six grant types, each on its own renewal clock: `program_participation`, `platform_account`, `public_publication`, `photo_video_likeness`, `emergency_medical_pickup`, `verification_link_sharing`. A revocation or renewal is a NEW row, never a mutation (append-only trigger + role REVOKE). Current status per (subject, type) is the `consent_grant_current` view (active iff the latest row is non-revoked AND non-expired).
+
+**The REVIEW GATE — `CONSENT_GRANT_LEDGER_ENFORCED` (env, default `false`).** When **false** (production posture until legal review), the new **public-publication ENFORCEMENT** is dormant: narrative publish, project `public_listed`, and newsletter inclusion keep their existing `consent` gates unchanged, and the notify-and-object window does not run. When **true**, those publish paths **additionally** require an active `public_publication` grant for the student (internal/platform access requires `platform_account`); no other grant substitutes. Grant **capture** and per-grant **revocation** endpoints below are always live (they only write the grant ledger); only the enforcement seams are gated.
+
+**Strong verification (Rule 2).** Capturing `public_publication` for a subject **under 13** requires an FTC-approved strong `method` (`signed_form` | `monetary_transaction` | `video_call` | `id_verification`) AND a non-null `evidenceArtifactRef` — a `click`, or a missing artifact, is refused (service pre-check + a DB trigger backstop). Age is computed from the subject's DOB. For **13+**, a `click` is accepted. `evidenceArtifactRef` is an opaque storage reference the frontend/ops supplies (no file storage in-band).
+
+### `GET /api/guardian/children` — the guardian's verified children
+
+- **Auth:** session — **`guardian.list_children`**.
+- **Response `200`:** `{ items: [{ childAccountId, displayName }] }` (display names only — minor PII floor).
+
+### `GET /api/guardian/children/{id}/grants` — per-child grant statuses
+
+- **Auth:** session — **`guardian.view_grants`**.
+- **Response `200`:** `{ items: [{ grantType, status: "active"|"expired"|"revoked"|"none", expiresAt: string|null, method: string|null, evidenceArtifactRef: string|null }] }` — all six types, current status each.
+
+### `GET /api/guardian/children/{id}/public-items` — the child's public-surface items
+
+- **Auth:** session — **`guardian.view_public_items`**.
+- **Response `200`:** `{ items: [{ type: "project"|"narrative", ref, title: string|null }] }` — `public_listed` projects + `published` narratives only, never drafts or private messages.
+
+### `POST /api/guardian/children/{id}/grants` — capture (or renew) a grant
+
+- **Auth:** session — **`consent.grant`** (guardian for a minor child; an 18+ student self-grants via the own scope).
+- **Path param:** `id`. **Request body:** `grantType` (required; one of the six), `method` (required; one of `click` | `signed_form` | `monetary_transaction` | `video_call` | `id_verification`), `evidenceArtifactRef` (string, optional), `scope` (string, optional).
+- **Response `201`:** `{ grantId, subjectStudentAccountId, grantType, method, expiresAt: string|null, renewal: boolean }`. `expiresAt` is stamped per the renewal clock (per-term / annual / standing → null).
+- **Errors:** `400` missing/unknown `grantType`/`method`, or `GrantStrongMethodRequiredError` (under-13 public_publication weak method / no artifact); `403` scope deny / null session; `404` unknown subject.
+
+### `POST /api/guardian/children/{id}/grants/{type}/revoke` — per-grant revoke (Rule 5)
+
+- **Auth:** session — **`consent.revoke`**. Writes a revocation row for THAT grant type only (others untouched). Revoking `public_publication` **cascades**: the child's currently-public items are unpublished/withheld (projects `public_listed → verified`, narratives `published → pending_review`, published newsletter items redacted) in the same transaction.
+- **Path params:** `id`, `type` (one of the six).
+- **Response `200`:** `{ grantId, subjectStudentAccountId, grantType, cascaded: boolean }`.
+- **Errors:** `409` `GrantRevocationEndsEnrollmentError` (revoking `program_participation`/`emergency_medical_pickup` is refused and routed to the enrollment path) or `GrantNotActiveError` (nothing active to revoke); `403` scope deny / null session.
+
+### `POST /api/guardian/children/{id}/publication-holds/{holdId}/object` — withhold one item (Rule 3)
+
+- **Auth:** session — **`publication.object`** (guardian write; barred once the child is 18). Part of the notify-and-object window (gated by `CONSENT_GRANT_LEDGER_ENFORCED`). Withholds THIS nominated item without touching the grant. Idempotent.
+- **Path params:** `id`, `holdId`.
+- **Response `200`:** `{ holdId, objected: boolean }`.
+- **Errors:** `404` `PublicationHoldNotFoundError`; `403` scope deny / null session.
+
+**The notify-and-object window (job contract, backend).** When an item is nominated for a public surface, `nominatePublicationHold` records a `publication_hold` (item ref, subject, `nominated_at`, guardian notified, `releases_at = nominated_at + N days`, default `N = 5`) and a `publication.notified` ledger row. The job body `runPublicationHolds({ sql, publish? }, now)` — a deterministic, injected-`now` sweep, no live scheduler — **publishes** an un-objected hold once its window elapses (`released_at` stamped, `publication.released` logged, publish seam fired post-commit) and **withholds** an objected one. Idempotent. **18th-birthday transfer (Rule 4):** hooked into `maturation.confirm` — the guardian's active grants **lapse** (a new revoking row each; `grant.transferred` logged) and the now-adult re-confirms the persisting ones (publication, likeness, verification-link) via the self-grant path.
+
+**§8 ledger.** Every capture / renewal / revocation / notify / object / release / birthday-transfer is written to the append-only `access_ledger` with the method + artifact reference (events `grant.captured`, `grant.renewed`, `grant.revoked`, `grant.transferred`, `publication.notified`, `publication.objected`, `publication.released`).
+
+---
+
 ## 4. Student profile & projects
 
 ### `GET /api/profile/{id}`

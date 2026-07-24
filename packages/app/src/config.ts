@@ -231,6 +231,96 @@ export const APPLY_FROM_EMAIL: string = process.env.APPLY_FROM_EMAIL ?? 'onboard
  */
 export const APP_URL: string = process.env.APP_URL ?? 'https://platform.example.org'
 
+/**
+ * §5 consent-grant ledger — the REVIEW GATE. When FALSE (the default, and the
+ * production posture until the legal review is complete), the new grant-ledger
+ * PUBLIC-PUBLICATION behavior is entirely dormant: narrative/project/newsletter
+ * publishing keeps its existing `consent` gates unchanged, and the
+ * notify-and-object window does not run. When TRUE, the new gates additionally
+ * require an active `public_publication` grant (and internal/platform access an
+ * active `platform_account` grant) and the notify-and-object hold path engages.
+ *
+ * The grant-CAPTURE and per-grant REVOCATION mechanisms are always available
+ * (they only WRITE the ledger); the flag gates only the public-publication
+ * ENFORCEMENT, so production data is untouched until the flag is flipped
+ * post-legal-review. A value, not a literal, per compliance-coppa.md Part 3
+ * "Configuration, not code" — the legal flip is a config edit.
+ */
+export const CONSENT_GRANT_LEDGER_ENFORCED: boolean =
+  process.env.CONSENT_GRANT_LEDGER_ENFORCED === 'true'
+
+/**
+ * §5 Rule 3 — the notify-and-object window. A standing `public_publication` grant
+ * is not blanket pre-approval: a nominated item publishes only if the guardian
+ * does not object within N days (default 5). A value, not a literal.
+ */
+export const PUBLICATION_HOLD_WINDOW_MS = 5 * 24 * 60 * 60 * 1000 // 5 days
+
+/**
+ * §5 the six grant types and their renewal clocks (the §5 detail table). Each
+ * grant expires on its own clock: per cohort/term, annual, or standing (never
+ * expires). `capture` sets expires_at = granted_at + this (null = standing). A
+ * term is taken as ~180 days; the annual clock ~365. Values, not literals.
+ */
+export type ConsentGrantType =
+  | 'program_participation'
+  | 'platform_account'
+  | 'public_publication'
+  | 'photo_video_likeness'
+  | 'emergency_medical_pickup'
+  | 'verification_link_sharing'
+
+export type ConsentGrantMethod =
+  | 'click'
+  | 'signed_form'
+  | 'monetary_transaction'
+  | 'video_call'
+  | 'id_verification'
+
+/** The FTC-approved strong methods (everything but the portal `click`). */
+export const STRONG_GRANT_METHODS: readonly ConsentGrantMethod[] = [
+  'signed_form',
+  'monetary_transaction',
+  'video_call',
+  'id_verification',
+] as const
+
+const TERM_MS = 180 * 24 * 60 * 60 * 1000
+const ANNUAL_MS = 365 * 24 * 60 * 60 * 1000
+
+/** The renewal clock per grant type. `null` = standing (no expiry). */
+export const GRANT_RENEWAL_MS_BY_TYPE: Record<ConsentGrantType, number | null> = {
+  program_participation: TERM_MS,
+  platform_account: TERM_MS,
+  public_publication: ANNUAL_MS,
+  photo_video_likeness: ANNUAL_MS,
+  emergency_medical_pickup: TERM_MS,
+  verification_link_sharing: null,
+}
+
+/**
+ * The two grant types that CANNOT be revoked alone — revoking them ends
+ * enrollment, so the per-grant revoke endpoint REFUSES them and routes to the
+ * existing enrollment-revoke path (§5 detail table: "No — revoking ends
+ * enrollment"). A value, not a literal.
+ */
+export const ENROLLMENT_REQUIRED_GRANT_TYPES: readonly ConsentGrantType[] = [
+  'program_participation',
+  'emergency_medical_pickup',
+] as const
+
+/**
+ * The grant types the now-adult must RE-CONFIRM at the 18th-birthday transfer —
+ * the ones that persist past majority (§5 Rule 4: publication, likeness,
+ * verification-link). Guardian grants of these lapse at maturation and the adult
+ * self-grants them anew.
+ */
+export const SELF_RECONFIRM_GRANT_TYPES: readonly ConsentGrantType[] = [
+  'public_publication',
+  'photo_video_likeness',
+  'verification_link_sharing',
+] as const
+
 export interface AppConfig {
   /** The Stage 1 lead email dedupe window in ms (LeadService.createLead). */
   leadDedupeWindowMs: number
@@ -287,6 +377,12 @@ export interface AppConfig {
   guardianVerificationMethod: GuardianVerificationMethod
   /** the guardian name-match predicate (Flow A step 6); a config-not-code tunable. */
   guardianNameMatch: (nameOnAccount: string, nameOnForm: string) => boolean
+  /** §5 REVIEW GATE: when true, publishing additionally requires the specific grant. */
+  consentGrantLedgerEnforced: boolean
+  /** §5 Rule 3: the notify-and-object hold window in ms (default 5 days). */
+  publicationHoldWindowMs: number
+  /** §5: the renewal clock per grant type (null = standing). */
+  grantRenewalMsByType: Record<ConsentGrantType, number | null>
 }
 
 export const defaultConfig: AppConfig = {
@@ -317,4 +413,7 @@ export const defaultConfig: AppConfig = {
   guardianRelationshipDefault: GUARDIAN_RELATIONSHIP_DEFAULT,
   guardianVerificationMethod: GUARDIAN_VERIFICATION_METHOD,
   guardianNameMatch: guardianNamesMatch,
+  consentGrantLedgerEnforced: CONSENT_GRANT_LEDGER_ENFORCED,
+  publicationHoldWindowMs: PUBLICATION_HOLD_WINDOW_MS,
+  grantRenewalMsByType: GRANT_RENEWAL_MS_BY_TYPE,
 }

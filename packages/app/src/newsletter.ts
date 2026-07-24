@@ -50,10 +50,13 @@ import type { Sql, TransactionSql } from 'postgres'
 import type { AuthContext, Resource, StudentAuthoredItem } from '@curiolab/core'
 import { can, canTransition } from '@curiolab/core'
 import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
+import { hasActiveGrant } from './consent-grant.js'
+import { type AppConfig, defaultConfig } from './config.js'
 import {
   IllegalNewsletterTransitionError,
   NewsletterIssueNotFoundError,
   NewsletterPublishConsentChangedError,
+  PublicationGrantRequiredError,
 } from './errors.js'
 
 /** The body a student-authored item is redacted to on a consent-driven unpublish. */
@@ -105,6 +108,13 @@ export interface NewsletterServiceDeps {
   authorize: NewsletterAuthorizeFn
   /** The enqueue-after-commit send seam (coupling E). Defaults to a no-op. */
   enqueueSend?: EnqueueSend
+  /**
+   * §5 Rule 1 REVIEW GATE. Defaults to the process config (flag OFF), so the
+   * existing per-item external_publication behavior is unchanged. When
+   * `consentGrantLedgerEnforced` is true, publish ADDITIONALLY requires an active
+   * `public_publication` grant for every student-authored item's author.
+   */
+  config?: Partial<AppConfig>
 }
 
 export interface NewsletterItemInput {
@@ -156,11 +166,13 @@ export class NewsletterService {
   private readonly sql: Sql
   private readonly authorize: NewsletterAuthorizeFn
   private readonly enqueueSend: EnqueueSend | undefined
+  private readonly config: AppConfig
 
   constructor(deps: NewsletterServiceDeps) {
     this.sql = deps.sql
     this.authorize = deps.authorize
     this.enqueueSend = deps.enqueueSend
+    this.config = { ...defaultConfig, ...deps.config }
   }
 
   private async load(issueId: string): Promise<IssueRow> {
@@ -351,6 +363,18 @@ export class NewsletterService {
     const issue = await this.load(issueId)
     const resource = await this.buildPublishResource(this.sql, issue, false)
     await this.authorize(ctx, 'newsletter.publish', resource, { sql: this.sql })
+
+    // §5 Rule 1 REVIEW GATE (behind the flag). When enforced, each student-
+    // authored item's author must hold an active `public_publication` grant —
+    // no other grant substitutes. Default (flag off): unchanged.
+    if (this.config.consentGrantLedgerEnforced) {
+      for (const it of issue.items) {
+        const author = it.authorStudentAccountId
+        if (author == null) continue
+        const ok = await hasActiveGrant(this.sql, author, 'public_publication')
+        if (!ok) throw new PublicationGrantRequiredError(author, 'public_publication')
+      }
+    }
 
     this.assertLegal(issue.status, 'published')
     await this.sql.begin(async (tx) => {

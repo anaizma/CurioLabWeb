@@ -65,6 +65,9 @@ const NOT_FOUND = new Set([
   'ChapterNotFoundError',
   'TermNotFoundError',
   'PodNotFoundError',
+  // §5 consent GRANT ledger: an unknown grant subject or publication hold.
+  'GrantSubjectNotFoundError',
+  'PublicationHoldNotFoundError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */
@@ -97,6 +100,12 @@ const CONFLICT = new Set([
   'TotpNotActivatedError',
   'TotpAlreadyActivatedError',
   'TotpSecretMissingError',
+  // §5 consent GRANT ledger policy refusals: revoking an enrollment-required
+  // grant (routed to the enrollment path), revoking nothing active, and the
+  // publish gate refusing without an active public_publication grant.
+  'GrantRevocationEndsEnrollmentError',
+  'GrantNotActiveError',
+  'PublicationGrantRequiredError',
 ])
 
 /** Too-many-requests: the per-issuer invite rate limit (P2 §4) + the §10 TOTP attempt limit -> 429. */
@@ -138,6 +147,8 @@ const BAD_REQUEST = new Set([
   'CredentialWitnessRequiredError',
   'CredentialWitnessInvalidError',
   'CredentialWitnessIsGuardianError',
+  // §5 Rule 2: under-13 public_publication captured with a weak method / no artifact.
+  'GrantStrongMethodRequiredError',
 ])
 
 /**

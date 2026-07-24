@@ -650,4 +650,37 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: false,
   },
+
+  // ---- consent GRANT ledger — guardian-portal reads + object (§5) ----------
+  // Additive to the P1 guardian read set. Each is guardian-scoped (roles [] —
+  // guardianship itself is the authority), matched against ctx.guardianOf by the
+  // guardian scope. The reads are writes:false and carry NO logsRead: they return
+  // display names and already-public items, not the composed minor record (that
+  // stays guardian.view_child_record with its minor_record.read obligation).
+  // guardian.list_children authorizes against one of the guardian's verified
+  // children (like guardian.view_digest); the per-child reads name the child.
+  'guardian.list_children': {
+    scope: 'guardian',
+    roles: [],
+    writes: false,
+  },
+  'guardian.view_grants': {
+    scope: 'guardian',
+    roles: [],
+    writes: false,
+  },
+  'guardian.view_public_items': {
+    scope: 'guardian',
+    roles: [],
+    writes: false,
+  },
+  // §5 Rule 3: the guardian withholds ONE nominated item during its notify-and-
+  // object window, without touching the grant. Guardian-scoped write (the age-18
+  // bar applies, like consent.revoke), naming the child; a lapsed/revoked edge
+  // denies out_of_scope.
+  'publication.object': {
+    scope: 'guardian',
+    roles: [],
+    writes: true,
+  },
 }

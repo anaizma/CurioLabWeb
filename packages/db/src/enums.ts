@@ -160,6 +160,29 @@ export const consentActionEnum = pgEnum('consent_action', ['grant', 'revoke'])
 export const consentSourceEnum = pgEnum('consent_source', ['signed_form', 'digital'])
 export const consentReasonEnum = pgEnum('consent_reason', ['standard', 'safeguarding'])
 
+// --- Consent GRANT ledger (admin/director backend §5) ---
+// The six independent, per-practice grant types (migration 0024). A db-only
+// enum: the pure authorization core models the older `consent` block types, not
+// these grants (the grant ledger is a persistence + service concern, gated
+// behind CONSENT_GRANT_LEDGER_ENFORCED until legal review).
+export const consentGrantTypeEnum = pgEnum('consent_grant_type', [
+  'program_participation',
+  'platform_account',
+  'public_publication',
+  'photo_video_likeness',
+  'emergency_medical_pickup',
+  'verification_link_sharing',
+])
+// The capture methods: the FTC strong methods for verifiable parental consent,
+// plus the portal `click` (email-plus).
+export const consentGrantMethodEnum = pgEnum('consent_grant_method', [
+  'click',
+  'signed_form',
+  'monetary_transaction',
+  'video_call',
+  'id_verification',
+])
+
 // --- guardian-portal request and fee tables (Milestone 1 step 7) ---
 export const paymentStatusEnum = pgEnum('payment_status', [
   'none',

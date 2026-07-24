@@ -41,6 +41,8 @@ import {
   chapterStatusEnum,
   chapterTierEnum,
   consentActionEnum,
+  consentGrantMethodEnum,
+  consentGrantTypeEnum,
   consentReasonEnum,
   consentSourceEnum,
   consentTypeEnum,
@@ -483,6 +485,59 @@ export const consentCurrent = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.studentAccountId, t.type] })],
+)
+
+// --- Consent GRANT ledger (admin/director backend §5) ----------------------
+// The append-only, per-practice grant ledger (migration 0024). A PEER of the
+// `consent` block ledger, never a replacement: six independent grant types, each
+// captured in one guardian sitting but its own row so it expires, renews, and
+// revokes on its own clock. A revocation or renewal is a NEW row (append-only:
+// reject_append_only_mutation() + role REVOKE). The under-13 public_publication
+// strong-method floor is a DB trigger. The DDL + guarantees live in migration
+// 0024, not here. This whole surface is gated behind CONSENT_GRANT_LEDGER_ENFORCED
+// (default off) until legal review.
+export const consentGrant = pgTable(
+  'consent_grant',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'bigint' }).notNull().unique(),
+    grantType: consentGrantTypeEnum('grant_type').notNull(),
+    subjectStudentAccountId: uuid('subject_student_account_id')
+      .notNull()
+      .references(() => account.id),
+    guardianAccountId: uuid('guardian_account_id').references(() => account.id),
+    scope: text('scope'),
+    method: consentGrantMethodEnum('method').notNull(),
+    grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+    evidenceArtifactRef: text('evidence_artifact_ref'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedBy: uuid('revoked_by').references(() => account.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('consent_grant_subject_type_idx').on(t.subjectStudentAccountId, t.grantType, t.seq)],
+)
+
+// The notify-and-object hold (migration 0024). A mutable work table (object
+// stamps objected_at, release stamps released_at), so NOT append-only.
+export const publicationHold = pgTable(
+  'publication_hold',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    itemType: text('item_type').notNull(),
+    itemRef: text('item_ref').notNull(),
+    subjectStudentAccountId: uuid('subject_student_account_id')
+      .notNull()
+      .references(() => account.id),
+    guardianAccountId: uuid('guardian_account_id').references(() => account.id),
+    nominatedAt: timestamp('nominated_at', { withTimezone: true }).notNull().defaultNow(),
+    releasesAt: timestamp('releases_at', { withTimezone: true }).notNull(),
+    objectedAt: timestamp('objected_at', { withTimezone: true }),
+    objectedBy: uuid('objected_by').references(() => account.id),
+    releasedAt: timestamp('released_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('publication_hold_subject_idx').on(t.subjectStudentAccountId)],
 )
 
 // --- Audit -----------------------------------------------------------------

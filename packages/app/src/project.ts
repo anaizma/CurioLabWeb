@@ -43,7 +43,13 @@ import type { AuthContext, Resource } from '@curiolab/core'
 import { canTransition } from '@curiolab/core'
 import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
 import type { RevokeCascade } from './consent.js'
-import { IllegalProjectTransitionError, ProjectNotFoundError } from './errors.js'
+import { hasActiveGrant } from './consent-grant.js'
+import { type AppConfig, defaultConfig } from './config.js'
+import {
+  IllegalProjectTransitionError,
+  ProjectNotFoundError,
+  PublicationGrantRequiredError,
+} from './errors.js'
 
 /**
  * The injected `authorize` dependency, narrowed to this service's capabilities
@@ -65,6 +71,13 @@ export type ProjectAuthorizeFn = <T = void>(
 export interface ProjectServiceDeps {
   sql: Sql
   authorize: ProjectAuthorizeFn
+  /**
+   * §5 Rule 1 REVIEW GATE. Defaults to the process config (flag OFF), so the
+   * existing external_publication behavior is unchanged. When
+   * `consentGrantLedgerEnforced` is true, publishPublic ADDITIONALLY requires an
+   * active `public_publication` grant for the owner student.
+   */
+  config?: Partial<AppConfig>
 }
 
 export interface CreateProjectInput {
@@ -115,10 +128,12 @@ export const projectExternalPublicationRevokeCascade: RevokeCascade = async (
 export class ProjectService {
   private readonly sql: Sql
   private readonly authorize: ProjectAuthorizeFn
+  private readonly config: AppConfig
 
   constructor(deps: ProjectServiceDeps) {
     this.sql = deps.sql
     this.authorize = deps.authorize
+    this.config = { ...defaultConfig, ...deps.config }
   }
 
   private async load(projectId: string): Promise<ProjectRow> {
@@ -236,6 +251,14 @@ export class ProjectService {
       ],
     }
     await this.authorize(ctx, 'project.publish_public', resource, { sql: this.sql })
+
+    // §5 Rule 1 REVIEW GATE (behind the flag). When enforced, publishing
+    // ADDITIONALLY requires an active `public_publication` grant for the owner
+    // student — no other grant substitutes. Default (flag off): unchanged.
+    if (this.config.consentGrantLedgerEnforced) {
+      const ok = await hasActiveGrant(this.sql, p.ownerAccountId, 'public_publication')
+      if (!ok) throw new PublicationGrantRequiredError(p.ownerAccountId, 'public_publication')
+    }
 
     this.assertLegal(p.status, 'public_listed')
     return this.applyStatus(projectId, p.status, 'public_listed', 'verified')

@@ -200,6 +200,49 @@ export type {
   ConsentResult,
   RevokeCascade,
 } from './consent.js'
+export {
+  ConsentGrantService,
+  CONSENT_GRANT_TYPES,
+  hasActiveGrant,
+  publicationGrantRevokeCascade,
+  nominatePublicationHold,
+  runPublicationHolds,
+  lapseGuardianGrantsOnMaturation,
+} from './consent-grant.js'
+export type {
+  ConsentGrantServiceDeps,
+  ConsentGrantAuthorizeFn,
+  ConsentGrantType,
+  ConsentGrantMethod,
+  CaptureGrantOptions,
+  GrantResult,
+  RevokeGrantResult,
+  GrantStatus,
+  GrantStatusView,
+  ChildSummary,
+  PublicItemView,
+  NominateHoldArgs,
+  NominateHoldResult,
+  RunPublicationHoldsDeps,
+  RunPublicationHoldsResult,
+  PublicationReleasePublisher,
+} from './consent-grant.js'
+export {
+  CONSENT_GRANT_LEDGER_ENFORCED,
+  PUBLICATION_HOLD_WINDOW_MS,
+  GRANT_RENEWAL_MS_BY_TYPE,
+  STRONG_GRANT_METHODS,
+  ENROLLMENT_REQUIRED_GRANT_TYPES,
+  SELF_RECONFIRM_GRANT_TYPES,
+} from './config.js'
+export {
+  GrantSubjectNotFoundError,
+  GrantStrongMethodRequiredError,
+  GrantRevocationEndsEnrollmentError,
+  GrantNotActiveError,
+  PublicationHoldNotFoundError,
+  PublicationGrantRequiredError,
+} from './errors.js'
 export { GuardianPortalService } from './guardian-portal.js'
 export type {
   GuardianPortalServiceDeps,
