@@ -12,7 +12,7 @@ export default function InvitesClient({ chapterId, invites, isSample }: { chapte
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [issued, setIssued] = useState<{ token: string; expiresAt: string } | null>(null);
+  const [issued, setIssued] = useState<{ token: string; expiresAt: string; emailed: boolean; sentTo: string } | null>(null);
   const [resent, setResent] = useState<Record<string, { token: string; expiresAt: string }>>({});
 
   const canIssue = chapterId !== null;
@@ -21,21 +21,22 @@ export default function InvitesClient({ chapterId, invites, isSample }: { chapte
   async function issue(e: React.FormEvent) {
     e.preventDefault();
     if (!chapterId) return;
+    const sentTo = email.trim();
     setBusy(true);
     setError(null);
     setIssued(null);
     try {
-      const res = await fetch("/api/ops/invites", {
+      const res = await fetch("/api/director/invites", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind, chapterId, targetEmail: email.trim() || undefined }),
+        body: JSON.stringify({ kind, chapterId, targetEmail: sentTo || undefined }),
       });
       if (!res.ok) {
         setError(res.status === 403 ? "You don't have permission to issue invites." : "Could not issue the invite.");
         return;
       }
-      const data = (await res.json()) as { token: string; expiresAt: string };
-      setIssued({ token: data.token, expiresAt: data.expiresAt });
+      const data = (await res.json()) as { token: string; expiresAt: string; emailed?: boolean };
+      setIssued({ token: data.token, expiresAt: data.expiresAt, emailed: Boolean(data.emailed), sentTo });
       setEmail("");
     } catch {
       setError("Network error — please try again.");
@@ -44,17 +45,21 @@ export default function InvitesClient({ chapterId, invites, isSample }: { chapte
     }
   }
 
-  async function resend(inviteId: string) {
+  async function resend(inv: InviteRow) {
     if (isSample) return;
     setError(null);
     try {
-      const res = await fetch(`/api/ops/invites/${inviteId}/resend`, { method: "POST" });
+      const res = await fetch("/api/director/invites/resend", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ inviteId: inv.inviteId, targetEmail: inv.targetEmail ?? undefined, kind: inv.kind }),
+      });
       if (!res.ok) {
         setError(res.status === 404 ? "That invite no longer exists." : "Could not resend the invite.");
         return;
       }
       const data = (await res.json()) as { token: string; expiresAt: string };
-      setResent((r) => ({ ...r, [inviteId]: { token: data.token, expiresAt: data.expiresAt } }));
+      setResent((r) => ({ ...r, [inv.inviteId]: { token: data.token, expiresAt: data.expiresAt } }));
     } catch {
       setError("Network error — please try again.");
     }
@@ -89,6 +94,7 @@ export default function InvitesClient({ chapterId, invites, isSample }: { chapte
         {issued && (
           <div className="rounded-lg border border-ink/10 bg-cream p-3 text-sm flex flex-col gap-2">
             <span className="text-ink/60 text-xs">Shareable link (shown once) · expires {new Date(issued.expiresAt).toLocaleDateString()}</span>
+            {issued.emailed && <span className="text-xs font-medium" style={{ color: "var(--pt-accent-fg)" }}>Emailed to {issued.sentTo}</span>}
             <code className="text-xs break-all">{linkFor(issued.token)}</code>
             <button
               type="button"
@@ -120,7 +126,7 @@ export default function InvitesClient({ chapterId, invites, isSample }: { chapte
                   {fresh && <code className="text-[11px] break-all text-ink/60">{linkFor(fresh.token)}</code>}
                 </div>
                 {inv.status === "pending" && (
-                  <button type="button" onClick={() => resend(inv.inviteId)} disabled={isSample} className="text-xs font-semibold shrink-0 disabled:opacity-40" style={{ color: "var(--pt-accent)" }}>
+                  <button type="button" onClick={() => resend(inv)} disabled={isSample} className="text-xs font-semibold shrink-0 disabled:opacity-40" style={{ color: "var(--pt-accent)" }}>
                     Resend
                   </button>
                 )}
