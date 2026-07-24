@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import AcceptClient from "./accept-client";
+import { inviteKindToPortal } from "@/lib/portal/director/invite-kind";
 
 interface InviteInfo {
   usable: boolean;
@@ -26,7 +27,7 @@ export default async function InviteAcceptPage({ params }: { params: Promise<{ t
   const { token } = await params;
   const info = await fetchInvite(token);
   return (
-    <div data-portal="director" className="min-h-screen bg-cream text-ink grid place-items-center px-6 py-16">
+    <div data-portal={info.kind ? inviteKindToPortal(info.kind) : "director"} className="min-h-screen bg-cream text-ink grid place-items-center px-6 py-16">
       <div className="w-full max-w-md">
         {!info.usable || !info.kind ? (
           <div className="rounded-2xl border border-ink/10 bg-white p-8 text-center">

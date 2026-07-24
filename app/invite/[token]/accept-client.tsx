@@ -95,7 +95,7 @@ export default function AcceptClient({ token, kind, chapter }: { token: string; 
         </label>
       )}
 
-      {error && <p className="text-xs text-coral">{error}</p>}
+      {error && <p className="text-xs" style={{ color: "var(--pt-accent-fg)" }}>{error}</p>}
       <button
         type="submit"
         disabled={busy}

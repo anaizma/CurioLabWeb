@@ -13,7 +13,7 @@ export default async function DirectorInvitesPage() {
         </p>
       </div>
       {view.isSample && <SampleBanner />}
-      <InvitesClient chapterId={view.chapterId} invites={view.invites} />
+      <InvitesClient chapterId={view.chapterId} invites={view.invites} isSample={view.isSample} />
     </div>
   );
 }

@@ -7,7 +7,7 @@ type Kind = "guardian" | "mentor" | "staff";
 const KIND_LABEL: Record<InviteRow["kind"], string> = { guardian: "Guardian", mentor: "Mentor", staff: "Staff" };
 const inputCls = "w-full rounded-lg border border-ink/15 px-3 py-2 text-sm bg-white";
 
-export default function InvitesClient({ chapterId, invites }: { chapterId: string | null; invites: InviteRow[] }) {
+export default function InvitesClient({ chapterId, invites, isSample }: { chapterId: string | null; invites: InviteRow[]; isSample: boolean }) {
   const [kind, setKind] = useState<Kind>("guardian");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,6 +45,7 @@ export default function InvitesClient({ chapterId, invites }: { chapterId: strin
   }
 
   async function resend(inviteId: string) {
+    if (isSample) return;
     setError(null);
     try {
       const res = await fetch(`/api/ops/invites/${inviteId}/resend`, { method: "POST" });
@@ -84,7 +85,7 @@ export default function InvitesClient({ chapterId, invites }: { chapterId: strin
           {busy ? "Issuing…" : "Create invite link"}
         </button>
         {!canIssue && <p className="text-xs text-ink/50">Sign in as a Chapter Director to issue live invites.</p>}
-        {error && <p className="text-xs text-coral">{error}</p>}
+        {error && <p className="text-xs" style={{ color: "var(--pt-accent-fg)" }}>{error}</p>}
         {issued && (
           <div className="rounded-lg border border-ink/10 bg-cream p-3 text-sm flex flex-col gap-2">
             <span className="text-ink/60 text-xs">Shareable link (shown once) · expires {new Date(issued.expiresAt).toLocaleDateString()}</span>
@@ -119,7 +120,7 @@ export default function InvitesClient({ chapterId, invites }: { chapterId: strin
                   {fresh && <code className="text-[11px] break-all text-ink/60">{linkFor(fresh.token)}</code>}
                 </div>
                 {inv.status === "pending" && (
-                  <button type="button" onClick={() => resend(inv.inviteId)} className="text-xs font-semibold shrink-0" style={{ color: "var(--pt-accent)" }}>
+                  <button type="button" onClick={() => resend(inv.inviteId)} disabled={isSample} className="text-xs font-semibold shrink-0 disabled:opacity-40" style={{ color: "var(--pt-accent)" }}>
                     Resend
                   </button>
                 )}

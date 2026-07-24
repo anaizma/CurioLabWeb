@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getDashboardSummary } from "@/lib/portal/director/dashboard-data";
 import SampleBanner from "@/components/portal/SampleBanner";
 
@@ -20,7 +21,7 @@ export default async function DirectorDashboardPage() {
       {s.isSample && <SampleBanner />}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {cards.map((c) => (
-          <a
+          <Link
             key={c.href}
             href={c.href}
             className="rounded-xl border border-ink/10 bg-white p-5 hover:border-ink/20 transition-colors"
@@ -29,7 +30,7 @@ export default async function DirectorDashboardPage() {
               {c.value}
             </div>
             <div className="text-sm text-ink/60 mt-1">{c.label}</div>
-          </a>
+          </Link>
         ))}
       </div>
     </div>

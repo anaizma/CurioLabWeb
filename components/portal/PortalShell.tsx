@@ -68,6 +68,26 @@ export default function PortalShell({
         </div>
       </header>
 
+      {sidebar && (
+        <div className="md:hidden border-b border-ink/10 bg-cream">
+          <nav className="flex gap-4 overflow-x-auto px-6 py-2 text-sm whitespace-nowrap">
+            {sidebar.flatMap((g) => g.items).map((item) => {
+              const on = item.href === activeHref;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={on ? "font-semibold shrink-0" : "text-ink/60 shrink-0"}
+                  style={on ? { color: "var(--pt-accent)" } : undefined}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
       {sidebar ? (
         <div className="mx-auto max-w-6xl px-6 py-8 flex gap-8">
           <aside className="hidden md:block w-52 shrink-0">
