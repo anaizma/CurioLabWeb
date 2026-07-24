@@ -250,6 +250,11 @@ export type Capability =
   // locked-out adult former student (Flow D steps 3 and 4)
   | 'maturation.confirm'
   | 'account.recover'
+  // minor account recovery (admin/director backend §9): a logged, in-person
+  // mentor/director-assisted recovery for a MINOR — distinct from account.recover
+  // (the adult former-student reissue). Chapter-scoped, teaching roles, admin via
+  // override; every use mints a setup token AND writes an access_ledger row.
+  | 'account.assist_recovery'
   // platform back office (M1 HTTP-completion): impersonation start (platform_admin
   // only) and the audit-trail read (chapter for a director, global via the
   // platform override).
@@ -282,3 +287,8 @@ export type Capability =
   | 'pod.read'
   | 'deletion.read'
   | 'export.read'
+  // the append-only invitation/access ledger read (admin/director backend §8):
+  // a chapter-scoped, read-only surface floored at chapter_director (platform
+  // overrides reach it), returning origination/access provenance with minor PII
+  // hidden.
+  | 'ledger.read'

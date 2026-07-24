@@ -22,6 +22,7 @@ export {
   type ValidatedSession,
 } from './sessions.js'
 export { writeAudit, type AuditEntryInput } from './audit.js'
+export { writeAccessLedger, type AccessLedgerInput, type AccessLedgerEvent } from './ledger.js'
 export { withRlsContext, type RlsContext } from './rls.js'
 export { authorize, type AuthorizeDeps } from './authorize.js'
 export { Forbidden } from './errors.js'

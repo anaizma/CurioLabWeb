@@ -25,7 +25,7 @@
 import type { Sql } from 'postgres'
 import type { AuthContext, Resource } from '@curiolab/core'
 import { canTransition } from '@curiolab/core'
-import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
+import { assertAuthorized, writeAccessLedger, type AuthorizeDeps } from '@curiolab/runtime'
 import {
   IllegalMembershipTransitionError,
   MembershipActivationConsentError,
@@ -198,6 +198,18 @@ export class MembershipActivationService {
         ) returning id
       `
       const tierTransitionId = tt!.id as string
+
+      // §8: membership activation is the account-origination chain's final step —
+      // append it to the access ledger (the subject, the chapter, the activating
+      // director). No HTTP request drives the IP here beyond the actor context.
+      await writeAccessLedger(tx, {
+        event: 'membership.activated',
+        actorAccountId: ctx.account.id,
+        realActorAccountId: ctx.session.impersonation?.real_actor_account_id ?? null,
+        subjectAccountId: accountId,
+        chapterId,
+        detail: { membershipId, tier: 'explorer' },
+      })
 
       // M2.5: seed the day-one timeline and feed IN THIS SAME TRANSACTION (an
       // extension of couplings A/F), so a brand-new Explorer reads as populated

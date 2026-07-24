@@ -128,6 +128,97 @@ export function readOpsAudit(input: ReadAuditInput): Promise<ControllerResult<Op
   })
 }
 
+// ---------------------------------------------------------------------------
+// GET /api/ops/access-ledger — the append-only invitation/access ledger read
+// (admin/director backend §8; `ledger.read`). Chapter-scoped like the audit read;
+// a director reads their OWN chapter's origination/access provenance (another
+// chapter denies out_of_scope), platform overrides reach any chapter. Minor PII
+// is hidden: the read returns ids + first-name/last-initial DISPLAY names (joined
+// from account.display_name), the event, kind, chapter, target email, consent
+// method, and the timestamp — never a raw last name, and never the stored client
+// IP (a forensic field kept in the row but not surfaced to the ops read).
+// ---------------------------------------------------------------------------
+
+/** One access_ledger row as the ops read projects it (ids + display names, no raw PII). */
+export interface AccessLedgerView {
+  id: string
+  at: string
+  event: string
+  inviteId: string | null
+  inviteKind: string | null
+  chapterId: string | null
+  targetEmail: string | null
+  consentMethod: string | null
+  actorAccountId: string | null
+  actorDisplayName: string | null
+  subjectAccountId: string | null
+  subjectDisplayName: string | null
+  guardianAccountId: string | null
+  guardianDisplayName: string | null
+  detail: Record<string, unknown>
+}
+
+export interface OpsAccessLedgerResult {
+  chapterId: string
+  items: AccessLedgerView[]
+}
+
+function toLedgerView(r: Record<string, unknown>): AccessLedgerView {
+  return {
+    id: r.id as string,
+    at: (r.at as Date).toISOString(),
+    event: r.event as string,
+    inviteId: (r.invite_id as string | null) ?? null,
+    inviteKind: (r.invite_kind as string | null) ?? null,
+    chapterId: (r.chapter_id as string | null) ?? null,
+    targetEmail: (r.target_email as string | null) ?? null,
+    consentMethod: (r.consent_method as string | null) ?? null,
+    actorAccountId: (r.actor_account_id as string | null) ?? null,
+    actorDisplayName: (r.actor_display_name as string | null) ?? null,
+    subjectAccountId: (r.subject_account_id as string | null) ?? null,
+    subjectDisplayName: (r.subject_display_name as string | null) ?? null,
+    guardianAccountId: (r.guardian_account_id as string | null) ?? null,
+    guardianDisplayName: (r.guardian_display_name as string | null) ?? null,
+    detail: (r.detail as Record<string, unknown> | null) ?? {},
+  }
+}
+
+/**
+ * GET /api/ops/access-ledger — a Chapter Director reads their chapter's
+ * origination/access ledger. Same chapter resolution + `ledger.read` gate shape as
+ * the audit read; returns `{ chapterId, items }`. Minor PII is hidden (display
+ * names + ids, never raw last names or the stored IP). This is itself a read, but
+ * unlike the audit trail it is not self-logging (the ledger records origination
+ * events, not reads).
+ */
+export function readAccessLedger(input: ReadAuditInput): Promise<ControllerResult<OpsAccessLedgerResult>> {
+  return runAuthed<OpsAccessLedgerResult>(input, async (ctx, sql) => {
+    const requested = optStr(input.query?.chapterId)
+    const chapters = directorChapters(ctx)
+    const chapterId = requested ?? (chapters.length > 0 ? chapters[0]! : null)
+    if (chapterId === null) {
+      return { status: 403, body: FORBIDDEN_BODY as unknown as OpsAccessLedgerResult }
+    }
+    await authorize(ctx, 'ledger.read', { chapter_id: chapterId }, { sql })
+
+    const limit = parseLimit(input.query?.limit)
+    const rows = await sql`
+      select l.id, l.at, l.event, l.invite_id, l.invite_kind, l.chapter_id,
+             l.target_email, l.consent_method, l.detail,
+             l.actor_account_id, aa.display_name as actor_display_name,
+             l.subject_account_id, sa.display_name as subject_display_name,
+             l.guardian_account_id, ga.display_name as guardian_display_name
+      from access_ledger l
+      left join account aa on aa.id = l.actor_account_id
+      left join account sa on sa.id = l.subject_account_id
+      left join account ga on ga.id = l.guardian_account_id
+      where l.chapter_id = ${chapterId}
+      order by l.at desc limit ${limit}
+    `
+    return { status: 200, body: { chapterId, items: rows.map(toLedgerView) } }
+  })
+}
+
 /**
  * GET /api/admin/audit — a platform reader reads the cross-chapter audit trail
  * (optionally filtered to one `?chapterId`). The global read is authorized via

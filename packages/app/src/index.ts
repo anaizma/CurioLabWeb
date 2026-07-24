@@ -79,6 +79,7 @@ export type {
   AddEmailResult,
   ConfirmMaturationResult,
   ReissueSetupResult,
+  AssistRecoveryResult,
   ConsumeAccountRecoveryResult,
   PrivatizeCredentialResult,
   MaturationLapseNotice,

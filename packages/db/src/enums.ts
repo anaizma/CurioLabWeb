@@ -263,6 +263,11 @@ export const newsletterIssueStatusEnum = pgEnum('newsletter_issue_status', [
 export const credentialTokenPurposeEnum = pgEnum('credential_token_purpose', [
   'password_reset',
   'account_recovery',
+  // The guardian-routed one-time student setup token (admin/director backend
+  // §3/§9): minted at accept-student (delivered to the guardian, never emailed to
+  // the child) or in a logged mentor-assisted recovery. Independent of the reset
+  // purposes' one-live-per-purpose slot.
+  'minor_setup',
 ])
 
 // --- Newsletter subscriber (Milestone 3.6) ---

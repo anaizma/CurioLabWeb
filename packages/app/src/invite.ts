@@ -26,6 +26,7 @@ import {
   generateSessionToken,
   hashPassword,
   hashToken,
+  writeAccessLedger,
   type AuthorizeDeps,
 } from '@curiolab/runtime'
 import { type AppConfig, type InviteKindTtl, defaultConfig } from './config.js'
@@ -155,6 +156,18 @@ export interface AcceptInviteResult {
   accountId: string
   /** The pending guardianship edge id, for a guardian invite; null otherwise. */
   guardianshipId: string | null
+  /**
+   * §3 guardian-before-student: on a successful guardian-mediated accept-student,
+   * the one-time student setup credential is routed to the guardian, NEVER emailed
+   * to the child. The backend mints it bound to the student account but stamps the
+   * delivery route as the guardian; the frontend delivers it to the guardian (a
+   * seam). Present only on the gated accept-student path; undefined otherwise.
+   */
+  setupToken?: string
+  /** Where the setup credential is delivered: always `guardian` when present. */
+  setupTokenRoute?: 'guardian'
+  /** The verified guardian the setup credential is routed to (§3). */
+  guardianAccountId?: string | null
 }
 
 function isEmailCreds(c: AcceptCredentials): c is EmailCredentials {
@@ -207,6 +220,10 @@ export class InviteService {
     const tokenHash = hashToken(token)
     const expiresAt = new Date(Date.now() + this.ttlFor(input.kind))
 
+    // The subject student, when the invite binds an enrollment (guardian/student
+    // kinds) — recorded on the ledger's origination row (§8).
+    const subjectAccountId = await this.enrollmentStudent(input.enrollmentRecordId ?? null)
+
     const inviteId = await this.sql.begin(async (tx) => {
       assertAuthorized() // runtime backstop: no mutation without a recorded decision
       const [row] = await tx`
@@ -219,7 +236,19 @@ export class InviteService {
           ${this.config.inviteInitialDeliveryStatus}
         ) returning id
       `
-      return row!.id as string
+      const newInviteId = row!.id as string
+      // §8: the origination row — who invited whom, the kind, the chapter.
+      await writeAccessLedger(tx, {
+        event: 'invite.issued',
+        actorAccountId: ctx.account.id,
+        realActorAccountId: ctx.session.impersonation?.real_actor_account_id ?? null,
+        subjectAccountId,
+        chapterId: input.chapterId,
+        inviteId: newInviteId,
+        inviteKind: input.kind,
+        targetEmail: input.targetEmail ?? null,
+      })
+      return newInviteId
     })
 
     return { inviteId, token, expiresAt }
@@ -414,7 +443,9 @@ export class InviteService {
     token: string,
     credentials: AcceptCredentials,
     expected?: AcceptExpectedBinding,
+    opts: { clientIp?: string | null } = {},
   ): Promise<AcceptInviteResult> {
+    const clientIp = opts.clientIp ?? null
     const tokenHash = hashToken(token)
     const [invite] = await this.sql`
       select invite.id, invite.kind, invite.status, invite.enrollment_record_id,
@@ -461,9 +492,28 @@ export class InviteService {
       throw new InviteCredentialMismatchError(kind, 'username')
     }
 
+    // §3 guardian-before-student (the COPPA ordering invariant). When a student
+    // invite's enrollment ALREADY binds a guardian-provisioned student account,
+    // accept-student CREDENTIALS that existing account rather than creating one,
+    // and it is REFUSED unless (a) a VERIFIED guardianship edge exists for that
+    // student (not merely pending) AND (b) the guardian holds the participation
+    // consent on file (`platform_participation`, the "may have a platform account"
+    // record that exists today). The gate is resolved BEFORE the invite is claimed
+    // so a refusal leaves the token usable for a retry once the guardian verifies;
+    // the refusal is opaque (the same InvalidInviteError as a forged link).
+    let gatedStudent: { studentAccountId: string; guardianAccountId: string } | null = null
+    if (kind === 'student') {
+      const linked = await this.enrollmentStudent(
+        (invite.enrollment_record_id as string | null) ?? null,
+      )
+      if (linked != null) {
+        gatedStudent = await this.assertStudentGuardianGate(linked)
+      }
+    }
+
     const passwordHash = await hashPassword(credentials.password)
 
-    return this.sql.begin(async (tx) => {
+    const result = await this.sql.begin(async (tx) => {
       // Claim the invite atomically: single-use, and rejects a token that expired
       // or was revoked between the read above and here.
       const claimed = await tx`
@@ -474,6 +524,8 @@ export class InviteService {
       if (claimed.length === 0) throw new InvalidInviteError()
 
       let accountId: string
+      let setupToken: string | undefined
+      let guardianRoutedTo: string | null = null
       if (isEmailCreds(credentials)) {
         // guardian / mentor / staff: an email-identified adult account, pending.
         const [acct] = await tx`
@@ -488,6 +540,35 @@ export class InviteService {
           ) returning id
         `
         accountId = acct!.id as string
+      } else if (gatedStudent != null) {
+        // §3 SET-path: credential the EXISTING guardian-provisioned student the
+        // enrollment already binds (the guardian was onboarded + verified and the
+        // participation consent is on file — asserted before the claim). The child
+        // sets their username + password with the guardian present; the account
+        // stays `pending` (no membership until activate). The one-time credential
+        // is then routed to the guardian, NOT emailed to the child.
+        accountId = gatedStudent.studentAccountId
+        guardianRoutedTo = gatedStudent.guardianAccountId
+        const upd = await tx`
+          update account
+             set username = ${credentials.username}, password_hash = ${passwordHash}
+           where id = ${accountId} and status = 'pending'
+          returning id
+        `
+        if (upd.length === 0) throw new InvalidInviteError()
+        // The guardian-routed one-time setup token: minted bound to the student
+        // account (purpose 'minor_setup') but its delivery route is the guardian.
+        // A regenerate supersedes any prior live one. Returned once (the seam a
+        // future mailer/frontend consumes to deliver to the guardian).
+        setupToken = generateSessionToken()
+        await tx`
+          update credential_token set consumed_at = now()
+          where account_id = ${accountId} and purpose = 'minor_setup' and consumed_at is null
+        `
+        await tx`
+          insert into credential_token (account_id, token_hash, purpose, expires_at)
+          values (${accountId}, ${hashToken(setupToken)}, 'minor_setup', now() + ${this.ttlFor('student')} * interval '1 millisecond')
+        `
       } else {
         // student (guardian-mediated): a username-identified minor account, no
         // email, pending. The `email XOR username` constraint is respected.
@@ -593,8 +674,74 @@ export class InviteService {
         guardianshipId = edge!.id as string
       }
 
-      return { accountId, guardianshipId }
+      // §8: the redemption row — the accepting account, the invite, the chapter,
+      // and the trusted client IP threaded from the HTTP layer.
+      await writeAccessLedger(tx, {
+        event: 'invite.redeemed',
+        actorAccountId: accountId,
+        subjectAccountId: accountId,
+        guardianAccountId: guardianRoutedTo,
+        chapterId: boundChapter,
+        inviteId: invite.id as string,
+        inviteKind: kind,
+        targetEmail: boundEmail,
+        clientIp,
+      })
+
+      // §8/§3: on the gated accept-student, record the consent artifact + method
+      // the acceptance referenced (the guardian's participation consent on file),
+      // and that the setup credential was guardian-routed.
+      if (gatedStudent != null) {
+        await writeAccessLedger(tx, {
+          event: 'accept_student.consent',
+          actorAccountId: accountId,
+          subjectAccountId: accountId,
+          guardianAccountId: guardianRoutedTo,
+          chapterId: boundChapter,
+          inviteId: invite.id as string,
+          consentMethod: 'guardian_participation_consent',
+          clientIp,
+          detail: { setupTokenRoute: 'guardian' },
+        })
+      }
+
+      return {
+        accountId,
+        guardianshipId,
+        ...(setupToken !== undefined
+          ? { setupToken, setupTokenRoute: 'guardian' as const, guardianAccountId: guardianRoutedTo }
+          : {}),
+      }
     })
+    return result
+  }
+
+  /**
+   * §3 gate: a guardian-provisioned student may be credentialed via accept-student
+   * only when a VERIFIED guardianship edge exists for them AND the guardian's
+   * `platform_participation` consent is currently active. Returns the verified
+   * guardian's account id (for guardian-routing the setup credential). Any failure
+   * — no edge, a merely-pending edge, or missing participation consent — throws the
+   * SAME opaque InvalidInviteError as a forged link (never reveals which gate failed).
+   */
+  private async assertStudentGuardianGate(
+    studentAccountId: string,
+  ): Promise<{ studentAccountId: string; guardianAccountId: string }> {
+    const [g] = await this.sql`
+      select guardian_account_id from guardianship
+      where student_account_id = ${studentAccountId} and status = 'verified'
+      order by verified_at desc nulls last
+      limit 1
+    `
+    const guardianAccountId = (g?.guardian_account_id as string | null | undefined) ?? null
+    if (guardianAccountId == null) throw new InvalidInviteError()
+
+    const [c] = await this.sql`
+      select active from consent_current
+      where student_account_id = ${studentAccountId} and type = 'platform_participation'
+    `
+    if (c?.active !== true) throw new InvalidInviteError()
+    return { studentAccountId, guardianAccountId }
   }
 
   /**
@@ -620,6 +767,15 @@ export class InviteService {
     if (bound === null || bound.toLowerCase() !== targetEmail.toLowerCase()) {
       throw new GuardianInviteEmailMismatchError()
     }
+  }
+
+  /** The linked student of an enrollment record (null when unbound or unlinked). */
+  private async enrollmentStudent(enrollmentRecordId: string | null): Promise<string | null> {
+    if (enrollmentRecordId == null) return null
+    const [row] = await this.sql`
+      select student_account_id from enrollment_record where id = ${enrollmentRecordId}
+    `
+    return (row?.student_account_id as string | null | undefined) ?? null
   }
 
   /**

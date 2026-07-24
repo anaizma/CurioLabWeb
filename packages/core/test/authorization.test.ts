@@ -39,6 +39,8 @@ import {
   exportRequestInC1,
   maturationConfirmInC1,
   accountRecoverInC1,
+  assistRecoveryInC1,
+  ledgerReadC1,
   childRecord18,
   safetyReport,
   ordinaryReport,
@@ -653,6 +655,45 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectAllow(actors.senior_instructor_c1, 'feed.moderate', postInPod1)
     expectAllow(actors.senior_instructor_c1, 'feed.moderate', postInPod2)
     expectDeny(actors.senior_instructor_c1, 'feed.moderate', postInC2, 'out_of_scope')
+  })
+})
+
+// ===========================================================================
+// admin/director backend §8/§9: the new access-ledger + assisted-recovery caps
+// ===========================================================================
+describe('account.assist_recovery (§9 mentor/director-assisted minor recovery)', () => {
+  test('a chapter mentor may assist recovery of a minor in their chapter', () => {
+    expectAllow(actors.junior_mentor_adult, 'account.assist_recovery', assistRecoveryInC1)
+  })
+  test('the chapter director may assist recovery', () => {
+    expectAllow(actors.chapter_director_c1, 'account.assist_recovery', assistRecoveryInC1)
+  })
+  test('platform_admin reaches it via the override', () => {
+    expectAllow(actors.platform_admin, 'account.assist_recovery', assistRecoveryInC1)
+  })
+  test('a non-teaching role (comms) is denied (role_not_permitted)', () => {
+    expectDeny(actors.comms_associate_c1, 'account.assist_recovery', assistRecoveryInC1, 'role_not_permitted')
+  })
+  test('a director in another chapter is denied (out_of_scope)', () => {
+    expectDeny(actors.chapter_director_c2, 'account.assist_recovery', assistRecoveryInC1, 'out_of_scope')
+  })
+  test('platform_staff (read-only override) is denied a write cap (out_of_scope)', () => {
+    expectDeny(actors.platform_staff, 'account.assist_recovery', assistRecoveryInC1, 'out_of_scope')
+  })
+})
+
+describe('ledger.read (§8 append-only access-ledger read)', () => {
+  test('the chapter director reads their own chapter ledger', () => {
+    expectAllow(actors.chapter_director_c1, 'ledger.read', ledgerReadC1)
+  })
+  test('platform_staff reaches it via the read override (writes:false)', () => {
+    expectAllow(actors.platform_staff, 'ledger.read', ledgerReadC1)
+  })
+  test('a director in another chapter is denied (out_of_scope)', () => {
+    expectDeny(actors.chapter_director_c2, 'ledger.read', ledgerReadC1, 'out_of_scope')
+  })
+  test('a non-director role is denied (role_not_permitted)', () => {
+    expectDeny(actors.comms_associate_c1, 'ledger.read', ledgerReadC1, 'role_not_permitted')
   })
 })
 

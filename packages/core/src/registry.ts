@@ -399,6 +399,18 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+  // minor account recovery — the logged mentor/director-assisted in-person path
+  // (admin/director backend §9). Distinct from account.recover (the adult
+  // former-student reissue): a mentor or instructor present with the minor mints a
+  // fresh setup token AND writes an access_ledger row (who assisted, which minor,
+  // when, IP). Chapter-scoped to the minor's enrolling chapter, teaching roles
+  // (a pod mentor, an instructor, or the director); platform_admin via the
+  // override. writes:true, so platform_staff (read-only override) does NOT reach it.
+  'account.assist_recovery': {
+    scope: 'chapter',
+    roles: TEACHING,
+    writes: true,
+  },
 
   // ---- profile / narrative -------------------------------------------------
   // A member views their OWN composed profile (05-api-surface GET /profile/:id
@@ -623,6 +635,17 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     writes: false,
   },
   'export.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  // the append-only invitation/access ledger read (admin/director backend §8).
+  // Chapter-scoped, chapter_director, writes:false — a director reads their OWN
+  // chapter's origination/access provenance (another chapter denies out_of_scope);
+  // both platform overrides reach it (writes:false, so platform_staff's read-only
+  // override grants scope+role too). Mirrors audit.view, but a peer surface with
+  // its own capability so the ledger and the audit trail scope independently.
+  'ledger.read': {
     scope: 'chapter',
     roles: ['chapter_director'],
     writes: false,

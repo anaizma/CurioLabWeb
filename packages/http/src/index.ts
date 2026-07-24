@@ -90,6 +90,7 @@ export {
   addEmail,
   confirmMaturation,
   reissueSetup,
+  assistRecovery,
   consumeAccountRecovery,
   selfPrivate,
 } from './controllers/account-lifecycle.js'
@@ -97,18 +98,24 @@ export type {
   AddEmailInput,
   ConfirmMaturationInput,
   ReissueSetupInput,
+  AssistRecoveryInput,
   ConsumeAccountRecoveryInput,
   SelfPrivateInput,
 } from './controllers/account-lifecycle.js'
 
-// Audit readers (chapter-scoped ops + global admin)
-export { readOpsAudit, readAdminAudit } from './controllers/audit.js'
+// Audit readers (chapter-scoped ops + global admin) + the §8 access-ledger read
+export { readOpsAudit, readAdminAudit, readAccessLedger } from './controllers/audit.js'
 export type {
   AuditEntryView,
   OpsAuditResult,
   AdminAuditResult,
   ReadAuditInput,
+  AccessLedgerView,
+  OpsAccessLedgerResult,
 } from './controllers/audit.js'
+
+// Trusted client-IP extraction for the §8 ledger
+export { clientIpFromRequest } from './client-ip.js'
 
 // Ops back office
 export {

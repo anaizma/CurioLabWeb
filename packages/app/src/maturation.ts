@@ -32,6 +32,7 @@ import {
   hashPassword,
   hashToken,
   revokeAllSessionsForAccount,
+  writeAccessLedger,
   writeAudit,
   type AuthorizeDeps,
 } from '@curiolab/runtime'
@@ -75,7 +76,7 @@ const WITNESS_ROLES = [
  */
 export type MaturationAuthorizeFn = <T = void>(
   ctx: AuthContext,
-  capability: 'maturation.confirm' | 'account.recover',
+  capability: 'maturation.confirm' | 'account.recover' | 'account.assist_recovery',
   resource: Resource,
   deps: AuthorizeDeps<T>,
 ) => Promise<T | undefined>
@@ -111,6 +112,16 @@ export interface ReissueSetupResult {
 export interface ConsumeAccountRecoveryResult {
   accountId: string
   email: string
+}
+
+export interface AssistRecoveryResult {
+  accountId: string
+  chapterId: string
+  /** The opaque setup/reset token, returned ONCE (the mailer/handoff seam). */
+  token: string
+  expiresAt: Date
+  /** Where the credential is routed: guardian-delivered for a minor. */
+  route: 'guardian'
 }
 
 export interface PrivatizeCredentialResult {
@@ -394,6 +405,87 @@ export class MaturationService {
     })
 
     return { accountId, chapterId, token, expiresAt }
+  }
+
+  // ---- assistRecovery (POST /ops/accounts/:id/assist-recovery; §9) ---------
+  /**
+   * The LOGGED mentor/director-assisted minor recovery (admin/director backend §9),
+   * distinct from `reissueSetup` (the adult former-student `account.recover`). A
+   * mentor or instructor present WITH the minor initiates recovery in person: gated
+   * through `authorize` under `account.assist_recovery` (chapter-scoped, teaching
+   * roles; platform_admin via override), it mints a fresh `minor_setup` credential
+   * token (a regenerate supersedes the prior live one) AND writes an access_ledger
+   * row (who assisted, which minor, when, IP) plus an audit entry — every use is
+   * on the record. REFUSED (a typed error) when the subject is NOT a minor (an
+   * adult recovers via the ordinary reset / account.recover paths). The token is
+   * guardian-routed: it is the child's one-time credential, delivered to/through
+   * the guardian, never emailed to the child.
+   */
+  async assistRecovery(
+    accountId: string,
+    ctx: AuthContext,
+    opts: { clientIp?: string | null } = {},
+  ): Promise<AssistRecoveryResult> {
+    const nowDate = new Date().toISOString().slice(0, 10)
+    const [row] = await this.sql`
+      select
+        (a.date_of_birth + interval '18 years' <= ${nowDate}::date) as is_adult,
+        (
+          select chapter_id from enrollment_record
+          where student_account_id = a.id order by created_at desc limit 1
+        ) as chapter_id
+      from account a where a.id = ${accountId}
+    `
+    if (row === undefined) throw new MaturationAccountNotFoundError(accountId)
+    const chapterId = row.chapter_id as string | null
+    if (chapterId === null) throw new MaturationChapterNotFoundError(accountId)
+
+    // Authorize against the minor's enrolling chapter BEFORE any mutation. A deny
+    // is an opaque Forbidden + one permission.denied row.
+    const resource: Resource = { id: accountId, chapter_id: chapterId }
+    await this.authorize(ctx, 'account.assist_recovery', resource, { sql: this.sql })
+
+    // This path is the MINOR recovery; an adult uses the ordinary reset / recover.
+    if (row.is_adult === true) throw new MaturationAgeError('assist_recovery', 18, 18)
+
+    const token = generateSessionToken()
+    const tokenHash = hashToken(token)
+    const expiresAt = new Date(Date.now() + this.config.inviteTtlMs)
+
+    await this.sql.begin(async (tx) => {
+      assertAuthorized() // runtime backstop: no mutation without a recorded decision
+      // A regenerate supersedes any prior live minor_setup token for this account.
+      await tx`
+        update credential_token set consumed_at = now()
+        where account_id = ${accountId} and purpose = 'minor_setup' and consumed_at is null
+      `
+      await tx`
+        insert into credential_token (account_id, token_hash, purpose, expires_at)
+        values (${accountId}, ${tokenHash}, 'minor_setup', ${expiresAt})
+      `
+      // §8: the mentor-assisted recovery is on the ledger (who assisted, which
+      // minor, when, IP), AND on the audit trail (references only, never PII).
+      await writeAccessLedger(tx, {
+        event: 'recovery.mentor_assisted',
+        actorAccountId: ctx.account.id,
+        realActorAccountId: ctx.session.impersonation?.real_actor_account_id ?? null,
+        subjectAccountId: accountId,
+        chapterId,
+        clientIp: opts.clientIp ?? null,
+        detail: { route: 'guardian' },
+      })
+      await writeAudit(tx, {
+        action: 'account.assist_recovery',
+        subjectType: 'account',
+        subjectId: accountId,
+        actorAccountId: ctx.account.id,
+        realActorAccountId: ctx.session.impersonation?.real_actor_account_id ?? null,
+        chapterId,
+        detail: { method: 'in_person_mentor_assisted', route: 'guardian' },
+      })
+    })
+
+    return { accountId, chapterId, token, expiresAt, route: 'guardian' }
   }
 
   // ---- consumeAccountRecovery (the reissue-setup token consume; token-gated) --

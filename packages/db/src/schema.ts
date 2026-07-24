@@ -500,6 +500,47 @@ export const auditEntry = pgTable(
   ],
 )
 
+// --- Access ledger (admin/director backend §8) -----------------------------
+// The append-only invitation/access-provenance record: who invited whom, the
+// token issuance, the redemption (with the client IP), the consent artifact +
+// method referenced at accept-student, membership activation, and mentor-assisted
+// credential resets. A PEER of audit_entry (the authorization decision log), not
+// an extension — it carries columns audit_entry does not (client_ip, target_email,
+// invite_kind, consent_ref/method) and its own read capability. Append-only
+// (shares reject_append_only_mutation() + a role-level REVOKE); the analytics read
+// role is denied SELECT. The DDL + guarantees live in migration 0022, not here.
+const inet = customType<{ data: string }>({
+  dataType() {
+    return 'inet'
+  },
+})
+
+export const accessLedger = pgTable(
+  'access_ledger',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+    event: text('event').notNull(),
+    actorAccountId: uuid('actor_account_id').references(() => account.id),
+    realActorAccountId: uuid('real_actor_account_id').references(() => account.id),
+    subjectAccountId: uuid('subject_account_id').references(() => account.id),
+    guardianAccountId: uuid('guardian_account_id').references(() => account.id),
+    chapterId: uuid('chapter_id').references(() => chapter.id),
+    inviteId: uuid('invite_id').references(() => invite.id),
+    inviteKind: text('invite_kind'),
+    targetEmail: citext('target_email'),
+    consentRef: uuid('consent_ref'),
+    consentMethod: text('consent_method'),
+    clientIp: inet('client_ip'),
+    detail: jsonb('detail').notNull().default({}),
+  },
+  (t) => [
+    index('access_ledger_chapter_at_idx').on(t.chapterId, t.at),
+    index('access_ledger_subject_at_idx').on(t.subjectAccountId, t.at),
+    index('access_ledger_invite_idx').on(t.inviteId),
+  ],
+)
+
 // --- Guardian-portal request and fee tables (Milestone 1 step 7) -----------
 // Money is never a source of truth here (02-data-model.md): payment_ref holds a
 // coarse status and a Stripe reference, no amount; scholarship holds a

@@ -424,6 +424,18 @@ export const maturationConfirmInC1: Resource = { id: 'acct-child-18', chapter_id
 // chapter; the resource is the account being recovered. No subject-consent snapshot.
 export const accountRecoverInC1: Resource = { id: 'acct-child-18', chapter_id: C1 }
 
+// account.assist_recovery (admin/director backend §9): the logged mentor/director-
+// assisted recovery for a MINOR. Chapter-scoped, teaching roles; the resource is
+// the minor account scoped to their enrolling chapter. A teaching membership in
+// the chapter (mentor/instructor/director) or a platform_admin reaches it; a
+// non-teaching role denies role_not_permitted, another chapter denies out_of_scope.
+export const assistRecoveryInC1: Resource = { id: ID.childS, chapter_id: C1 }
+
+// ledger.read (admin/director backend §8): the append-only access-ledger read.
+// Chapter-scoped, chapter_director, writes:false — the resource is the chapter
+// whose provenance is read; both platform overrides reach it (writes:false).
+export const ledgerReadC1: Resource = { chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,

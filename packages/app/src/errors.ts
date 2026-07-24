@@ -576,10 +576,10 @@ export class MaturationNotSelfError extends Error {
  * the actor's age for the route to surface.
  */
 export class MaturationAgeError extends Error {
-  readonly op: 'add_email' | 'privatize_credential'
+  readonly op: 'add_email' | 'privatize_credential' | 'assist_recovery'
   readonly requiredAge: number
   readonly actualAge: number
-  constructor(op: 'add_email' | 'privatize_credential', requiredAge: number, actualAge: number) {
+  constructor(op: 'add_email' | 'privatize_credential' | 'assist_recovery', requiredAge: number, actualAge: number) {
     super(`${op} requires age >= ${requiredAge}; the account is ${actualAge}`)
     this.name = 'MaturationAgeError'
     this.op = op

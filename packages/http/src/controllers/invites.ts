@@ -52,6 +52,8 @@ export function validateInviteToken(
 
 export interface AcceptInviteInput extends PublicInputBase {
   params: { token?: unknown }
+  /** The trusted client IP threaded from the route adapter for the §8 ledger. */
+  clientIp?: string | null
   body: {
     email?: unknown
     password?: unknown
@@ -84,13 +86,17 @@ export function acceptInvite(input: AcceptInviteInput): Promise<ControllerResult
       kind: (optStr(input.body?.kind) as InviteKind | null) ?? null,
       chapter: optStr(input.body?.chapter),
     }
-    const result = await inviteService(input.sql).acceptInvite(token, credentials, expected)
+    const result = await inviteService(input.sql).acceptInvite(token, credentials, expected, {
+      clientIp: input.clientIp ?? null,
+    })
     return { status: 201, body: result }
   })
 }
 
 export interface AcceptStudentInput extends PublicInputBase {
   params: { token?: unknown }
+  /** The trusted client IP threaded from the route adapter for the §8 ledger. */
+  clientIp?: string | null
   body: {
     username?: unknown
     password?: unknown
@@ -112,7 +118,9 @@ export function acceptStudent(input: AcceptStudentInput): Promise<ControllerResu
       displayName: reqStr(input.body?.displayName, 'displayName'),
     }
     const expected: AcceptExpectedBinding = { kind: 'student', chapter: optStr(input.body?.chapter) }
-    const result = await inviteService(input.sql).acceptInvite(token, credentials, expected)
+    const result = await inviteService(input.sql).acceptInvite(token, credentials, expected, {
+      clientIp: input.clientIp ?? null,
+    })
     return { status: 201, body: result }
   })
 }

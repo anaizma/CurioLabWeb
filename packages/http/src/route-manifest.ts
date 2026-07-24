@@ -362,6 +362,14 @@ export const ROUTE_MANIFEST: RouteManifest = [
   { method: 'POST', path: '/api/ops/memberships/[id]/activate', capability: 'member.activate' },
   { method: 'POST', path: '/api/ops/maturations/[id]/confirm', capability: 'maturation.confirm' },
   { method: 'POST', path: '/api/ops/accounts/[id]/reissue-setup', capability: 'account.recover' },
+  // §9: the logged mentor/director-assisted minor recovery (distinct from
+  // account.recover) — mints a guardian-routed setup token and writes an access
+  // ledger row. Chapter-scoped, teaching roles; platform_admin via override.
+  {
+    method: 'POST',
+    path: '/api/ops/accounts/[id]/assist-recovery',
+    capability: 'account.assist_recovery',
+  },
   {
     method: 'POST',
     path: '/api/ops/students/[id]/self-private',

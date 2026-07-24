@@ -22,6 +22,7 @@
 import {
   MaturationService,
   type AddEmailResult,
+  type AssistRecoveryResult,
   type ConfirmMaturationResult,
   type ConsumeAccountRecoveryResult,
   type PrivatizeCredentialResult,
@@ -73,6 +74,29 @@ export function reissueSetup(input: ReissueSetupInput): Promise<ControllerResult
   return runAuthed(input, async (ctx, sql) => {
     const accountId = reqStr(input.params?.id, 'id')
     const result = await maturationService(sql).reissueSetup(accountId, ctx)
+    return { status: 200, body: result }
+  })
+}
+
+export interface AssistRecoveryInput extends AuthedInputBase {
+  params: { id?: unknown }
+  /** The trusted client IP threaded from the route adapter for the §8 ledger. */
+  clientIp?: string | null
+}
+
+/**
+ * POST /api/ops/accounts/:id/assist-recovery — the LOGGED mentor/director-assisted
+ * minor recovery (admin/director backend §9; `account.assist_recovery`). A mentor
+ * or instructor present with the minor mints a fresh guardian-routed setup token;
+ * every use writes an access_ledger row (who assisted, which minor, when, IP) and
+ * an audit entry. Distinct from `account.recover` (the adult former-student reissue).
+ */
+export function assistRecovery(input: AssistRecoveryInput): Promise<ControllerResult<AssistRecoveryResult>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const accountId = reqStr(input.params?.id, 'id')
+    const result = await maturationService(sql).assistRecovery(accountId, ctx, {
+      clientIp: input.clientIp ?? null,
+    })
     return { status: 200, body: result }
   })
 }

@@ -232,8 +232,10 @@ export async function POST(req: Request) {
 
 - **Auth:** token (invite token), public, inert.
 - **Path param:** `token`. **Request body:** `username`, `password`, `legalName`, `displayName` (required strings). `dateOfBirth` is **ignored** — the canonical DOB is copied from the bound enrollment record.
-- **Response `201`:** `{ accountId: string, guardianshipId: string|null }`.
+- **Response `201`:** `{ accountId: string, guardianshipId: string|null, setupToken?: string, setupTokenRoute?: "guardian", guardianAccountId?: string|null }`.
 - **Errors:** as `accept` above.
+
+**§3 guardian-before-student preconditions (the COPPA ordering invariant).** When the student invite's enrollment already binds a **guardian-provisioned** student account, accept-student **credentials that existing account** (rather than creating one) and is **refused unless**: (a) a **VERIFIED** guardianship edge exists for that student (a merely-`pending` edge is refused), **AND** (b) the guardian's **`platform_participation`** consent (the "may have a platform account" record that exists today) is currently active. Any failure is the **same opaque `401 invalid_token`** as a forged link and leaves the invite `issued` (usable on retry once the guardian verifies) — it reveals neither which gate failed nor whether the student exists. On success the account stays `pending` (no membership until `member.activate`), so **a student invite alone can never stand up an active student**. The one-time **setup credential is routed to the guardian, never emailed to the child**: the backend mints a `minor_setup` credential token bound to the student account, returns it once as `setupToken` with `setupTokenRoute:"guardian"` + `guardianAccountId` (a delivery seam the frontend fulfils). Redemption and the referenced consent artifact/method are written to the §8 access ledger with the source IP.
 
 ---
 
@@ -567,6 +569,14 @@ All `session`, chapter-scoped to the Chapter Director (platform_admin via overri
 - **Response `200`:** `{ accountId, chapterId, token, expiresAt }` — the raw setup token returned once (mailer seam), consumed later at `POST /api/auth/account-recovery`.
 - **Errors:** `403`; `404`; `409` `ReissueActiveMembershipError` (rejected against an account with a live membership).
 
+### `POST /api/ops/accounts/{id}/assist-recovery` — logged mentor/director-assisted MINOR recovery (§9)
+
+- **Auth:** session — **`account.assist_recovery`** (chapter-scoped; **teaching roles** `junior_mentor`/`senior_instructor`/`lead_instructor`/`chapter_director`; `platform_admin` via override, `platform_staff` denied). Distinct from `account.recover` (the adult former-student reissue).
+- **Path param:** `id` (the minor's account id).
+- **Behavior:** a mentor/instructor present **with the minor in person** mints a fresh **guardian-routed** `minor_setup` credential token (a regenerate supersedes the prior live one), and records the event on **both** the §8 access ledger (`recovery.mentor_assisted` — who assisted, which minor, when, **source IP**) and the audit trail. A **minor's** self-serve password reset (`/auth/password/reset-request`) is already guardian-routed (route `guardian`, the token bound to the child account but never delivered to the child); this is the in-person alternative for a locked-out minor.
+- **Response `200`:** `{ accountId, chapterId, token, expiresAt, route: "guardian" }` — the raw setup token returned once (a guardian-delivery seam).
+- **Errors:** `400` `MaturationAgeError` (the subject is **not** a minor — an adult recovers via the ordinary reset / `account.recover`); `403` deny / null session; `404` unknown account / no enrolling chapter.
+
 ### `POST /api/ops/deletion-requests/{id}/review`
 
 - **Auth:** session — **`deletion.review`**.
@@ -699,6 +709,16 @@ All `session`, chapter-scoped to the Chapter Director (platform_admin via overri
 - **Query params:** `chapterId` (optional — defaults to the actor's director chapter); `limit` (optional; default 100, max 500).
 - **Response `200`:** `{ chapterId, entries: [{ id, at (ISO string), action, subjectType, subjectId, actorAccountId, realActorAccountId, chapterId, detail }] }`, newest first.
 - **Errors:** `403` when there is no chapter to scope to (no `chapterId` and no director chapter), or a deny.
+
+### `GET /api/ops/access-ledger` — the append-only invitation/access ledger (§8)
+
+- **Auth:** session — **`ledger.read`** (chapter-scoped; a director reads their **own** chapter, cross-chapter is `403`; both platform overrides reach it — `writes:false`). Mirrors the audit read's chapter resolution (`?chapterId` or the actor's director chapter) but is a **peer** surface with its own capability, so the ledger and the audit trail scope independently. This read is **not** self-logging (the ledger records origination events, not reads).
+- **Query params:** `chapterId` (optional — defaults to the actor's director chapter); `limit` (optional; default 100, max 500).
+- **Response `200`:** `{ chapterId, items: [{ id, at (ISO), event, inviteId, inviteKind, chapterId, targetEmail, consentMethod, actorAccountId, actorDisplayName, subjectAccountId, subjectDisplayName, guardianAccountId, guardianDisplayName, detail }] }`, newest first. **Minor PII is hidden**: display names are the first-name + last-initial `account.display_name` (never a raw last name), and the stored **client IP is NOT surfaced** (a forensic field kept on the row, not returned to the ops read).
+- **`event`** ∈ `invite.issued` (issuer + target + kind + chapter), `invite.redeemed` (accepting account + IP), `accept_student.consent` (the guardian consent artifact/method referenced at accept-student + guardian-routing), `membership.activated`, `recovery.mentor_assisted`, `recovery.guardian_routed`.
+- **Errors:** `403` when there is no chapter to scope to, a cross-chapter `?chapterId`, or a deny / null session.
+
+> **The ledger table (§8; `access_ledger`, migration 0022).** An **append-only** record (never mutated — a correction is a new row; enforced by the shared `reject_append_only_mutation()` trigger backstop **and** a role-level `REVOKE UPDATE, DELETE`) capturing the account-**origination + access** chain. It is a **PEER of `audit_entry`**, not an extension: the audit log is the *authorization-decision* record (`permission.denied`, capability reads, ops transitions), whereas the ledger is the *origination/access-provenance* record and carries columns the audit row does not — a `client_ip` (`inet`), the `target_email`, the `invite_kind`, and the `consent_ref`/`consent_method`. Keeping them peers keeps the audit log's meaning clean and gives origination provenance its own queryable, IP-bearing, minor-PII-hiding shape and its own read capability. The analytics read role is **denied `SELECT`** (default-deny, like `enrollment_record`/`guardianship`).
 
 ---
 
