@@ -14,7 +14,7 @@ export default function GuardianPortalLayout({ children }: { children: React.Rea
       activeHref={guardianActiveFrom(pathname)}
       avatarInitial="G"
     >
-      <div className="mx-auto max-w-3xl px-6 py-8">{children}</div>
+      {children}
     </PortalShell>
   );
 }

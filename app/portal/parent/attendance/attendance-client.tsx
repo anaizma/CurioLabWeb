@@ -2,15 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { AttendanceCounts, AttendanceExisting, AttendanceSession, SampleAttendanceRecord } from "@/lib/portal/guardian/attendance-data";
 
-type AbsentRec = { type: "absent"; reason: string; slots: string[] };
+type AbsentRec = { type: "absent"; reason: string; slots: string[]; madeUp?: boolean };
 type LateRec = { type: "late"; arrive: string };
 type Rec = AbsentRec | LateRec;
-
-interface LiveSession {
-  eventId: string;
-  startsAt: string;
-}
 
 const MON = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -27,6 +23,15 @@ function keyOf(d: Date): string {
 function fromKey(k: string): Date {
   return new Date(k + "T12:00:00");
 }
+function hhmm(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+function prettyKey(k: string): string {
+  const d = fromKey(k);
+  return `${DOW[d.getDay()]}, ${MON[d.getMonth()]} ${d.getDate()}`;
+}
 
 export default function AttendanceClient({
   childName,
@@ -34,20 +39,21 @@ export default function AttendanceClient({
   sessions,
   existing,
   counts,
+  sampleRecords,
   live,
 }: {
   childName: string;
   childId: string | null;
-  sessions: LiveSession[];
-  existing: { sessionEventId: string; type: "absent" | "late" }[];
-  counts: { totalAbsences: number; outstanding: number; madeUp: number; late: number };
+  sessions: AttendanceSession[];
+  existing: AttendanceExisting[];
+  counts: AttendanceCounts;
+  sampleRecords: SampleAttendanceRecord[];
   live: boolean;
 }) {
   const router = useRouter();
-  const now = new Date();
-  const calY = now.getFullYear();
-  const calM = now.getMonth();
-  const todayKey = keyOf(now);
+  const today = new Date();
+  const todayKey = keyOf(today);
+  const [cursor, setCursor] = useState(() => new Date());
 
   const liveSessions = live
     ? sessions
@@ -59,15 +65,25 @@ export default function AttendanceClient({
   const eventKeyById = new Map(liveSessions.map((s) => [s.eventId, keyOf(s.date)]));
 
   const [records, setRecords] = useState<Record<string, Rec>>(() => {
-    if (!live) return {};
     const init: Record<string, Rec> = {};
-    existing.forEach((x) => {
-      const k = eventKeyById.get(x.sessionEventId);
-      if (!k) return;
-      init[k] = x.type === "late" ? { type: "late", arrive: "" } : { type: "absent", reason: "", slots: [] };
-    });
+    if (live) {
+      existing.forEach((x) => {
+        const k = eventKeyById.get(x.sessionEventId);
+        if (!k) return;
+        init[k] = x.type === "late"
+          ? { type: "late", arrive: hhmm(x.arriveAt) }
+          : { type: "absent", reason: x.reason ?? "", slots: [], madeUp: x.makeupStatus === "completed" };
+      });
+    } else {
+      sampleRecords.forEach((r) => {
+        init[r.dateKey] = r.type === "late"
+          ? { type: "late", arrive: r.arrive ?? "" }
+          : { type: "absent", reason: r.reason ?? "", slots: r.slots ?? [], madeUp: r.madeUp };
+      });
+    }
     return init;
   });
+
   const [selected, setSelected] = useState<string | null>(null);
   const [mode, setMode] = useState<"absent" | "late" | null>(null);
   const [reason, setReason] = useState("");
@@ -90,7 +106,6 @@ export default function AttendanceClient({
     } while (c.getDay() !== 6);
     return c;
   }
-
   function slotOptions(sel: Date): { label: string; value: string }[] {
     const ns = nextSessionDate(sel);
     const out: { label: string; value: string }[] = [];
@@ -141,7 +156,6 @@ export default function AttendanceClient({
     setSelected(null);
     setMode(null);
   }
-
   async function saveLate() {
     if (!selected) return;
     if (live && childId) {
@@ -169,7 +183,6 @@ export default function AttendanceClient({
     setRecords((m) => ({ ...m, [selected]: { type: "late", arrive } }));
     close();
   }
-
   async function saveAbsent() {
     if (!selected) return;
     const slots = Object.keys(chosen).filter((s) => chosen[s]);
@@ -196,51 +209,66 @@ export default function AttendanceClient({
     close();
   }
 
-  const absCount = live ? counts.totalAbsences : Object.values(records).filter((r) => r.type === "absent").length;
-  const lateCount = live ? counts.late : Object.values(records).filter((r) => r.type === "late").length;
+  const recKeys = Object.keys(records);
+  const absKeys = recKeys.filter((k) => records[k].type === "absent").sort().reverse();
+  const lateKeys = recKeys.filter((k) => records[k].type === "late").sort().reverse();
+  const absCount = live ? counts.totalAbsences : absKeys.length;
+  const madeUpCount = live ? counts.madeUp : absKeys.filter((k) => (records[k] as AbsentRec).madeUp).length;
+  const lateCount = live ? counts.late : lateKeys.length;
 
+  const calY = cursor.getFullYear();
+  const calM = cursor.getMonth();
   const first = new Date(calY, calM, 1);
   const startPad = first.getDay();
   const daysInMonth = new Date(calY, calM + 1, 0).getDate();
   const cells: (Date | null)[] = [];
   for (let i = 0; i < startPad; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(calY, calM, d));
+  while (cells.length % 7 !== 0) cells.push(null);
 
   const sel = selected ? fromKey(selected) : null;
   const ns = sel ? nextSessionDate(sel) : null;
   const nsLabel = ns ? `${DOW[ns.getDay()]}, ${MON[ns.getMonth()]} ${ns.getDate()}` : "the end of the term";
   const slots = sel ? slotOptions(sel) : [];
   const absentValid = Boolean(reason.trim()) && consent && Object.values(chosen).some(Boolean);
-  const orderedKeys = Object.keys(records).sort();
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex gap-3 flex-wrap">
-        <div className="flex-1 min-w-28 rounded-xl border border-ink/10 bg-white p-3">
-          <div className="text-2xl font-bold" style={{ color: COLOR.absent.dot }}>{absCount}</div>
-          <div className="text-xs text-ink/50">absences this term</div>
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white border border-black/[.08] rounded-lg p-3">
+          <div className="font-mono text-xl font-bold" style={{ color: COLOR.absent.dot }}>{absCount}</div>
+          <div className="text-[11.5px] text-muted">Absences</div>
         </div>
-        <div className="flex-1 min-w-28 rounded-xl border border-ink/10 bg-white p-3">
-          <div className="text-2xl font-bold" style={{ color: COLOR.late.dot }}>{lateCount}</div>
-          <div className="text-xs text-ink/50">late arrivals</div>
+        <div className="bg-white border border-black/[.08] rounded-lg p-3">
+          <div className="font-mono text-xl font-bold" style={{ color: COLOR.session.dot }}>{madeUpCount}</div>
+          <div className="text-[11.5px] text-muted">Made up</div>
+        </div>
+        <div className="bg-white border border-black/[.08] rounded-lg p-3">
+          <div className="font-mono text-xl font-bold" style={{ color: COLOR.late.dot }}>{lateCount}</div>
+          <div className="text-[11.5px] text-muted">Late arrivals</div>
         </div>
       </div>
 
-      <div className="rounded-xl border border-ink/10 bg-white p-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold">{MON[calM]} {calY}</div>
-          <div className="flex gap-3 text-[11px] text-ink/50 flex-wrap">
-            <span><span className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1" style={{ background: COLOR.session.dot }} />Session</span>
-            <span><span className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1" style={{ background: COLOR.absent.dot }} />Absent</span>
-            <span><span className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1" style={{ background: COLOR.late.dot }} />Late</span>
+      <div className="bg-white border border-black/[.08] rounded-lg p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="text-[14px] font-bold">{MON[calM]} {calY}</div>
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={() => setCursor(new Date(calY, calM - 1, 1))} className="rounded-md border border-black/[.12] w-7 h-7 text-sm">‹</button>
+            <button type="button" onClick={() => setCursor(new Date())} className="rounded-md border border-black/[.12] px-2.5 h-7 text-[11px] font-semibold">Today</button>
+            <button type="button" onClick={() => setCursor(new Date(calY, calM + 1, 1))} className="rounded-md border border-black/[.12] w-7 h-7 text-sm">›</button>
           </div>
         </div>
+        <div className="flex gap-3 text-[11px] text-muted flex-wrap">
+          <span><span className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1" style={{ background: COLOR.session.dot }} />Session</span>
+          <span><span className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1" style={{ background: COLOR.absent.dot }} />Absent</span>
+          <span><span className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1" style={{ background: COLOR.late.dot }} />Late</span>
+        </div>
         {live && liveSessions.length === 0 && (
-          <p className="text-xs text-ink/50">No sessions on the chapter calendar yet — they&apos;ll appear here once your director publishes them.</p>
+          <p className="text-[11.5px] text-muted">No sessions on the chapter calendar yet — they appear once your director publishes them.</p>
         )}
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-1">
           {DOW.map((w) => (
-            <div key={w} className="text-center text-[10px] font-mono uppercase tracking-wide text-ink/40 py-1">{w}</div>
+            <div key={w} className="text-center text-[9.5px] font-mono uppercase tracking-wide text-muted py-1">{w}</div>
           ))}
           {cells.map((d, i) => {
             if (!d) return <div key={`e${i}`} />;
@@ -261,7 +289,7 @@ export default function AttendanceClient({
                 type="button"
                 disabled={!sess}
                 onClick={() => sess && openDay(k)}
-                className={`aspect-square rounded-lg border text-sm flex flex-col items-center justify-center gap-1 ${sess ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
+                className={`aspect-square rounded-md border text-[13px] flex flex-col items-center justify-center gap-0.5 min-w-0 overflow-hidden ${sess ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
                 style={{
                   background: bg,
                   borderColor: isSel ? dotColor : rec ? "transparent" : sess ? COLOR.session.dot + "55" : "rgba(3,35,68,.06)",
@@ -270,7 +298,7 @@ export default function AttendanceClient({
                 }}
               >
                 <span className={rec ? "font-semibold" : ""}>{d.getDate()}</span>
-                {showDot && <span className="w-1.5 h-1.5 rounded-full" style={{ background: dotColor }} />}
+                {showDot && <span className="w-1 h-1 rounded-full" style={{ background: dotColor }} />}
               </button>
             );
           })}
@@ -278,10 +306,10 @@ export default function AttendanceClient({
       </div>
 
       {sel && (
-        <div className="rounded-xl border border-ink/10 bg-white p-4 flex flex-col gap-3">
+        <div className="bg-white border border-black/[.08] rounded-lg p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold">{DOW[sel.getDay()]}, {MON[sel.getMonth()]} {sel.getDate()} · session</div>
-            <button type="button" onClick={close} className="text-xs font-semibold text-ink/50">Close</button>
+            <div className="text-[13.5px] font-bold">{DOW[sel.getDay()]}, {MON[sel.getMonth()]} {sel.getDate()} · session</div>
+            <button type="button" onClick={close} className="text-[11.5px] font-semibold text-muted">Close</button>
           </div>
           <div className="flex gap-2">
             {(["absent", "late"] as const).map((t) => (
@@ -289,7 +317,7 @@ export default function AttendanceClient({
                 key={t}
                 type="button"
                 onClick={() => setMode(t)}
-                className="flex-1 rounded-lg border px-3 py-2 text-sm font-semibold"
+                className="flex-1 rounded-md border px-3 py-1.5 text-[12.5px] font-semibold"
                 style={mode === t ? { background: "var(--pt-accent-soft)", borderColor: "var(--pt-accent-border)", color: "var(--pt-accent-fg)" } : { background: "#f7f4f0", borderColor: "rgba(3,35,68,.10)", color: "#6B6058" }}
               >
                 {t === "absent" ? "Absent" : "Arriving late"}
@@ -298,36 +326,36 @@ export default function AttendanceClient({
           </div>
 
           {mode === "late" && (
-            <div className="flex flex-col gap-3">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-ink/60">When will {childName} arrive?</span>
-                <input type="time" value={arrive} onChange={(e) => setArrive(e.target.value)} className="rounded-lg border border-ink/15 px-3 py-2 text-sm bg-white" />
+            <div className="flex flex-col gap-2.5">
+              <label className="flex flex-col gap-1 text-[12.5px]">
+                <span className="text-muted">When will {childName} arrive?</span>
+                <input type="time" value={arrive} onChange={(e) => setArrive(e.target.value)} className="rounded-md border border-black/[.12] px-3 py-1.5 text-[13px] bg-white" />
               </label>
-              <button type="button" onClick={saveLate} disabled={busy} className="self-start rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
+              <button type="button" onClick={saveLate} disabled={busy} className="self-start rounded-md px-3.5 py-1.5 text-[12.5px] font-semibold disabled:opacity-50" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
                 {busy ? "Saving…" : "Save late notice"}
               </button>
             </div>
           )}
 
           {mode === "absent" && (
-            <div className="flex flex-col gap-3">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-ink/60">Why will {childName} be absent?</span>
-                <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="A short note is all we need." className="rounded-lg border border-ink/15 px-3 py-2 text-sm bg-white min-h-16" />
+            <div className="flex flex-col gap-2.5">
+              <label className="flex flex-col gap-1 text-[12.5px]">
+                <span className="text-muted">Why will {childName} be absent?</span>
+                <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="A short note is all we need." className="rounded-md border border-black/[.12] px-3 py-1.5 text-[13px] bg-white min-h-14" />
               </label>
-              <label className="flex gap-2 items-start text-xs text-ink">
+              <label className="flex gap-2 items-start text-[11.5px]">
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5" />
                 <span>I consent to {childName} making up this session with a <b>30-minute virtual check-in</b>, completed after {childName} finishes the session&apos;s assignment.</span>
               </label>
-              <div className="flex flex-col gap-1.5 text-sm">
-                <span className="text-ink/60">Pick times you&apos;re available for the check-in. It must be completed <b>before the next session</b> ({nsLabel}).</span>
-                <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-1.5 text-[12.5px]">
+                <span className="text-muted">Pick times you&apos;re available. The check-in must happen <b>before the next session</b> ({nsLabel}).</span>
+                <div className="flex flex-wrap gap-1.5">
                   {slots.map((s) => (
                     <button
                       key={s.value}
                       type="button"
                       onClick={() => setChosen((c) => ({ ...c, [s.value]: !c[s.value] }))}
-                      className="rounded-full px-3 py-1.5 text-xs font-medium border"
+                      className="rounded-full px-2.5 py-1 text-[11.5px] font-medium border"
                       style={chosen[s.value] ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)", borderColor: "transparent" } : { background: "#f7f4f0", color: "#6B6058", borderColor: "rgba(3,35,68,.10)" }}
                     >
                       {s.label}
@@ -335,7 +363,7 @@ export default function AttendanceClient({
                   ))}
                 </div>
               </div>
-              <button type="button" disabled={!absentValid || busy} onClick={saveAbsent} className="self-start rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-45" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
+              <button type="button" disabled={!absentValid || busy} onClick={saveAbsent} className="self-start rounded-md px-3.5 py-1.5 text-[12.5px] font-semibold disabled:opacity-45" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
                 {busy ? "Submitting…" : "Submit absence & make-up plan"}
               </button>
             </div>
@@ -343,37 +371,54 @@ export default function AttendanceClient({
         </div>
       )}
 
-      {orderedKeys.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-bold text-ink/70">Recorded this term</h2>
-          {orderedKeys.map((k) => {
-            const r = records[k];
-            const d = fromKey(k);
-            const pretty = `${DOW[d.getDay()]}, ${MON[d.getMonth()]} ${d.getDate()}`;
-            if (r.type === "late") {
+      <div className="bg-white border border-black/[.08] rounded-lg p-4">
+        <div className="label text-[10.5px] mb-2">Absent dates</div>
+        {absKeys.length === 0 ? (
+          <p className="text-[13px] text-muted">No absences recorded.</p>
+        ) : (
+          <div className="flex flex-col divide-y divide-black/[.05]">
+            {absKeys.map((k) => {
+              const r = records[k] as AbsentRec;
               return (
-                <div key={k} className="rounded-xl border border-ink/10 bg-white p-4 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-medium">{pretty}</div>
-                    {r.arrive && <div className="text-xs text-ink/50">Arriving at {r.arrive}</div>}
+                <div key={k} className="py-2.5 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-mono text-[12.5px] font-semibold">{prettyKey(k)}</div>
+                    {r.reason && <div className="text-[12px] text-muted mt-0.5">{r.reason}</div>}
+                    {r.madeUp ? (
+                      <div className="text-[11.5px] mt-0.5" style={{ color: COLOR.session.dot }}>Made up ✓ — 30-min virtual check-in complete</div>
+                    ) : r.slots.length > 0 ? (
+                      <div className="text-[11.5px] mt-0.5" style={{ color: "var(--pt-accent-fg)" }}>Make-up pending · {r.slots.length} time{r.slots.length === 1 ? "" : "s"} offered</div>
+                    ) : null}
                   </div>
-                  <span className="text-[11px] font-semibold rounded-full px-2 py-0.5" style={{ background: COLOR.late.soft, color: COLOR.late.dot }}>Late</span>
+                  <span className="font-mono text-[9.5px] uppercase tracking-wider rounded-full px-2 py-0.5 shrink-0" style={{ background: COLOR.absent.soft, color: COLOR.absent.dot }}>Absent</span>
                 </div>
               );
-            }
-            return (
-              <div key={k} className="rounded-xl border border-ink/10 bg-white p-4 flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm font-medium">{pretty}</div>
-                  {r.reason && <div className="text-xs text-ink/50">{r.reason}</div>}
-                  {r.slots.length > 0 && <div className="text-xs mt-1.5" style={{ color: "var(--pt-accent-fg)" }}>Make-up check-in · {r.slots.length} time{r.slots.length === 1 ? "" : "s"} offered</div>}
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border border-black/[.08] rounded-lg p-4">
+        <div className="label text-[10.5px] mb-2">Late arrivals</div>
+        {lateKeys.length === 0 ? (
+          <p className="text-[13px] text-muted">No late arrivals recorded.</p>
+        ) : (
+          <div className="flex flex-col divide-y divide-black/[.05]">
+            {lateKeys.map((k) => {
+              const r = records[k] as LateRec;
+              return (
+                <div key={k} className="py-2.5 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-mono text-[12.5px] font-semibold">{prettyKey(k)}</div>
+                    {r.arrive && <div className="text-[12px] text-muted mt-0.5">Arrived {r.arrive}</div>}
+                  </div>
+                  <span className="font-mono text-[9.5px] uppercase tracking-wider rounded-full px-2 py-0.5 shrink-0" style={{ background: COLOR.late.soft, color: COLOR.late.dot }}>Late</span>
                 </div>
-                <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 shrink-0" style={{ background: COLOR.absent.soft, color: COLOR.absent.dot }}>Absent</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
