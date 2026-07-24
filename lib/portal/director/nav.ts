@@ -6,6 +6,7 @@ export const DIRECTOR_NAV: PortalNavGroup[] = [
     items: [
       { label: "Dashboard", href: "/portal/director" },
       { label: "Calendar", href: "/portal/director/calendar" },
+      { label: "Messages", href: "/portal/director/messages" },
     ],
   },
   {
