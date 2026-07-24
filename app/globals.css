@@ -20,7 +20,7 @@
   --color-butteryellow: #FFCF3E;
 
   --font-sans: var(--font-body), system-ui, sans-serif;
-  --font-mono: var(--font-code), monospace;
+  --font-mono: var(--font-code), ui-sans-serif, system-ui, sans-serif;
   --font-editorial: var(--font-story), system-ui, sans-serif;
 }
 
@@ -36,6 +36,14 @@ body {
      and the menu button — always fit on one static-height row. Below this the
      page scrolls horizontally rather than letting the controls overlap. */
   min-width: 440px;
+}
+
+/* The "mono" role now renders in Archivo (a proportional sans). Force tabular
+   figures so stats, dates and percentages still line up in columns the way the
+   old monospace face did. Unlayered so it wins over Tailwind's utilities layer
+   without touching font-family. */
+.font-mono {
+  font-variant-numeric: tabular-nums;
 }
 
 .label {

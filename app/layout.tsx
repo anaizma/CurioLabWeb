@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Nunito_Sans, JetBrains_Mono, Work_Sans } from "next/font/google";
+import { Nunito_Sans, Archivo, Work_Sans } from "next/font/google";
 import "./globals.css";
 import SiteChrome from "@/components/SiteChrome";
 
@@ -8,7 +8,10 @@ const sans = Nunito_Sans({
   variable: "--font-body",
   weight: ["400", "600", "700", "800"],
 });
-const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-code" });
+// Archivo replaces JetBrains Mono as the label/stat face across every portal
+// + the homepage. It is proportional (not monospace); tabular figures are
+// enabled in globals.css so numeric columns still align.
+const mono = Archivo({ subsets: ["latin"], variable: "--font-code" });
 const editorial = Work_Sans({
   subsets: ["latin"],
   variable: "--font-story",
