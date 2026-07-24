@@ -946,6 +946,59 @@ Guardian-submitted, staff-resolved attendance exceptions over a chapter **sessio
 
 ---
 
+## 6e. Guardian ↔ chapter-staff messaging (guardian/director portal, Feature 3)
+
+Threaded, append-only messaging between a **guardian** and their child's chapter's **staff** (the `chapter_director` + that chapter's mentors), retained like email. A guardian starts a thread or appends to their own; staff of the chapter list/read the threads and reply. Nothing is ever edited in place or deleted.
+
+**Append-only / auditable (platform invariant).** A `message_thread` (migration `0028`) is **INSERT-once** — its chapter, guardian, subject, and creation time never change; a `message` is an **append-only** log (a correction is a NEW message, never an UPDATE). Both compose with the shared `reject_append_only_mutation()` trigger + SELECT/INSERT-only role grants. **`lastMessageAt` is DERIVED, not stored/mutated:** the `message_thread_current` projection computes it as `max(sent_at)` over the thread's messages (coalesced to `createdAt` when it has none yet), so it advances forward as replies append **without any destructive mutation** — the truly-immutable reading of "append-only" (an only-forward maintained column would need an UPDATE the trigger rejects, or a carve-out that forks the immutability guarantee). Every send / reply writes an `audit_entry` **and** an `access_ledger` row (events `message.sent` / `message.replied`), `detail` carrying the `threadId`, `messageId`, and server-derived `senderRole` — never the message body / any PII.
+
+**`sender_role` is DERIVED SERVER-SIDE, never trusted from the client** (DB enum `message_sender_role` = `guardian|mentor|director`): a guardian send is always `guardian`; a staff reply is `director` (the replier holds a `chapter_director` membership in the thread's chapter) or `mentor` (a mentor tier — `junior_mentor`/`senior_instructor`/`lead_instructor`), read from the replier's in-force membership at send time (a `platform_admin` override with no chapter membership falls back to `director`). A client-supplied role in the body is ignored.
+
+**Thread objects** (all surfaces; timestamps ISO-8601 UTC):
+```
+Message: { id, threadId, senderAccountId, senderRole, senderName, body, sentAt }
+Thread:  { id, chapterId, guardianAccountId, subject, createdAt, lastMessageAt }
+```
+`senderName` is the sender's `account.display_name` (first name + last initial; senders here are adults — no minor last name leaks). Thread ids are opaque (no PII in URLs). The exact list/detail envelopes:
+- **Guardian read** (`GET /api/guardian/messages`): `{ items: [{ ...Thread, messages: [Message, …] }] }` — each thread with its full message list nested, newest-activity-first.
+- **Staff list** (`GET /api/ops/messages`): `{ items: [{ ...Thread, guardianName, lastMessage: Message | null }] }` — a `lastMessage` PREVIEW (not nested), plus the guardian's display name, newest-activity-first.
+- **Staff detail** (`GET /api/ops/messages/{threadId}`): `{ ...Thread, guardianName, messages: [Message, …] }` — the full message list.
+- **Send / reply** return the created **Message** object (which carries its `threadId`).
+
+**Multi-chapter disambiguation (new thread).** A NEW thread's `chapterId` is resolved from the guardian's **verified child** (guardianship → active membership → chapter). A guardian with children in **several** chapters must say which one: `childAccountId` (preferred — it also anchors the guardian scope) or `chapterId` picks it; with a single eligible chapter neither is needed; with several and neither given it is an ambiguous **`400`**. The chosen chapter must be one the guardian has a verified child in — a `chapterId`/`childAccountId` the guardian has no verified child in resolves to no anchor and **denies opaque `403`** (a guardian cannot open a thread in a chapter they have no child in).
+
+**Capabilities (added to the registry with allow/deny fixtures):**
+- **`message.send`** — guardian-scoped **write** (roles `[]`; the guardianship is the authority, matched against `ctx.guardianOf`); `writes:true`, so the age-18 bar applies. The "own thread" (append) and "a chapter the guardian has a child in" (create) bounds are service concerns on top of the guardian scope.
+- **`message.view_own`** — guardian-scoped **read** of the guardian's OWN threads (roles `[]`), `writes:false`, no read-log. Persists past the child's majority (ends at the edge's lapse).
+- **`message.view`** — chapter-scoped **read floor**, roles `TEACHING`, `writes:false` (both platform overrides reach it). The staff thread list + detail.
+- **`message.reply`** — chapter-scoped **write**, roles `TEACHING` (`chapter_director` + that chapter's mentors; `platform_admin` via override; a read-only `platform_staff` cannot). A **distinct** write capability from `message.view` — a read-only reader may view a thread but must not post. The two mutating routes are manifested against `message.send` / `message.reply`.
+
+> **Compliance note (COPPA 1.8 / § 312.2).** The platform's no-direct-messaging guard (a CurioLab username stays non-PII because a student cannot be contacted by username) is preserved: this channel is **adult-to-adult** (a guardian and their child's chapter's staff), never student-directed — a student is neither a sender (no `student` role, guardian scope) nor a recipient (a thread is keyed on the guardian + chapter, never a student). The `directMessagingCapabilities` guard now exempts exactly this shape (guardian scope, or chapter/pod scope with a non-empty staff-only roles floor); a student-facing `message.*` capability still trips it.
+
+### `POST /api/guardian/messages` — guardian sends (`message.send`)
+- **Auth:** session — `message.send`. Guardian-scoped (matched against `ctx.guardianOf`); a cross-guardian / no-child caller → opaque `403`.
+- **Request body:** `body` (required, non-empty), `threadId?` (append to the caller's OWN thread; else create), `subject?` (new thread only), `childAccountId?` / `chapterId?` (disambiguate a new thread's chapter for a multi-chapter guardian). `sender_role` is **not** a body field — it is derived server-side (`guardian`).
+- **Response `201`:** the created **Message** (carrying `threadId`). **Errors:** `400` empty `body` / ambiguous new-thread chapter; `403` another guardian's thread, or a chapter the guardian has no child in; `404` unknown `threadId`.
+
+### `GET /api/guardian/messages` — the guardian's threads + messages (`message.view_own`; GET-exempt)
+- **Auth:** session — `message.view_own`, guardian-scoped. A session with no verified child → opaque `403`.
+- **Response `200`:** `{ items: [{ ...Thread, messages: [Message, …] }] }`.
+
+### `GET /api/ops/messages?chapterId=` — the staff thread list (`message.view`; GET-exempt)
+- **Auth:** session — `message.view`. A caller not staff of `chapterId` → opaque `403`; cross-chapter leakage is impossible (server-side membership check). `chapterId` optional (defaults to the caller's in-force teaching chapter(s)).
+- **Response `200`:** `{ items: [{ ...Thread, guardianName, lastMessage: Message | null }] }`.
+
+### `GET /api/ops/messages/{threadId}` — one thread, full messages (`message.view`; GET-exempt)
+- **Auth:** session — `message.view`, resolved against the thread's chapter (same-chapter check; another chapter → `403`).
+- **Response `200`:** `{ ...Thread, guardianName, messages: [Message, …] }`. **Errors:** `404` unknown thread; `403` cross-chapter.
+
+### `POST /api/ops/messages/{threadId}/reply` — mentor/director reply (`message.reply`)
+- **Auth:** session — `message.reply`, resolved against the thread's chapter (same-chapter check; another chapter → `403`).
+- **Request body:** `body` (required, non-empty). `sender_role` is derived from the replier's membership (`director` / `mentor`).
+- **Response `201`:** the created **Message**. **Errors:** `400` empty `body`; `403` non-staff / cross-chapter; `404` unknown thread.
+
+---
+
 ## 7. Platform admin
 
 ### `POST /api/admin/chapters`

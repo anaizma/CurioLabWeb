@@ -43,6 +43,7 @@ import {
   calendarEventKindEnum,
   calendarEventStatusEnum,
   makeupStatusEnum,
+  messageSenderRoleEnum,
   chapterStatusEnum,
   chapterTierEnum,
   consentActionEnum,
@@ -655,6 +656,51 @@ export const attendanceException = pgTable(
       sql`${t.type} <> 'absent' OR ${t.makeupStatus} IS NOT NULL`,
     ),
   ],
+)
+
+// --- Guardian <-> chapter-staff messaging (guardian/director portal, Feature 3) ---
+// Threaded, append-only messaging (migration 0028), retained like email. A
+// message_thread is INSERT-once (its columns never mutate); a message is
+// append-only (a correction is a new row) — both guarded by the shared
+// reject_append_only_mutation() trigger + SELECT/INSERT-only role grants.
+// `last_message_at` is NOT a stored column: it is DERIVED by the
+// message_thread_current view as max(sent_at) (not modeled here). The DDL +
+// guarantees live in migration 0028, not here.
+export const messageThread = pgTable(
+  'message_thread',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chapterId: uuid('chapter_id')
+      .notNull()
+      .references(() => chapter.id),
+    guardianAccountId: uuid('guardian_account_id')
+      .notNull()
+      .references(() => account.id),
+    subject: text('subject'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('message_thread_guardian_idx').on(t.guardianAccountId),
+    index('message_thread_chapter_idx').on(t.chapterId),
+  ],
+)
+
+export const message = pgTable(
+  'message',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'bigint' }).notNull().unique(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => messageThread.id),
+    senderAccountId: uuid('sender_account_id')
+      .notNull()
+      .references(() => account.id),
+    senderRole: messageSenderRoleEnum('sender_role').notNull(),
+    body: text('body').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('message_thread_seq_idx').on(t.threadId, t.seq)],
 )
 
 // --- Audit -----------------------------------------------------------------

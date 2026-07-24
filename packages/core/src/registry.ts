@@ -786,4 +786,53 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: TEACHING,
     writes: true,
   },
+
+  // ---- guardian <-> chapter-staff messaging (guardian/director portal, Feature 3) ----
+  // Threaded, append-only messaging between a guardian and their child's chapter's
+  // staff (the chapter_director + that chapter's mentors).
+  //
+  // message.send: the guardian-scoped WRITE — a guardian creates a thread or
+  // appends to their OWN existing thread. roles [] (guardianship itself is the
+  // authority, matched against ctx.guardianOf by the guardian scope; a
+  // lapsed/revoked edge is absent so it denies). writes:true, so the age-18 bar
+  // applies (a guardian's write authority ends at the child's majority), mirroring
+  // attendance.submit / consent.grant. The "own thread" and "chapter the guardian
+  // has a child in" bounds are service concerns on top of the guardian scope.
+  'message.send': {
+    scope: 'guardian',
+    roles: [],
+    writes: true,
+  },
+  // message.view_own: the guardian-scoped READ of the guardian's OWN threads +
+  // messages. roles [] (guardianship is the authority), writes:false, NO logsRead —
+  // it returns the guardian's own conversations (not the composed minor record,
+  // which stays guardian.view_child_record with its minor_record.read obligation).
+  // Guardian READ persists through the child's majority (age-not-bounded, like
+  // attendance.view_child / guardian.view_calendar), ending only at the edge's lapse.
+  'message.view_own': {
+    scope: 'guardian',
+    roles: [],
+    writes: false,
+  },
+  // message.view: the chapter-scoped staff READ floor. Roles TEACHING (a pod
+  // mentor / instructor, or the chapter director) so the staff can read their
+  // chapter's guardian threads; writes:false, so BOTH platform overrides (admin +
+  // read-only staff) reach it. The same-chapter thread check and the guardian
+  // display name are service concerns on top, like attendance.view.
+  'message.view': {
+    scope: 'chapter',
+    roles: TEACHING,
+    writes: false,
+  },
+  // message.reply: the chapter-scoped staff WRITE — a mentor / director appends a
+  // reply to a guardian thread (a new append-only message; sender_role derived from
+  // the replier's membership). A DISTINCT write capability from message.view: reads
+  // and writes are not equivalent here (a read-only platform_staff may VIEW a thread
+  // but must NOT post), so replying is writes:true (a read-only override does not
+  // reach it), mirroring attendance.view vs attendance.resolve.
+  'message.reply': {
+    scope: 'chapter',
+    roles: TEACHING,
+    writes: true,
+  },
 }

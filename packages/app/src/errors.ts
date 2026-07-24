@@ -1304,6 +1304,39 @@ export class AttendanceMakeupNotApplicableError extends Error {
   }
 }
 
+// -------------------------------------------------------------------------
+// Guardian <-> chapter-staff messaging (guardian/director portal, Feature 3).
+// -------------------------------------------------------------------------
+
+/** The referenced message thread does not exist (append/read/reply of an unknown id). */
+export class MessageThreadNotFoundError extends Error {
+  readonly threadId: string
+  constructor(threadId: string) {
+    super(`message thread not found: ${threadId}`)
+    this.name = 'MessageThreadNotFoundError'
+    this.threadId = threadId
+  }
+}
+
+/**
+ * A messaging write failed validation before/around the authorization decision:
+ *   - `body`    — the message body is missing / empty;
+ *   - `chapter` — a NEW thread's chapter could not be resolved: a multi-chapter
+ *                 guardian gave no child/chapter to disambiguate (ambiguous), so
+ *                 the client must specify which child/chapter the thread concerns.
+ * Distinct from a Forbidden (an authorization failure — e.g. a chapter the guardian
+ * has no child in, or another guardian's thread, which stay opaque 403s); mappable
+ * to a 400.
+ */
+export class MessagingValidationError extends Error {
+  readonly field: 'body' | 'chapter'
+  constructor(field: 'body' | 'chapter', message?: string) {
+    super(message ?? `invalid message: ${field}`)
+    this.name = 'MessagingValidationError'
+    this.field = field
+  }
+}
+
 /**
  * A calendar event write failed validation before any authorization decision:
  * `time_range` (endsAt is not strictly after startsAt), `audiences` (empty or an

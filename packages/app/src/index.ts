@@ -399,6 +399,20 @@ export type {
   SubmitExceptionInput,
   AttendanceListQuery,
 } from './attendance.js'
+export { MessagingService } from './messaging.js'
+export type {
+  MessagingServiceDeps,
+  MessagingAuthorizeFn,
+  MessagingCapability,
+  MessageSenderRole,
+  Message,
+  MessageThread,
+  GuardianThread,
+  StaffThreadListItem,
+  StaffThreadDetail,
+  SendMessageInput,
+  StaffThreadsQuery,
+} from './messaging.js'
 export { OpsReadService, displayFromFullName } from './ops-read.js'
 export type {
   OpsReadServiceDeps,
@@ -590,4 +604,6 @@ export {
   AttendanceExceptionNotFoundError,
   AttendanceValidationError,
   AttendanceMakeupNotApplicableError,
+  MessageThreadNotFoundError,
+  MessagingValidationError,
 } from './errors.js'

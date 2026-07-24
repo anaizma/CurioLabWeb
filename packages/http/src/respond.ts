@@ -72,6 +72,8 @@ const NOT_FOUND = new Set([
   'CalendarEventNotFoundError',
   // Attendance (Feature 2): make-up-complete of an unknown exception.
   'AttendanceExceptionNotFoundError',
+  // Messaging (Feature 3): append/read/reply of an unknown thread.
+  'MessageThreadNotFoundError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */
@@ -159,6 +161,8 @@ const BAD_REQUEST = new Set([
   'CalendarValidationError',
   // Attendance (Feature 2): a bad type / session / consent / slots / arrive_at.
   'AttendanceValidationError',
+  // Messaging (Feature 3): an empty body, or an ambiguous new-thread chapter.
+  'MessagingValidationError',
 ])
 
 /**

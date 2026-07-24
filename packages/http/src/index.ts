@@ -224,6 +224,21 @@ export type {
   CompleteMakeupInput,
 } from './controllers/attendance.js'
 
+// Guardian <-> chapter-staff messaging (guardian/director portal, Feature 3)
+export {
+  submitMessage,
+  viewGuardianMessages,
+  listStaffMessages,
+  getStaffThread,
+  replyStaffMessage,
+} from './controllers/messaging.js'
+export type {
+  SubmitMessageInput,
+  StaffMessagesInput,
+  StaffThreadInput,
+  ReplyMessageInput,
+} from './controllers/messaging.js'
+
 // Guardian portal
 export {
   viewChildRecord,

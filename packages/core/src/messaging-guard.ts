@@ -43,10 +43,53 @@ export function isDirectMessagingCapability(capability: string): boolean {
 }
 
 /**
+ * The ONE sanctioned exemption: the guardian <-> chapter-staff messaging channel
+ * (guardian/director portal, Feature 3). The § 312.2 property the guard protects
+ * is that a STUDENT cannot be directly contacted by username — so an adult-only
+ * channel between a guardian and their child's chapter's staff does NOT undermine
+ * it (a student is never a party: not a sender, not a recipient). Exemption keys on
+ * the def SHAPE, never the name, so it admits ONLY the affirmatively-adult channel
+ * and a student-facing message capability still trips:
+ *   - scope 'guardian' (the guardian's own thread; a guardian is an adult), OR
+ *   - scope 'chapter'/'pod' with a NON-EMPTY roles floor that excludes `student`
+ *     (and `alumni`) — i.e. staff-only, a mentor/instructor/director replying.
+ * A bare/empty-roles or student-including message capability is NOT exempt.
+ */
+function isSanctionedGuardianStaffChannel(def: unknown): boolean {
+  if (def === null || typeof def !== 'object') return false
+  const d = def as { scope?: unknown; roles?: unknown }
+  const scopes = Array.isArray(d.scope) ? d.scope : d.scope != null ? [d.scope] : []
+  if (scopes.length === 0) return false
+  const rolesArr = Array.isArray(d.roles) ? (d.roles as unknown[]).map(String) : null
+
+  // Guardian-scoped: the guardian's own thread (adult). Exempt.
+  if (scopes.every((s) => s === 'guardian')) return true
+
+  // Chapter/pod-scoped staff channel: a NON-EMPTY roles floor that excludes
+  // student/alumni (staff-only) — a mentor/instructor/director replying.
+  if (
+    scopes.every((s) => s === 'chapter' || s === 'pod') &&
+    rolesArr !== null &&
+    rolesArr.length > 0 &&
+    !rolesArr.includes('student') &&
+    !rolesArr.includes('alumni')
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
  * The direct-messaging capability names present in a registry-shaped object
  * (any record keyed by capability name). Empty for a compliant registry; the
- * no-DM guard asserts exactly that against the real REGISTRY.
+ * no-DM guard asserts exactly that against the real REGISTRY. A name that matches
+ * the DM pattern is still reported UNLESS its def is the one sanctioned
+ * guardian <-> chapter-staff channel (Feature 3, adult-to-adult — never student
+ * contact); see `isSanctionedGuardianStaffChannel`.
  */
 export function directMessagingCapabilities(registry: Record<string, unknown>): string[] {
-  return Object.keys(registry).filter(isDirectMessagingCapability)
+  return Object.keys(registry).filter(
+    (name) =>
+      isDirectMessagingCapability(name) && !isSanctionedGuardianStaffChannel(registry[name]),
+  )
 }

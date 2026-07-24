@@ -76,6 +76,15 @@ export type AccessLedgerEvent =
   // carries the exceptionId, sessionEventId, type, and make-up status — never PII.
   | 'attendance.exception_submitted'
   | 'attendance.makeup_completed'
+  // Guardian <-> chapter-staff messaging (guardian/director portal, Feature 3). A
+  // guardian sent a message (creating a thread or appending to their own), or a
+  // mentor/director replied — an access-provenance event, like the calendar/
+  // attendance writes. For a send the actor is the guardian; for a reply the actor
+  // is the replying staff member. The subject is the thread's guardian; the chapter
+  // is the thread's chapter. detail carries the threadId, messageId, and the
+  // server-derived senderRole — never the message body / any PII.
+  | 'message.sent'
+  | 'message.replied'
 
 export interface AccessLedgerInput {
   event: AccessLedgerEvent

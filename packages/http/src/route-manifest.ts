@@ -437,6 +437,24 @@ export const ROUTE_MANIFEST: RouteManifest = [
     path: '/api/ops/attendance/[id]/makeup-complete',
     capability: 'attendance.resolve',
   },
+  // Guardian <-> chapter-staff messaging (guardian/director portal, Feature 3). The
+  // guardian send gates through message.send (guardian-scoped, matched against
+  // ctx.guardianOf); the staff reply through message.reply (chapter-scoped teaching
+  // roles; platform_admin via override — distinct from the read cap so a read-only
+  // role cannot post). The three GET reads (guardian GET /api/guardian/messages via
+  // message.view_own, staff GET /api/ops/messages + GET /api/ops/messages/[threadId]
+  // via message.view) are GET-exempt from the manifest. A reply is a new append-only
+  // message; sender_role is derived server-side.
+  {
+    method: 'POST',
+    path: '/api/guardian/messages',
+    capability: 'message.send',
+  },
+  {
+    method: 'POST',
+    path: '/api/ops/messages/[threadId]/reply',
+    capability: 'message.reply',
+  },
   { method: 'POST', path: '/api/ops/maturations/[id]/confirm', capability: 'maturation.confirm' },
   { method: 'POST', path: '/api/ops/accounts/[id]/reissue-setup', capability: 'account.recover' },
   // §9: the logged mentor/director-assisted minor recovery (distinct from

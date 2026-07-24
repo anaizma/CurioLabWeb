@@ -39,4 +39,40 @@ describe('no-direct-messaging guard (compliance 1.8)', () => {
       directMessagingCapabilities({ 'feed.comment': {}, 'feed.post': {}, 'newsletter.draft': {} }),
     ).toEqual([])
   })
+
+  // The sanctioned guardian <-> chapter-staff channel (Feature 3) is EXEMPT: it is
+  // adult-to-adult (a guardian and their child's chapter's staff), never
+  // student-directed, so a student still cannot be contacted by username — the
+  // § 312.2 property the guard protects is intact. Exemption keys on the def SHAPE
+  // (guardian scope, or chapter/pod scope with non-empty staff roles that exclude
+  // student), NOT on the name — so a STUDENT-facing message capability still trips.
+  test('the guardian-scoped and chapter-staff messaging caps are exempt (adult-to-adult, not student contact)', () => {
+    expect(
+      directMessagingCapabilities({
+        'message.send': { scope: 'guardian', roles: [], writes: true },
+        'message.view_own': { scope: 'guardian', roles: [], writes: false },
+        'message.view': {
+          scope: 'chapter',
+          roles: ['junior_mentor', 'senior_instructor', 'lead_instructor', 'chapter_director'],
+          writes: false,
+        },
+        'message.reply': {
+          scope: 'chapter',
+          roles: ['junior_mentor', 'senior_instructor', 'lead_instructor', 'chapter_director'],
+          writes: true,
+        },
+      }),
+    ).toEqual([])
+  })
+
+  test('a STUDENT-facing message capability still trips (a student could be a party)', () => {
+    // A message capability a student role can invoke, or a bare chapter one with no
+    // staff-role floor, is NOT the sanctioned channel — it must still trip.
+    expect(
+      directMessagingCapabilities({ 'message.send': { scope: 'chapter', roles: ['student'], writes: true } }),
+    ).toContain('message.send')
+    expect(
+      directMessagingCapabilities({ 'message.dm': { scope: 'pod', roles: ['student', 'junior_mentor'] } }),
+    ).toContain('message.dm')
+  })
 })

@@ -356,3 +356,18 @@ export type Capability =
   | 'attendance.view_child'
   | 'attendance.view'
   | 'attendance.resolve'
+  // guardian <-> chapter-staff messaging (guardian/director portal work order,
+  // Feature 3). Threaded, append-only messaging between a guardian and their
+  // child's chapter's staff. message.send is the guardian-scoped WRITE (create a
+  // thread or append to an existing own thread; matched against ctx.guardianOf,
+  // writes:true so the age-18 bar applies). message.view_own is the guardian-scoped
+  // READ of the guardian's OWN threads (writes:false, no logsRead — it returns the
+  // guardian's own conversations, not the composed minor record). message.view is
+  // the chapter-scoped staff READ floor (teaching roles: a director or that
+  // chapter's mentors; writes:false, so both platform overrides reach it).
+  // message.reply is the chapter-scoped staff WRITE (a mentor/director replies — a
+  // distinct write cap so a read-only role cannot post).
+  | 'message.send'
+  | 'message.view_own'
+  | 'message.view'
+  | 'message.reply'

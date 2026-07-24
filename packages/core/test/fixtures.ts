@@ -501,6 +501,43 @@ export const attendanceViewC1: Resource = { chapter_id: C1 }
 // platform_staff denies out_of_scope (writes:true).
 export const attendanceResolveC1: Resource = { id: 'attendance-exception-1', chapter_id: C1 }
 
+// guardian <-> chapter-staff messaging (guardian/director portal, Feature 3).
+// message.send (guardian-scoped write): the resource names one of the guardian's
+// verified children (the authority to message that child's chapter's staff); the
+// child's guardian sends, a stranger denies out_of_scope, and (writes:true) the
+// age-18 bar denies for an 18+ former child.
+export const messageSendForS: Resource = {
+  subjectAccountId: ID.childS,
+  subjectAge: 15,
+  subjectIsMinor: true,
+  chapter_id: C1,
+}
+// message.send for the now-18 child: guardian WRITE is barred at majority.
+export const messageSendFor18: Resource = {
+  subjectAccountId: ID.child18,
+  subjectAge: 18,
+  subjectIsMinor: false,
+  chapter_id: C1,
+}
+// message.view_own (guardian-scoped read of the guardian's OWN threads): the child's
+// guardian reads, a stranger denies out_of_scope. Read persists past majority.
+export const messageViewOwnOfS: Resource = {
+  subjectAccountId: ID.childS,
+  subjectAge: 15,
+  subjectIsMinor: true,
+  chapter_id: C1,
+}
+// message.view (chapter-scoped staff read floor, roles TEACHING): the resource is
+// the chapter whose threads are read. A mentor OR the director in the chapter reads;
+// another chapter denies out_of_scope; a student denies role_not_permitted; both
+// platform overrides reach it (writes:false).
+export const messageViewC1: Resource = { chapter_id: C1 }
+// message.reply (chapter-scoped staff write, roles TEACHING): the resource is the
+// thread's chapter. A mentor OR director in it replies; another chapter denies
+// out_of_scope; a student denies role_not_permitted; a read-only platform_staff
+// denies out_of_scope (writes:true).
+export const messageReplyC1: Resource = { id: 'message-thread-1', chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,

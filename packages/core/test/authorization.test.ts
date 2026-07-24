@@ -50,6 +50,11 @@ import {
   attendanceViewChildOfS,
   attendanceViewC1,
   attendanceResolveC1,
+  messageSendForS,
+  messageSendFor18,
+  messageViewOwnOfS,
+  messageViewC1,
+  messageReplyC1,
   childRecord18,
   safetyReport,
   ordinaryReport,
@@ -829,6 +834,50 @@ describe('attendance & make-up capabilities (Feature 2)', () => {
     expectDeny(actors.platform_staff, 'attendance.resolve', attendanceResolveC1, 'out_of_scope')
     expectDeny(actors.chapter_director_c2, 'attendance.resolve', attendanceResolveC1, 'out_of_scope')
     expectDeny(actors.student_18, 'attendance.resolve', attendanceResolveC1, 'role_not_permitted')
+  })
+})
+
+// ===========================================================================
+// Guardian <-> chapter-staff messaging (guardian/director portal, Feature 3): the
+// four new capabilities.
+//   - message.send      (guardian-scoped write; own verified child, barred at 18)
+//   - message.view_own   (guardian-scoped read of own threads; persists past majority)
+//   - message.view       (chapter-scoped staff read floor, TEACHING; both platform
+//                         overrides reach it because writes:false)
+//   - message.reply      (chapter-scoped staff write, TEACHING; read-only
+//                         platform_staff barred because writes:true)
+// ===========================================================================
+describe('guardian <-> chapter-staff messaging capabilities (Feature 3)', () => {
+  test('message.send (a guardian sends for their own verified minor child; a stranger out_of_scope; barred at 18)', () => {
+    expectAllow(actors.guardian_of_S, 'message.send', messageSendForS)
+    expectDeny(actors.no_membership, 'message.send', messageSendForS, 'out_of_scope')
+    // writes:true, so the guardian write authority ends at the child's majority.
+    expectDeny(actors.guardian_of_S, 'message.send', messageSendFor18, 'out_of_scope')
+  })
+
+  test('message.view_own (the guardian reads their own threads; a stranger out_of_scope)', () => {
+    expectAllow(actors.guardian_of_S, 'message.view_own', messageViewOwnOfS)
+    expectDeny(actors.no_membership, 'message.view_own', messageViewOwnOfS, 'out_of_scope')
+  })
+
+  test('message.view (a mentor OR director in the chapter reads the threads; both platform overrides reach it; cross-chapter out_of_scope; a student role_not_permitted)', () => {
+    expectAllow(actors.junior_mentor_adult, 'message.view', messageViewC1)
+    expectAllow(actors.chapter_director_c1, 'message.view', messageViewC1)
+    expectAllow(actors.platform_admin, 'message.view', messageViewC1)
+    // writes:false, so the read-only platform_staff override also grants it.
+    expectAllow(actors.platform_staff, 'message.view', messageViewC1)
+    expectDeny(actors.chapter_director_c2, 'message.view', messageViewC1, 'out_of_scope')
+    expectDeny(actors.student_18, 'message.view', messageViewC1, 'role_not_permitted')
+  })
+
+  test('message.reply (a mentor OR director replies; a read-only platform_staff barred; cross-chapter out_of_scope; a student role_not_permitted)', () => {
+    expectAllow(actors.junior_mentor_adult, 'message.reply', messageReplyC1)
+    expectAllow(actors.chapter_director_c1, 'message.reply', messageReplyC1)
+    expectAllow(actors.platform_admin, 'message.reply', messageReplyC1)
+    // writes:true, so the read-only platform_staff override does NOT reach it.
+    expectDeny(actors.platform_staff, 'message.reply', messageReplyC1, 'out_of_scope')
+    expectDeny(actors.chapter_director_c2, 'message.reply', messageReplyC1, 'out_of_scope')
+    expectDeny(actors.student_18, 'message.reply', messageReplyC1, 'role_not_permitted')
   })
 })
 

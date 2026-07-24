@@ -230,6 +230,18 @@ export const makeupStatusEnum = pgEnum('makeup_status', [
   'completed',
 ])
 
+// --- Guardian <-> chapter-staff messaging (guardian/director portal, Feature 3) ---
+// Threaded, append-only messaging (migration 0028). A db-only enum: the pure core
+// does not model messages (a persistence concern). `sender_role` is DERIVED
+// server-side from the sender's membership at send time (a guardian -> 'guardian',
+// a chapter_director -> 'director', a mentor tier -> 'mentor'); never trusted from
+// the client.
+export const messageSenderRoleEnum = pgEnum('message_sender_role', [
+  'guardian',
+  'mentor',
+  'director',
+])
+
 // --- guardian-portal request and fee tables (Milestone 1 step 7) ---
 export const paymentStatusEnum = pgEnum('payment_status', [
   'none',
