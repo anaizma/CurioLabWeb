@@ -1,14 +1,19 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type AbsentRec = { type: "absent"; reason: string; slots: string[] };
 type LateRec = { type: "late"; arrive: string };
 type Rec = AbsentRec | LateRec;
 
+interface LiveSession {
+  eventId: string;
+  startsAt: string;
+}
+
 const MON = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const SESSION_DOW = 6; // Saturday, 10:00 AM
 
 const COLOR = {
   session: { dot: "#2F7A4D", soft: "#E7F2EA" },
@@ -19,57 +24,104 @@ const COLOR = {
 function keyOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function isSession(d: Date): boolean {
-  return d.getDay() === SESSION_DOW;
-}
-function nextSession(d: Date): Date {
-  const c = new Date(d);
-  do {
-    c.setDate(c.getDate() + 1);
-  } while (!isSession(c));
-  return c;
-}
 function fromKey(k: string): Date {
   return new Date(k + "T12:00:00");
 }
-function slotOptions(sel: Date): string[] {
-  const ns = nextSession(sel);
-  const out: string[] = [];
-  const c = new Date(sel);
-  c.setDate(c.getDate() + 1);
-  while (keyOf(c) !== keyOf(ns) && out.length < 4) {
-    const lbl = `${DOW[c.getDay()]} ${MON[c.getMonth()].slice(0, 3)} ${c.getDate()}`;
-    out.push(`${lbl} · 4:00 PM`);
-    out.push(`${lbl} · 7:00 PM`);
-    c.setDate(c.getDate() + 1);
-  }
-  out.push(`${DOW[ns.getDay()]} ${MON[ns.getMonth()].slice(0, 3)} ${ns.getDate()} · 9:30 AM (before session)`);
-  return out.slice(0, 5);
-}
 
-export default function AttendanceClient({ childName }: { childName: string }) {
+export default function AttendanceClient({
+  childName,
+  childId,
+  sessions,
+  existing,
+  counts,
+  live,
+}: {
+  childName: string;
+  childId: string | null;
+  sessions: LiveSession[];
+  existing: { sessionEventId: string; type: "absent" | "late" }[];
+  counts: { totalAbsences: number; outstanding: number; madeUp: number; late: number };
+  live: boolean;
+}) {
+  const router = useRouter();
   const now = new Date();
   const calY = now.getFullYear();
   const calM = now.getMonth();
   const todayKey = keyOf(now);
 
-  const [records, setRecords] = useState<Record<string, Rec>>({});
+  const liveSessions = live
+    ? sessions
+        .map((s) => ({ eventId: s.eventId, date: new Date(s.startsAt) }))
+        .filter((s) => !isNaN(s.date.getTime()))
+        .sort((a, b) => a.date.getTime() - b.date.getTime())
+    : [];
+  const sessionByKey = new Map(liveSessions.map((s) => [keyOf(s.date), s]));
+  const eventKeyById = new Map(liveSessions.map((s) => [s.eventId, keyOf(s.date)]));
+
+  const [records, setRecords] = useState<Record<string, Rec>>(() => {
+    if (!live) return {};
+    const init: Record<string, Rec> = {};
+    existing.forEach((x) => {
+      const k = eventKeyById.get(x.sessionEventId);
+      if (!k) return;
+      init[k] = x.type === "late" ? { type: "late", arrive: "" } : { type: "absent", reason: "", slots: [] };
+    });
+    return init;
+  });
   const [selected, setSelected] = useState<string | null>(null);
   const [mode, setMode] = useState<"absent" | "late" | null>(null);
   const [reason, setReason] = useState("");
   const [consent, setConsent] = useState(false);
   const [chosen, setChosen] = useState<Record<string, boolean>>({});
   const [arrive, setArrive] = useState("10:30");
+  const [busy, setBusy] = useState(false);
 
-  const absCount = Object.values(records).filter((r) => r.type === "absent").length;
-  const lateCount = Object.values(records).filter((r) => r.type === "late").length;
+  function isSession(d: Date): boolean {
+    return live ? sessionByKey.has(keyOf(d)) : d.getDay() === 6;
+  }
+  function nextSessionDate(from: Date): Date | null {
+    if (live) {
+      const n = liveSessions.find((s) => s.date.getTime() > from.getTime());
+      return n ? n.date : null;
+    }
+    const c = new Date(from);
+    do {
+      c.setDate(c.getDate() + 1);
+    } while (c.getDay() !== 6);
+    return c;
+  }
+
+  function slotOptions(sel: Date): { label: string; value: string }[] {
+    const ns = nextSessionDate(sel);
+    const out: { label: string; value: string }[] = [];
+    const c = new Date(sel);
+    c.setDate(c.getDate() + 1);
+    c.setHours(16, 0, 0, 0);
+    let guard = 0;
+    while ((!ns || c.getTime() < ns.getTime()) && out.length < 4 && guard < 14) {
+      const lbl = `${DOW[c.getDay()]} ${MON[c.getMonth()].slice(0, 3)} ${c.getDate()}`;
+      out.push({ label: `${lbl} · 4:00 PM`, value: live ? c.toISOString() : `${lbl} · 4:00 PM` });
+      const c2 = new Date(c);
+      c2.setHours(19, 0, 0, 0);
+      if (!ns || c2.getTime() < ns.getTime()) out.push({ label: `${lbl} · 7:00 PM`, value: live ? c2.toISOString() : `${lbl} · 7:00 PM` });
+      c.setDate(c.getDate() + 1);
+      c.setHours(16, 0, 0, 0);
+      guard++;
+    }
+    if (out.length === 0 && ns) {
+      const m = new Date(ns.getTime() - 30 * 60 * 1000);
+      const lbl = `${DOW[m.getDay()]} ${MON[m.getMonth()].slice(0, 3)} ${m.getDate()} · before session`;
+      out.push({ label: lbl, value: live ? m.toISOString() : lbl });
+    }
+    return out.slice(0, 5);
+  }
 
   function openDay(k: string) {
     setSelected(k);
     const r = records[k];
     if (r) {
       setMode(r.type);
-      if (r.type === "late") setArrive(r.arrive);
+      if (r.type === "late") setArrive(r.arrive || "10:30");
       if (r.type === "absent") {
         setReason(r.reason);
         setConsent(true);
@@ -89,17 +141,63 @@ export default function AttendanceClient({ childName }: { childName: string }) {
     setSelected(null);
     setMode(null);
   }
-  function saveLate() {
+
+  async function saveLate() {
     if (!selected) return;
+    if (live && childId) {
+      const sess = sessionByKey.get(selected);
+      if (!sess) return;
+      setBusy(true);
+      try {
+        const d = fromKey(selected);
+        const parts = arrive.split(":");
+        d.setHours(Number(parts[0]) || 0, Number(parts[1]) || 0, 0, 0);
+        const res = await fetch(`/api/guardian/children/${childId}/attendance`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionEventId: sess.eventId, type: "late", arriveAt: d.toISOString() }),
+        });
+        if (res.ok) {
+          close();
+          router.refresh();
+        }
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setRecords((m) => ({ ...m, [selected]: { type: "late", arrive } }));
     close();
   }
-  function saveAbsent() {
+
+  async function saveAbsent() {
     if (!selected) return;
     const slots = Object.keys(chosen).filter((s) => chosen[s]);
+    if (live && childId) {
+      const sess = sessionByKey.get(selected);
+      if (!sess) return;
+      setBusy(true);
+      try {
+        const res = await fetch(`/api/guardian/children/${childId}/attendance`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionEventId: sess.eventId, type: "absent", reason: reason.trim(), makeupConsent: true, makeupSlots: slots }),
+        });
+        if (res.ok) {
+          close();
+          router.refresh();
+        }
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setRecords((m) => ({ ...m, [selected]: { type: "absent", reason: reason.trim(), slots } }));
     close();
   }
+
+  const absCount = live ? counts.totalAbsences : Object.values(records).filter((r) => r.type === "absent").length;
+  const lateCount = live ? counts.late : Object.values(records).filter((r) => r.type === "late").length;
 
   const first = new Date(calY, calM, 1);
   const startPad = first.getDay();
@@ -109,8 +207,8 @@ export default function AttendanceClient({ childName }: { childName: string }) {
   for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(calY, calM, d));
 
   const sel = selected ? fromKey(selected) : null;
-  const ns = sel ? nextSession(sel) : null;
-  const nsLabel = ns ? `${DOW[ns.getDay()]}, ${MON[ns.getMonth()]} ${ns.getDate()} at 10:00 AM` : "";
+  const ns = sel ? nextSessionDate(sel) : null;
+  const nsLabel = ns ? `${DOW[ns.getDay()]}, ${MON[ns.getMonth()]} ${ns.getDate()}` : "the end of the term";
   const slots = sel ? slotOptions(sel) : [];
   const absentValid = Boolean(reason.trim()) && consent && Object.values(chosen).some(Boolean);
   const orderedKeys = Object.keys(records).sort();
@@ -137,6 +235,9 @@ export default function AttendanceClient({ childName }: { childName: string }) {
             <span><span className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1" style={{ background: COLOR.late.dot }} />Late</span>
           </div>
         </div>
+        {live && liveSessions.length === 0 && (
+          <p className="text-xs text-ink/50">No sessions on the chapter calendar yet — they&apos;ll appear here once your director publishes them.</p>
+        )}
         <div className="grid grid-cols-7 gap-1.5">
           {DOW.map((w) => (
             <div key={w} className="text-center text-[10px] font-mono uppercase tracking-wide text-ink/40 py-1">{w}</div>
@@ -179,7 +280,7 @@ export default function AttendanceClient({ childName }: { childName: string }) {
       {sel && (
         <div className="rounded-xl border border-ink/10 bg-white p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold">{DOW[sel.getDay()]}, {MON[sel.getMonth()]} {sel.getDate()} · session at 10:00 AM</div>
+            <div className="text-sm font-semibold">{DOW[sel.getDay()]}, {MON[sel.getMonth()]} {sel.getDate()} · session</div>
             <button type="button" onClick={close} className="text-xs font-semibold text-ink/50">Close</button>
           </div>
           <div className="flex gap-2">
@@ -202,8 +303,8 @@ export default function AttendanceClient({ childName }: { childName: string }) {
                 <span className="text-ink/60">When will {childName} arrive?</span>
                 <input type="time" value={arrive} onChange={(e) => setArrive(e.target.value)} className="rounded-lg border border-ink/15 px-3 py-2 text-sm bg-white" />
               </label>
-              <button type="button" onClick={saveLate} className="self-start rounded-lg px-4 py-2 text-sm font-semibold" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
-                Save late notice
+              <button type="button" onClick={saveLate} disabled={busy} className="self-start rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
+                {busy ? "Saving…" : "Save late notice"}
               </button>
             </div>
           )}
@@ -223,19 +324,19 @@ export default function AttendanceClient({ childName }: { childName: string }) {
                 <div className="flex flex-wrap gap-2">
                   {slots.map((s) => (
                     <button
-                      key={s}
+                      key={s.value}
                       type="button"
-                      onClick={() => setChosen((c) => ({ ...c, [s]: !c[s] }))}
+                      onClick={() => setChosen((c) => ({ ...c, [s.value]: !c[s.value] }))}
                       className="rounded-full px-3 py-1.5 text-xs font-medium border"
-                      style={chosen[s] ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)", borderColor: "transparent" } : { background: "#f7f4f0", color: "#6B6058", borderColor: "rgba(3,35,68,.10)" }}
+                      style={chosen[s.value] ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)", borderColor: "transparent" } : { background: "#f7f4f0", color: "#6B6058", borderColor: "rgba(3,35,68,.10)" }}
                     >
-                      {s}
+                      {s.label}
                     </button>
                   ))}
                 </div>
               </div>
-              <button type="button" disabled={!absentValid} onClick={saveAbsent} className="self-start rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-45" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
-                Submit absence &amp; make-up plan
+              <button type="button" disabled={!absentValid || busy} onClick={saveAbsent} className="self-start rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-45" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
+                {busy ? "Submitting…" : "Submit absence & make-up plan"}
               </button>
             </div>
           )}
@@ -254,7 +355,7 @@ export default function AttendanceClient({ childName }: { childName: string }) {
                 <div key={k} className="rounded-xl border border-ink/10 bg-white p-4 flex items-center justify-between gap-4">
                   <div>
                     <div className="text-sm font-medium">{pretty}</div>
-                    <div className="text-xs text-ink/50">Arriving at {r.arrive}</div>
+                    {r.arrive && <div className="text-xs text-ink/50">Arriving at {r.arrive}</div>}
                   </div>
                   <span className="text-[11px] font-semibold rounded-full px-2 py-0.5" style={{ background: COLOR.late.soft, color: COLOR.late.dot }}>Late</span>
                 </div>
@@ -264,8 +365,8 @@ export default function AttendanceClient({ childName }: { childName: string }) {
               <div key={k} className="rounded-xl border border-ink/10 bg-white p-4 flex items-start justify-between gap-4">
                 <div>
                   <div className="text-sm font-medium">{pretty}</div>
-                  <div className="text-xs text-ink/50">{r.reason}</div>
-                  <div className="text-xs mt-1.5" style={{ color: "var(--pt-accent-fg)" }}>Make-up check-in · {r.slots.join(" or ")}</div>
+                  {r.reason && <div className="text-xs text-ink/50">{r.reason}</div>}
+                  {r.slots.length > 0 && <div className="text-xs mt-1.5" style={{ color: "var(--pt-accent-fg)" }}>Make-up check-in · {r.slots.length} time{r.slots.length === 1 ? "" : "s"} offered</div>}
                 </div>
                 <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 shrink-0" style={{ background: COLOR.absent.soft, color: COLOR.absent.dot }}>Absent</span>
               </div>
