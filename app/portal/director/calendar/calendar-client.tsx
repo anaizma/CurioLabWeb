@@ -346,13 +346,19 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
               )}
             </div>
             {selected.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {selected.map((s, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5 text-xs rounded-full pl-3 pr-1.5 py-1" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
-                    {s.kind === "all" ? `All ${CAT_LABEL[s.cat].toLowerCase()}` : s.name}
-                    <button type="button" onClick={() => setSelected((p) => p.filter((_, idx) => idx !== i))} className="text-sm leading-none">×</button>
-                  </span>
-                ))}
+              <div className="flex flex-col gap-0.5 mt-1">
+                {selected.map((s, i) => {
+                  const isAll = s.kind === "all";
+                  const label = isAll ? `All ${CAT_LABEL[s.cat].toLowerCase()}` : s.name;
+                  const initial = (isAll ? CAT_LABEL[s.cat].charAt(0) : (s.name.trim().charAt(0) || "?")).toUpperCase();
+                  return (
+                    <div key={i} className="flex items-center gap-2.5 py-1">
+                      <div className="w-7 h-7 rounded-full grid place-items-center text-[11px] font-semibold text-white shrink-0" style={{ background: isAll ? "var(--pt-accent)" : "#7c8aa0" }}>{initial}</div>
+                      <span className={`flex-1 text-sm ${isAll ? "font-bold" : ""}`}>{label}</span>
+                      <button type="button" onClick={() => setSelected((p) => p.filter((_, idx) => idx !== i))} className="text-ink/30 hover:text-ink/70 text-base leading-none px-1">×</button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
