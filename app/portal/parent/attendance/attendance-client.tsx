@@ -33,6 +33,16 @@ function prettyKey(k: string): string {
   return `${DOW[d.getDay()]}, ${MON[d.getMonth()]} ${d.getDate()}`;
 }
 
+function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgba(3,35,68,.4)" }} onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl max-h-[86vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function AttendanceClient({
   childName,
   childId,
@@ -306,9 +316,10 @@ export default function AttendanceClient({
       </div>
 
       {sel && (
-        <div className="bg-white border border-black/[.08] rounded-lg p-4 flex flex-col gap-3">
+        <Overlay onClose={close}>
+          <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <div className="text-[13.5px] font-bold">{DOW[sel.getDay()]}, {MON[sel.getMonth()]} {sel.getDate()} · session</div>
+            <div className="text-[14.5px] font-bold">{DOW[sel.getDay()]}, {MON[sel.getMonth()]} {sel.getDate()} · session</div>
             <button type="button" onClick={close} className="text-[11.5px] font-semibold text-muted">Close</button>
           </div>
           <div className="flex gap-2">
@@ -368,7 +379,8 @@ export default function AttendanceClient({
               </button>
             </div>
           )}
-        </div>
+          </div>
+        </Overlay>
       )}
 
       <div className="bg-white border border-black/[.08] rounded-lg p-4">
