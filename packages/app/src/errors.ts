@@ -687,6 +687,82 @@ export class InvalidCredentialTokenError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// TOTP two-factor (admin/director backend §10).
+// ---------------------------------------------------------------------------
+
+/**
+ * A second-factor op (verify at login, confirm enrollment) was attempted against
+ * an account whose TOTP is not active — no secret, or a secret whose enrollment
+ * was never confirmed. Distinct from a bad code: the account cannot yet supply a
+ * valid second factor at all. A route maps it to a 409/401 as appropriate.
+ */
+export class TotpNotActivatedError extends Error {
+  readonly accountId: string
+  constructor(accountId: string) {
+    super(`TOTP is not active for account: ${accountId}`)
+    this.name = 'TotpNotActivatedError'
+    this.accountId = accountId
+  }
+}
+
+/**
+ * A begin/confirm-enrollment was attempted against an account whose TOTP is
+ * ALREADY active. Re-enrollment would rotate a live secret out from under the
+ * authenticator; it is refused. (A deliberate reset flow is a separate future
+ * op.) A route maps it to a 409.
+ */
+export class TotpAlreadyActivatedError extends Error {
+  readonly accountId: string
+  constructor(accountId: string) {
+    super(`TOTP is already active for account: ${accountId}`)
+    this.name = 'TotpAlreadyActivatedError'
+    this.accountId = accountId
+  }
+}
+
+/**
+ * A confirm-enrollment ran before begin-enrollment stored a secret. There is no
+ * pending secret to verify the code against. A route maps it to a 409.
+ */
+export class TotpSecretMissingError extends Error {
+  readonly accountId: string
+  constructor(accountId: string) {
+    super(`no pending TOTP secret to confirm for account: ${accountId}`)
+    this.name = 'TotpSecretMissingError'
+    this.accountId = accountId
+  }
+}
+
+/**
+ * The supplied second factor did not verify — a wrong TOTP code, a replayed code
+ * (a code for a time-step already consumed, the replay guard), or an unknown /
+ * already-consumed backup code. Deliberately ONE opaque error for every
+ * not-valid cause (like InvalidInviteError): the second-factor surface reveals
+ * nothing about which cause it was. A route maps it to a 401.
+ */
+export class InvalidTotpCodeError extends Error {
+  constructor() {
+    super('the second-factor code is not valid')
+    this.name = 'InvalidTotpCodeError'
+  }
+}
+
+/**
+ * Second-factor attempts exceeded the rate limit (admin/director backend §10):
+ * more than `totpRateLimitMax` attempts within `totpRateLimitWindowMs`, counted
+ * at decision time over the recent attempt log. The caller retries after the
+ * window drains. Maps to 429 (mirrors InviteRateLimitError).
+ */
+export class TotpRateLimitedError extends Error {
+  readonly accountId: string
+  constructor(accountId: string) {
+    super(`second-factor attempt rate limit exceeded for account: ${accountId}`)
+    this.name = 'TotpRateLimitedError'
+    this.accountId = accountId
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Feed (Milestone 2.2: The Lab — posts, comments, reactions).
 // ---------------------------------------------------------------------------
 

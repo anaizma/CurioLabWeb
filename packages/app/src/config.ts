@@ -99,6 +99,28 @@ export const INVITE_RATE_LIMIT_MAX = 30
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000 // 1 hour
 
 /**
+ * §10 TOTP two-factor tunables (admin/director backend). Values, not literals,
+ * per compliance-coppa.md Part 3 "Configuration, not code" — a policy change is a
+ * config edit. The step/digits/window are RFC 6238 standards (interoperate with
+ * any authenticator); the pending-2FA login state is deliberately SHORT (a
+ * password was proven but no session exists yet); the rate limit caps second-
+ * factor guessing at DECISION TIME over the recent attempt log.
+ */
+export const TOTP_STEP_SECONDS = 30
+export const TOTP_DIGITS = 6
+/** Accepted +/- steps at verification (RFC 6238 §5.2 clock-skew tolerance). */
+export const TOTP_WINDOW_STEPS = 1
+/** One-time recovery codes minted at enrollment confirm. */
+export const TOTP_BACKUP_CODE_COUNT = 10
+/** The short-lived pending-2FA login token lifetime (password proven, no session). */
+export const TWO_FACTOR_PENDING_TTL_MS = 5 * 60 * 1000 // 5 minutes
+/** The rolling window + cap for second-factor attempts (guessing rate limit). */
+export const TOTP_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+export const TOTP_RATE_LIMIT_MAX = 5
+/** The issuer label shown in the authenticator app (the otpauth:// URI). */
+export const TOTP_ISSUER = 'CurioLab'
+
+/**
  * The `delivery_status` a freshly issued invite carries. Email delivery is
  * deferred this milestone (no Resend), and the enum has no "queued" value, so a
  * new invite is recorded `sent`; the real mailer (the future seam that consumes
@@ -241,6 +263,22 @@ export interface AppConfig {
   inviteRateLimitMax: number
   /** Password-reset token lifetime in ms (1 hour), evaluated at decision time. */
   passwordResetTtlMs: number
+  /** §10 TOTP: RFC 6238 time-step seconds (30). */
+  totpStepSeconds: number
+  /** §10 TOTP: number of digits in a code (6). */
+  totpDigits: number
+  /** §10 TOTP: accepted +/- steps at verification (1). */
+  totpWindowSteps: number
+  /** §10 TOTP: one-time recovery codes minted at enrollment confirm (10). */
+  totpBackupCodeCount: number
+  /** §10: the pending-2FA login token lifetime in ms (5 min), decision-time. */
+  twoFactorPendingTtlMs: number
+  /** §10 TOTP: the rolling attempt-rate-limit window in ms (15 min). */
+  totpRateLimitWindowMs: number
+  /** §10 TOTP: max second-factor attempts within the window (5). */
+  totpRateLimitMax: number
+  /** §10 TOTP: the issuer label in the otpauth:// provisioning URI. */
+  totpIssuer: string
   /** delivery_status stamped on a freshly issued invite (delivery deferred). */
   inviteInitialDeliveryStatus: InviteInitialDeliveryStatus
   /** relationship recorded on a guardian-accept guardianship edge. */
@@ -267,6 +305,14 @@ export const defaultConfig: AppConfig = {
   inviteRateLimitWindowMs: INVITE_RATE_LIMIT_WINDOW_MS,
   inviteRateLimitMax: INVITE_RATE_LIMIT_MAX,
   passwordResetTtlMs: PASSWORD_RESET_TTL_MS,
+  totpStepSeconds: TOTP_STEP_SECONDS,
+  totpDigits: TOTP_DIGITS,
+  totpWindowSteps: TOTP_WINDOW_STEPS,
+  totpBackupCodeCount: TOTP_BACKUP_CODE_COUNT,
+  twoFactorPendingTtlMs: TWO_FACTOR_PENDING_TTL_MS,
+  totpRateLimitWindowMs: TOTP_RATE_LIMIT_WINDOW_MS,
+  totpRateLimitMax: TOTP_RATE_LIMIT_MAX,
+  totpIssuer: TOTP_ISSUER,
   inviteInitialDeliveryStatus: INVITE_INITIAL_DELIVERY_STATUS,
   guardianRelationshipDefault: GUARDIAN_RELATIONSHIP_DEFAULT,
   guardianVerificationMethod: GUARDIAN_VERIFICATION_METHOD,

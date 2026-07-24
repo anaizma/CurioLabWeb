@@ -12,7 +12,8 @@
 // The session cookie is opaque: only the token hash is stored (sessions.ts).
 // -------------------------------------------------------------------------
 
-import type { Resource } from '@curiolab/core'
+import type { Resource, Role } from '@curiolab/core'
+import { requiresTwoFactor } from '@curiolab/core'
 import {
   authorize,
   createImpersonationSession,
@@ -20,8 +21,9 @@ import {
   revokeSession,
   validateSession,
   verifyPassword,
+  writeAccessLedger,
 } from '@curiolab/runtime'
-import { CredentialTokenService } from '@curiolab/app'
+import { CredentialTokenService, TwoFactorService } from '@curiolab/app'
 import { resolveAuthContext } from '../context.js'
 import { runAuthed, runPublic } from '../run.js'
 import { reqStr } from '../respond.js'
@@ -57,13 +59,34 @@ function unauthorized<B>(): ControllerResult<B> {
 
 export interface LoginInput extends PublicInputBase {
   body: { identifier?: unknown; password?: unknown }
+  /** Trusted client IP threaded from the HTTP layer (unused on the password step). */
+  clientIp?: string | null
 }
 
-/** POST /api/auth/login — mint a session for valid credentials, else opaque 401. */
-export function login(input: LoginInput): Promise<ControllerResult<{ accountId: string }>> {
+/**
+ * The login result is a discriminated union (§10 two-step login):
+ *   - `{ accountId }`             — a full session was minted (session cookie set).
+ *   - `{ totpRequired, pendingToken }`
+ *       — a privileged account WITH active TOTP: the password was correct but no
+ *         session exists yet. Submit the TOTP/backup code + pendingToken to
+ *         POST /api/auth/totp to finish.
+ *   - `{ totpEnrollmentRequired, pendingToken }`
+ *       — a privileged account WITHOUT TOTP yet: enrollment is forced before any
+ *         session. Call POST /api/auth/totp/enroll then /confirm with the token.
+ * The pendingToken is a SHORT-LIVED pending-2FA state (5 min), NOT a session — it
+ * confers no authority; only the totp/confirm step mints the session cookie.
+ */
+export type LoginResult =
+  | { accountId: string }
+  | { totpRequired: true; pendingToken: string }
+  | { totpEnrollmentRequired: true; pendingToken: string }
+
+/** POST /api/auth/login — verify credentials; mint a session OR a pending-2FA state; else opaque 401. */
+export function login(input: LoginInput): Promise<ControllerResult<LoginResult>> {
   return runPublic(async () => {
     const identifier = reqStr(input.body?.identifier, 'identifier')
     const password = reqStr(input.body?.password, 'password')
+    const now = input.now ?? new Date()
 
     // Resolve the account by email OR username (both citext, case-insensitive).
     const [acct] = await input.sql`
@@ -73,21 +96,130 @@ export function login(input: LoginInput): Promise<ControllerResult<{ accountId: 
     `
     // Uniform failure: unknown account, no password set, closed/suspended, or a
     // bad password all yield the same opaque 401 (no enumeration signal).
-    if (acct === undefined || acct.password_hash == null) return unauthorized()
-    if (acct.status === 'closed' || acct.status === 'suspended') return unauthorized()
+    if (acct === undefined || acct.password_hash == null) return unauthorized<LoginResult>()
+    if (acct.status === 'closed' || acct.status === 'suspended') return unauthorized<LoginResult>()
     const ok = await verifyPassword(acct.password_hash as string, password)
-    if (!ok) return unauthorized()
+    if (!ok) return unauthorized<LoginResult>()
 
-    const expiresAt = new Date((input.now ?? new Date()).getTime() + SESSION_TTL_MS)
-    const { token } = await createSession(input.sql, {
-      accountId: acct.id as string,
-      expiresAt,
-    })
+    const accountId = acct.id as string
+
+    // §10 gating: a privileged account (any membership role but student/alumni)
+    // needs a second factor. Password alone yields a pending-2FA state, NOT a
+    // session — no session cookie is set here.
+    const roleRows = await input.sql`
+      select distinct role from membership where account_id = ${accountId}
+    `
+    const roles = roleRows.map((r) => r.role as Role)
+    if (requiresTwoFactor(roles)) {
+      const twoFactor = new TwoFactorService({ sql: input.sql })
+      const activated = await twoFactor.isActivated(accountId)
+      const { token: pendingToken } = await twoFactor.issuePendingLogin(accountId, { now })
+      return activated
+        ? { status: 200, body: { totpRequired: true, pendingToken } }
+        : { status: 200, body: { totpEnrollmentRequired: true, pendingToken } }
+    }
+
+    // Non-privileged (student / guardian / alumni): password-only, unchanged.
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_MS)
+    const { token } = await createSession(input.sql, { accountId, expiresAt })
     return {
       status: 200,
-      body: { accountId: acct.id as string },
+      body: { accountId },
       session: { token, expiresAt },
     }
+  })
+}
+
+// ---- §10 two-factor: submit the second factor + enrollment (token-gated) -----
+
+export interface SubmitTotpInput extends PublicInputBase {
+  body: { pendingToken?: unknown; code?: unknown }
+  clientIp?: string | null
+}
+
+/**
+ * POST /api/auth/totp — finish a `totpRequired` login. Resolve the pending-2FA
+ * token, verify the TOTP (or a backup) code, consume the pending token, and mint
+ * the full session (the adapter sets the cookie). A bad/unknown pending token or
+ * a bad code is an opaque failure (401); the rate limit surfaces as 429. Writes
+ * the `login.two_factor` access-ledger row.
+ */
+export function submitTotp(input: SubmitTotpInput): Promise<ControllerResult<{ accountId: string }>> {
+  return runPublic(async () => {
+    const pendingToken = reqStr(input.body?.pendingToken, 'pendingToken')
+    const code = reqStr(input.body?.code, 'code')
+    const now = input.now ?? new Date()
+    const clientIp = input.clientIp ?? null
+
+    const twoFactor = new TwoFactorService({ sql: input.sql })
+    const accountId = await twoFactor.resolvePendingLogin(pendingToken, { now })
+    const { method } = await twoFactor.verifySecondFactor(accountId, code, { now, clientIp })
+    await twoFactor.consumePendingLogin(pendingToken, { now })
+
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_MS)
+    const { token } = await createSession(input.sql, { accountId, expiresAt })
+    await writeAccessLedger(input.sql, {
+      event: 'login.two_factor',
+      actorAccountId: accountId,
+      subjectAccountId: accountId,
+      clientIp,
+      detail: { method },
+    })
+    return { status: 200, body: { accountId }, session: { token, expiresAt } }
+  })
+}
+
+export interface BeginTotpEnrollmentInput extends PublicInputBase {
+  body: { pendingToken?: unknown }
+}
+
+/**
+ * POST /api/auth/totp/enroll — begin forced enrollment for a
+ * `totpEnrollmentRequired` login. Resolve the pending-2FA token and return the
+ * secret + otpauth:// provisioning URI (NO QR image — the frontend renders it).
+ * No session is minted here; the account is not yet active on TOTP.
+ */
+export function beginTotpEnrollment(
+  input: BeginTotpEnrollmentInput,
+): Promise<ControllerResult<{ secret: string; otpauthUri: string }>> {
+  return runPublic(async () => {
+    const pendingToken = reqStr(input.body?.pendingToken, 'pendingToken')
+    const now = input.now ?? new Date()
+    const twoFactor = new TwoFactorService({ sql: input.sql })
+    const accountId = await twoFactor.resolvePendingLogin(pendingToken, { now })
+    const { secret, otpauthUri } = await twoFactor.beginEnrollment(accountId, { now })
+    return { status: 200, body: { secret, otpauthUri } }
+  })
+}
+
+export interface ConfirmTotpEnrollmentInput extends PublicInputBase {
+  body: { pendingToken?: unknown; code?: unknown }
+  clientIp?: string | null
+}
+
+/**
+ * POST /api/auth/totp/confirm — confirm forced enrollment: verify the code
+ * against the pending secret, activate TOTP, return the one-time backup codes
+ * ONCE, consume the pending token, and mint the full session (cookie set). A bad
+ * code is an opaque 401.
+ */
+export function confirmTotpEnrollment(
+  input: ConfirmTotpEnrollmentInput,
+): Promise<ControllerResult<{ accountId: string; backupCodes: string[] }>> {
+  return runPublic(async () => {
+    const pendingToken = reqStr(input.body?.pendingToken, 'pendingToken')
+    const code = reqStr(input.body?.code, 'code')
+    const now = input.now ?? new Date()
+    const clientIp = input.clientIp ?? null
+
+    const twoFactor = new TwoFactorService({ sql: input.sql })
+    const accountId = await twoFactor.resolvePendingLogin(pendingToken, { now })
+    const { backupCodes } = await twoFactor.confirmEnrollment(accountId, code, { now, clientIp })
+    await twoFactor.consumePendingLogin(pendingToken, { now })
+
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_MS)
+    const { token } = await createSession(input.sql, { accountId, expiresAt })
+    return { status: 200, body: { accountId, backupCodes }, session: { token, expiresAt } }
   })
 }
 

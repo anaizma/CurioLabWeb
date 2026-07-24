@@ -259,6 +259,28 @@ export const ROUTE_MANIFEST: RouteManifest = [
     inert: 'unauthenticated, token-gated; consumes an account_recovery setup token (invite-accept-shaped), one opaque invalid_token otherwise',
     specEnumerated: false,
   },
+  // §10 two-factor: the pending-2FA login continuation. Each is gated by the
+  // short-lived pending-2FA token (credential_token purpose totp_pending) minted
+  // by login after a correct password — NOT a session, no actor, runPublic. Like
+  // password/reset: token-gated, one opaque failure. Not in 05's enumerated set.
+  {
+    method: 'POST',
+    path: '/api/auth/totp',
+    inert: 'pending-2FA-token-gated; verifies the second factor and mints the session, no actor (runPublic)',
+    specEnumerated: false,
+  },
+  {
+    method: 'POST',
+    path: '/api/auth/totp/enroll',
+    inert: 'pending-2FA-token-gated; begins forced TOTP enrollment (returns secret+otpauth URI), mints no session, no actor',
+    specEnumerated: false,
+  },
+  {
+    method: 'POST',
+    path: '/api/auth/totp/confirm',
+    inert: 'pending-2FA-token-gated; confirms TOTP enrollment (activates + returns backup codes once) and mints the session, no actor',
+    specEnumerated: false,
+  },
 
   // ---- Apply funnel Stage 1 (frontend-owned adapter over LeadService.createLead) ----
   {

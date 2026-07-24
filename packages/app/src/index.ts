@@ -72,6 +72,17 @@ export type {
   IssuePasswordResetResult,
   ConsumePasswordResetResult,
 } from './credential-token.js'
+export { TwoFactorService } from './two-factor.js'
+export type {
+  TwoFactorServiceDeps,
+  BeginEnrollmentResult,
+  ConfirmEnrollmentResult,
+  EnrollActivatedResult,
+  VerifySecondFactorResult,
+  IssuePendingLoginResult,
+} from './two-factor.js'
+export { bootstrapPlatformAdmin } from './bootstrap-admin.js'
+export type { BootstrapAdminInput, BootstrapAdminResult } from './bootstrap-admin.js'
 export { MaturationService, passwordResetRoute } from './maturation.js'
 export type {
   MaturationServiceDeps,
@@ -145,6 +156,14 @@ export {
   INVITE_RATE_LIMIT_MAX,
   type InviteKindTtl,
   PASSWORD_RESET_TTL_MS,
+  TOTP_STEP_SECONDS,
+  TOTP_DIGITS,
+  TOTP_WINDOW_STEPS,
+  TOTP_BACKUP_CODE_COUNT,
+  TWO_FACTOR_PENDING_TTL_MS,
+  TOTP_RATE_LIMIT_WINDOW_MS,
+  TOTP_RATE_LIMIT_MAX,
+  TOTP_ISSUER,
   INVITE_INITIAL_DELIVERY_STATUS,
   GUARDIAN_RELATIONSHIP_DEFAULT,
   GUARDIAN_VERIFICATION_METHOD,
@@ -464,4 +483,9 @@ export {
   ChapterNotFoundError,
   TermNotFoundError,
   PodNotFoundError,
+  TotpNotActivatedError,
+  TotpAlreadyActivatedError,
+  TotpSecretMissingError,
+  InvalidTotpCodeError,
+  TotpRateLimitedError,
 } from './errors.js'

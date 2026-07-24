@@ -27,6 +27,11 @@ export type AccessLedgerEvent =
   | 'membership.activated'
   | 'recovery.guardian_routed'
   | 'recovery.mentor_assisted'
+  // Two-factor auth (§10): 2FA enrollment activated, and a 2FA-gated login (the
+  // second factor was supplied and a full session minted). Origination/access
+  // provenance, like the recovery events — who proved a second factor, and when.
+  | 'totp.enrolled'
+  | 'login.two_factor'
 
 export interface AccessLedgerInput {
   event: AccessLedgerEvent

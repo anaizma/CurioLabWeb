@@ -268,6 +268,12 @@ export const credentialTokenPurposeEnum = pgEnum('credential_token_purpose', [
   // the child) or in a logged mentor-assisted recovery. Independent of the reset
   // purposes' one-live-per-purpose slot.
   'minor_setup',
+  // The short-lived pending-2FA login state (admin/director backend §10): minted
+  // by login after a correct password for a privileged account, consumed by the
+  // TOTP submit / enrollment-confirm endpoint that mints the full session. NOT a
+  // session — it confers no authority. Independent one-live slot (a re-login
+  // supersedes the prior).
+  'totp_pending',
 ])
 
 // --- Newsletter subscriber (Milestone 3.6) ---

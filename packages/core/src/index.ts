@@ -7,6 +7,7 @@ export {
   directMessagingCapabilities,
 } from './messaging-guard.js'
 export { platformGrant } from './platformGrant.js'
+export { PRIVILEGED_ROLES, requiresTwoFactor } from './privileged-roles.js'
 export { can } from './can.js'
 export {
   MACHINES,

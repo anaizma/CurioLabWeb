@@ -169,6 +169,12 @@ export const account = pgTable(
     maturationState: maturationStateEnum('maturation_state').notNull(),
     createdBy: uuid('created_by'),
     createdAt: createdAt(),
+    // §10 TOTP two-factor (migration 0023). The base32 shared secret (recoverable,
+    // so stored not hashed — see the migration's at-rest note), the confirm stamp
+    // (null = not active), and the replay-guard last-accepted time-step counter.
+    totpSecret: text('totp_secret'),
+    totpActivatedAt: timestamp('totp_activated_at', { withTimezone: true }),
+    totpLastStep: bigint('totp_last_step', { mode: 'number' }),
   },
   (t) => [
     // Exactly one of email or username.
@@ -969,4 +975,40 @@ export const credentialToken = pgTable(
       .on(t.accountId, t.purpose)
       .where(sql`${t.consumedAt} is null`),
   ],
+)
+
+// --- TOTP two-factor (§10; migration 0023_totp_2fa.sql) --------------------
+// The one-time recovery codes shown once at enrollment confirm. Each code_hash
+// is argon2id (hashed like a password). Single-use: consumption stamps
+// consumed_at (so the app role has UPDATE here, unlike the append-only ledgers).
+export const totpBackupCode = pgTable(
+  'totp_backup_code',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => account.id),
+    codeHash: text('code_hash').notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('totp_backup_code_account_idx').on(t.accountId).where(sql`${t.consumedAt} is null`),
+  ],
+)
+
+// The second-factor attempt log — one row per attempt (success flag +
+// timestamp). The service counts recent FAILURES in a rolling window at decision
+// time and refuses once a cap is exceeded (rate limiting, no stateful lock).
+export const totpAttempt = pgTable(
+  'totp_attempt',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => account.id),
+    success: boolean('success').notNull(),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('totp_attempt_account_at_idx').on(t.accountId, t.at)],
 )

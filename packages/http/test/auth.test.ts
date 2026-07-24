@@ -39,27 +39,41 @@ async function makeLoginable(email: string, password: string): Promise<string> {
 }
 
 describe('login', () => {
-  test('correct credentials mint a session that validates', async () => {
-    const chapter = await makeChapter(h.sql)
+  test('a NON-privileged account (no membership) is password-only: a session is minted', async () => {
+    // A membership-free account (a guardian) is unaffected by §10 2FA gating.
     const acct = await makeLoginable('login-a@example.test', 'correct horse battery')
-    await h.sql`
-      insert into membership (account_id, chapter_id, role, status)
-      values (${acct}, ${chapter}, 'chapter_director', 'active')
-    `
 
     const res = await login({
       sql: h.sql,
       body: { identifier: 'login-a@example.test', password: 'correct horse battery' },
     })
     expect(res.status).toBe(200)
-    expect(res.body.accountId).toBe(acct)
+    expect(res.body).toEqual({ accountId: acct })
     expect(res.session?.token).toBeTruthy()
 
-    // The minted token resolves a session summary with the membership switcher.
+    // The minted token resolves a session summary.
     const sess = await getSession({ sql: h.sql, sessionToken: res.session!.token! })
     expect(sess.status).toBe(200)
     expect(sess.body.accountId).toBe(acct)
-    expect(sess.body.memberships.some((m) => m.role === 'chapter_director')).toBe(true)
+  })
+
+  test('a PRIVILEGED account without TOTP yields totpEnrollmentRequired, NO session', async () => {
+    const chapter = await makeChapter(h.sql)
+    const acct = await makeLoginable('login-priv@example.test', 'correct horse battery')
+    await h.sql`
+      insert into membership (account_id, chapter_id, role, status)
+      values (${acct}, ${chapter}, 'chapter_director', 'active')
+    `
+    const res = await login({
+      sql: h.sql,
+      body: { identifier: 'login-priv@example.test', password: 'correct horse battery' },
+    })
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ totpEnrollmentRequired: true })
+    expect((res.body as { pendingToken?: string }).pendingToken).toBeTruthy()
+    // Crucially: NO session cookie was minted (password alone is not enough).
+    expect(res.session).toBeUndefined()
+    expect((res.body as { accountId?: string }).accountId).toBeUndefined()
   })
 
   test('a wrong password is an opaque 401, no session', async () => {

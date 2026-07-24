@@ -12,7 +12,7 @@ Every request field and response shape below is taken from the controller (reque
 - **`runAuthed` vs `runPublic`.** Authed controllers resolve the cookie to an `AuthContext` (`context.ts`). A missing / unknown / expired / revoked session resolves to a **null context**, which becomes an **opaque `403 {"error":"forbidden"}` with no audit** (there is no actor to attribute). Public / token-gated controllers take no `AuthContext`.
 - **Opaque 403.** A denied capability (`Forbidden`) and a null session both return the identical `403 {"error":"forbidden"}` body — "not allowed", "out of scope", and "does not exist" are deliberately indistinguishable from outside. Do not branch on 403 sub-reasons; there are none.
 - **Capabilities.** Each authed endpoint names the registry capability its service authorizes (`registry.ts`). Chapter-scoped capabilities require an in-force membership of the listed role in the resource's chapter; `platform`-scoped ones are reachable only via the platform override (`platform_admin`, or `platform_staff` for read-only capabilities).
-- **Unauthenticated / token-gated routes** (no `cl_session` needed): the Apply funnel (`/api/apply`, `/api/public/stage2/*`), `POST /api/auth/login`, `POST /api/auth/password/reset-request`, `POST /api/auth/password/reset`, `POST /api/auth/account-recovery`, all `/api/invites/[token]*`, `GET /api/verify/[token]`, all `/api/public/**` reads and newsletter subscribe/confirm/unsubscribe, and both `/api/webhooks/*`. These carry their own gate (an opaque token or a webhook signature), not a session.
+- **Unauthenticated / token-gated routes** (no `cl_session` needed): the Apply funnel (`/api/apply`, `/api/public/stage2/*`), `POST /api/auth/login`, the §10 two-factor continuation `POST /api/auth/totp{,/enroll,/confirm}` (gated by the short-lived pending-2FA token from login, not a session), `POST /api/auth/password/reset-request`, `POST /api/auth/password/reset`, `POST /api/auth/account-recovery`, all `/api/invites/[token]*`, `GET /api/verify/[token]`, all `/api/public/**` reads and newsletter subscribe/confirm/unsubscribe, and both `/api/webhooks/*`. These carry their own gate (an opaque token or a webhook signature), not a session.
 
 ### Legend
 
@@ -154,12 +154,38 @@ export async function POST(req: Request) {
 
 ## 2. Auth & onboarding
 
-### `POST /api/auth/login`
+### `POST /api/auth/login` — two-step for privileged accounts (§10)
 
-- **Auth:** public. Sets `cl_session` on success (adapter writes the cookie).
+- **Auth:** public. Sets `cl_session` **only** when a full session is minted.
 - **Request body:** `identifier` (string, required — email **or** username, case-insensitive); `password` (string, required).
-- **Response `200`:** `{ accountId: string }` (+ `Set-Cookie: cl_session`).
-- **Errors:** `400` missing field; `401 {"error":"unauthorized"}` for **any** failure (unknown account, no password set, closed/suspended, or bad password — uniform, no enumeration).
+- **Response `200`** — a discriminated union on the password result:
+  - **Non-privileged** account (a `student`/`alumni` role, or no membership at all — e.g. a guardian): `{ accountId: string }` (+ `Set-Cookie: cl_session`). Password-only, unchanged.
+  - **Privileged** account **with** active TOTP: `{ totpRequired: true, pendingToken: string }` — **no** cookie. The password was correct but no session exists yet; POST the second factor + `pendingToken` to `/api/auth/totp`.
+  - **Privileged** account **without** TOTP yet (forced first-login enrollment): `{ totpEnrollmentRequired: true, pendingToken: string }` — **no** cookie. Call `/api/auth/totp/enroll` then `/api/auth/totp/confirm` with the `pendingToken`.
+- **Privileged roles** (mandate a second factor): every membership role **except** `student` and `alumni` — i.e. `platform_admin`, `platform_staff`, `chapter_director`, `lead_instructor`, `senior_instructor`, `junior_mentor`, `comms_associate` (`PRIVILEGED_ROLES`/`requiresTwoFactor` in `@curiolab/core`).
+- **`pendingToken`** is a **short-lived (5 min) pending-2FA state, NOT a session** — it confers no authority; only the totp submit/confirm step mints the `cl_session` cookie. It is returned in the JSON body (the frontend holds it transiently).
+- **Errors:** `400` missing field; `401 {"error":"unauthorized"}` for **any** password failure (unknown account, no password set, closed/suspended, or bad password — uniform, no enumeration).
+
+### `POST /api/auth/totp` — submit the second factor (finish a `totpRequired` login)
+
+- **Auth:** public, gated by the `pendingToken`. Sets `cl_session` on success.
+- **Request body:** `pendingToken` (string, required); `code` (string, required — a 6-digit TOTP code **or** an `xxxxx-xxxxx` backup code).
+- **Response `200`:** `{ accountId: string }` (+ `Set-Cookie: cl_session`). Verifies the second factor (RFC 6238, ±1 step window, per-account last-step replay guard; a backup code is consumed on use), consumes the pending token, mints the session, and writes a `login.two_factor` access-ledger row.
+- **Errors:** `400` missing field; `401 {"error":"invalid_token"}` for a bad/expired/consumed `pendingToken` **or** a wrong/replayed TOTP code / unknown/used backup code (uniform, no signal); `409` if the account has no active TOTP; `429 {"error":"rate_limited"}` when second-factor attempts exceed the limit (5 failures / 15-min rolling window).
+
+### `POST /api/auth/totp/enroll` — begin forced enrollment (a `totpEnrollmentRequired` login)
+
+- **Auth:** public, gated by the `pendingToken`. Mints **no** session.
+- **Request body:** `pendingToken` (string, required).
+- **Response `200`:** `{ secret: string, otpauthUri: string }` — the base32 shared secret and the `otpauth://totp/...` provisioning URI (**no QR image** — the frontend renders it). The account is not yet active on TOTP.
+- **Errors:** `400` missing field; `401` bad/expired `pendingToken`; `409` if TOTP is already active (`TotpAlreadyActivatedError`).
+
+### `POST /api/auth/totp/confirm` — confirm enrollment (activate + mint the session)
+
+- **Auth:** public, gated by the `pendingToken`. Sets `cl_session` on success.
+- **Request body:** `pendingToken` (string, required); `code` (string, required — a TOTP code for the secret from `/enroll`).
+- **Response `200`:** `{ accountId: string, backupCodes: string[] }` — the one-time recovery codes returned **once** (10 codes, each `xxxxx-xxxxx`; stored only as argon2id hashes). Activates TOTP, seeds the replay guard, consumes the pending token, mints the session, and writes a `totp.enrolled` access-ledger row.
+- **Errors:** `400` missing field; `401` bad `pendingToken` or a wrong confirm code; `409` already active / no pending secret; `429` attempt rate limit.
 
 ### `POST /api/auth/logout`
 

@@ -11,6 +11,21 @@
 export { hashPassword, verifyPassword } from './password.js'
 export { generateSessionToken, hashToken } from './tokens.js'
 export {
+  base32Encode,
+  base32Decode,
+  hotp,
+  totp,
+  verifyTotp,
+  generateTotpSecret,
+  totpProvisioningUri,
+  generateBackupCodes,
+  TOTP_STEP_SECONDS,
+  TOTP_DIGITS,
+  type TotpOptions,
+  type VerifyTotpOptions,
+  type ProvisioningUriInput,
+} from './totp.js'
+export {
   IMPERSONATION_TTL_MS,
   createSession,
   createImpersonationSession,

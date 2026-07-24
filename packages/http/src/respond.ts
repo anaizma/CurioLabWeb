@@ -92,10 +92,15 @@ const CONFLICT = new Set([
   // same director approving their own request.
   'DirectorInviteRequestNotPendingError',
   'DirectorInviteSameApproverError',
+  // §10 TOTP: an enrollment/verify precondition conflict (already active, no
+  // pending secret, or a verify against a non-activated account).
+  'TotpNotActivatedError',
+  'TotpAlreadyActivatedError',
+  'TotpSecretMissingError',
 ])
 
-/** Too-many-requests: the per-issuer invite rate limit (P2 §4) -> 429. */
-const TOO_MANY = new Set(['InviteRateLimitError'])
+/** Too-many-requests: the per-issuer invite rate limit (P2 §4) + the §10 TOTP attempt limit -> 429. */
+const TOO_MANY = new Set(['InviteRateLimitError', 'TotpRateLimitedError'])
 
 /** Opaque, single-signal token failures -> 401 (reveals nothing; 05-api-surface). */
 const INVALID_TOKEN = new Set([
@@ -105,6 +110,9 @@ const INVALID_TOKEN = new Set([
   'InvalidSubscriberTokenError',
   // The password-reset / account-recovery consume token surface reveals nothing.
   'InvalidCredentialTokenError',
+  // §10 TOTP: a wrong/replayed TOTP code or an unknown/consumed backup code —
+  // one opaque 401, revealing nothing about which cause.
+  'InvalidTotpCodeError',
 ])
 
 /** Known input / precondition violations -> 400. */
