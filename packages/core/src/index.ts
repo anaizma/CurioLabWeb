@@ -10,6 +10,18 @@ export { platformGrant } from './platformGrant.js'
 export { PRIVILEGED_ROLES, requiresTwoFactor } from './privileged-roles.js'
 export { can } from './can.js'
 export {
+  MENTOR_ELIGIBILITY_COMPONENTS,
+  MENTOR_ELIGIBILITY_ROLES,
+  STUDENT_FACING_CAPABILITIES,
+  isComponentCurrent,
+  evaluateMentorEligibility,
+} from './mentor-eligibility.js'
+export type {
+  MentorEligibilityComponent,
+  MentorEligibilityComponentSnapshot,
+  MentorEligibilityResult,
+} from './mentor-eligibility.js'
+export {
   MACHINES,
   ALL_MACHINES,
   CONSENT_EVENTS,

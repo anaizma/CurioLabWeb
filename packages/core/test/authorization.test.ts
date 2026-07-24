@@ -41,6 +41,7 @@ import {
   accountRecoverInC1,
   assistRecoveryInC1,
   ledgerReadC1,
+  mentorEligibilityC1,
   childRecord18,
   safetyReport,
   ordinaryReport,
@@ -718,6 +719,29 @@ describe('ledger.read (§8 append-only access-ledger read)', () => {
   })
   test('a non-director role is denied (role_not_permitted)', () => {
     expectDeny(actors.comms_associate_c1, 'ledger.read', ledgerReadC1, 'role_not_permitted')
+  })
+})
+
+// mentor.manage_eligibility (admin/director backend §6): the chapter-scoped write
+// that records a mentor's eligibility clearances. Chapter_director in their own
+// chapter (platform_admin via override); another chapter out_of_scope; a
+// non-director role role_not_permitted; a read-only platform_staff out_of_scope
+// (writes:true).
+describe('mentor.manage_eligibility (§6 record a mentor eligibility clearance)', () => {
+  test('the chapter director records eligibility in their own chapter', () => {
+    expectAllow(actors.chapter_director_c1, 'mentor.manage_eligibility', mentorEligibilityC1)
+  })
+  test('platform_admin reaches it via the override', () => {
+    expectAllow(actors.platform_admin, 'mentor.manage_eligibility', mentorEligibilityC1)
+  })
+  test('a director in another chapter is denied (out_of_scope)', () => {
+    expectDeny(actors.chapter_director_c2, 'mentor.manage_eligibility', mentorEligibilityC1, 'out_of_scope')
+  })
+  test('a non-director role is denied (role_not_permitted)', () => {
+    expectDeny(actors.lead_instructor_c1, 'mentor.manage_eligibility', mentorEligibilityC1, 'role_not_permitted')
+  })
+  test('a read-only platform_staff is denied a write cap (out_of_scope)', () => {
+    expectDeny(actors.platform_staff, 'mentor.manage_eligibility', mentorEligibilityC1, 'out_of_scope')
   })
 })
 

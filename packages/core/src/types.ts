@@ -75,6 +75,16 @@ export interface Membership {
   tier: Tier | null
   active_from: Timestamp | null
   active_until: Timestamp | null
+  /**
+   * §6 mentor eligibility (admin/director backend, REVIEW-GATED). For a teaching
+   * membership, whether the mentor is CURRENTLY eligible (all four components
+   * satisfied), hydrated by the context builder when enforcement is on. `false`
+   * withdraws the student-facing capability set (see STUDENT_FACING_CAPABILITIES);
+   * `true`/undefined never restricts. Read by `can` only when
+   * `AuthContext.enforceMentorEligibility` is true — so with the flag off this
+   * value is ignored and a mentor's access is unchanged.
+   */
+  mentorEligible?: boolean
 }
 
 export interface Impersonation {
@@ -110,6 +120,14 @@ export interface AuthContext {
   guardianOf: StudentId[]
   /** Consent snapshots keyed by student. Also holds the actor's own consents. */
   consentsByChild: Map<StudentId, ConsentSet>
+  /**
+   * §6 REVIEW GATE. When true, `can` withdraws the student-facing capability set
+   * from any teaching membership marked `mentorEligible: false`. Set only when the
+   * app-layer flag MENTOR_ELIGIBILITY_ENFORCED is on; absent/false (the default,
+   * production posture) means eligibility is recorded but never blocks — a mentor's
+   * access is exactly as it is today until the legal flip.
+   */
+  enforceMentorEligibility?: boolean
 }
 
 /** A subject whose stored consent state travels on the resource snapshot. */
@@ -304,3 +322,9 @@ export type Capability =
   | 'guardian.view_grants'
   | 'guardian.view_public_items'
   | 'publication.object'
+  // mentor eligibility as state (admin/director backend §6, REVIEW-GATED). The
+  // ops/director authority to RECORD a mentor's eligibility component clearances
+  // (background check, mandatory-reporter training, CWRU affiliation, code of
+  // conduct). Chapter-scoped write, chapter_director; platform_admin via override.
+  // The READ of a mentor's eligibility reuses the P1 `membership.read` roster read.
+  | 'mentor.manage_eligibility'

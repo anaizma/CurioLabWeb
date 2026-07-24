@@ -183,6 +183,18 @@ export const consentGrantMethodEnum = pgEnum('consent_grant_method', [
   'id_verification',
 ])
 
+// --- Mentor eligibility as state (admin/director backend §6) ---
+// The four eligibility components (migration 0025). A db-only enum: the pure core
+// models the component set in mentor-eligibility.ts as string literals, not a core
+// enum type; this is the database projection of it. Gated behind
+// MENTOR_ELIGIBILITY_ENFORCED until legal review.
+export const mentorEligibilityComponentEnum = pgEnum('mentor_eligibility_component', [
+  'background_check',
+  'mandatory_reporter_training',
+  'cwru_affiliation_verified',
+  'signed_code_of_conduct',
+])
+
 // --- guardian-portal request and fee tables (Milestone 1 step 7) ---
 export const paymentStatusEnum = pgEnum('payment_status', [
   'none',

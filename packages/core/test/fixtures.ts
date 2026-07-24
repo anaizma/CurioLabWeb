@@ -436,6 +436,13 @@ export const assistRecoveryInC1: Resource = { id: ID.childS, chapter_id: C1 }
 // whose provenance is read; both platform overrides reach it (writes:false).
 export const ledgerReadC1: Resource = { chapter_id: C1 }
 
+// mentor.manage_eligibility (admin/director backend §6): the ops/director authority
+// to RECORD a mentor's eligibility component clearances. Chapter-scoped write,
+// chapter_director; platform_admin via override. The resource is the mentor's
+// chapter; a director in another chapter denies out_of_scope, a non-director role
+// denies role_not_permitted, and a read-only platform_staff denies (writes:true).
+export const mentorEligibilityC1: Resource = { id: 'membership-mentor-1', chapter_id: C1 }
+
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
   chapter_id: C1,

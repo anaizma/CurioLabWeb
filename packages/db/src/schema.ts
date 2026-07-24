@@ -61,6 +61,7 @@ import {
   mediaReviewStatusEnum,
   mediaSourceEnum,
   membershipStatusEnum,
+  mentorEligibilityComponentEnum,
   moderationActionEnum,
   moderationClassEnum,
   moderationReasonEnum,
@@ -538,6 +539,32 @@ export const publicationHold = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('publication_hold_subject_idx').on(t.subjectStudentAccountId)],
+)
+
+// --- Mentor eligibility as state (admin/director backend §6) ----------------
+// Append-only clearance ledger (migration 0025). One row per (membership,
+// component) clearance EVENT; a renewal is a NEW row, a lapse is expiry. The
+// current status per (membership, component) is the mentor_eligibility_current
+// view (not modeled here). Append-only via the reject_append_only_mutation()
+// trigger + role REVOKE. Gated behind MENTOR_ELIGIBILITY_ENFORCED until legal
+// review.
+export const mentorEligibility = pgTable(
+  'mentor_eligibility',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'bigint' }).notNull().unique(),
+    membershipId: uuid('membership_id')
+      .notNull()
+      .references(() => membership.id),
+    component: mentorEligibilityComponentEnum('component').notNull(),
+    clearedAt: timestamp('cleared_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    version: text('version'),
+    evidenceRef: text('evidence_ref'),
+    recordedBy: uuid('recorded_by').references(() => account.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('mentor_eligibility_membership_component_idx').on(t.membershipId, t.component, t.seq)],
 )
 
 // --- Audit -----------------------------------------------------------------

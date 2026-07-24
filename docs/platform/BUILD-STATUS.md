@@ -65,6 +65,36 @@ Consent captured as a set of **independent, append-only grant records** (COPPA: 
 
 **Deferred / not done:** the newsletter-item cascade redacts published items but does not archive the issue (kept minimal); `nominatePublicationHold` is a seam the frontend/ops call at nomination time (no auto-nomination wired into publish yet — that lands with the flag flip); artifact intake is an opaque `evidenceArtifactRef` string (no file storage, by design). **Public-publication capture stays OFF for production data until `CONSENT_GRANT_LEDGER_ENFORCED` is flipped post-legal-review.**
 
+## P6 part B — mentor eligibility as state (§6, REVIEW-GATED)
+
+Mentor eligibility recorded as **STATE**, and the youth-facing access gate + auto-revoke built on it. **Built and fully tested, but the ENFORCEMENT is behind a config flag that defaults OFF** (`MENTOR_ELIGIBILITY_ENFORCED=false`) pending legal review. **Additive — with the flag off, a mentor's student-facing access is exactly as today: the `can` eligibility predicate is dormant, the sweep records nothing on eligibility grounds, and every existing suite (incl. P5 time-box, P6a consent) still passes.**
+
+**Migration `0025_mentor_eligibility.sql` (proved RED@0024 → GREEN@0025):**
+- `mentor_eligibility` — append-only clearance ledger (shares `reject_append_only_mutation()` + role REVOKE, like `consent_grant`/`access_ledger`). Row shape: `membership_id`, `component`, `cleared_at`, `expires_at`|null, `version`|null, `evidence_ref`|null, `recorded_by`|null, `seq` bigserial. One row per `(membership, component)` clearance EVENT; a renewal is a new row, a lapse is expiry.
+- Enum `mentor_eligibility_component` = `background_check`, `mandatory_reporter_training`, `cwru_affiliation_verified`, `signed_code_of_conduct`.
+- `mentor_eligibility_current` VIEW — latest row per `(membership, component)`; `active = non-expired` (decision-time `now()`).
+- Mechanism-A grants: app SELECT/INSERT (not UPDATE/DELETE); analytics denied SELECT (youth-adjacent, default-deny). Drizzle mirror in `enums.ts` / `schema.ts`.
+
+**Data model — append-only, not one-row-of-four-columns (rationale):** the audit/complaint defense for a youth-safety control is the TRAIL of clearances + renewals with their evidence artifacts, not just the latest values; it also composes with the same immutability mechanism (trigger + REVOKE) as `consent_grant`/`access_ledger`. Mirrors the P6a consent-grant shape.
+
+**Predicate (core, pure):** `evaluateMentorEligibility(components, now)` → `{ eligible, unmet }` — eligible iff all four components present and unexpired. Plus `MENTOR_ELIGIBILITY_COMPONENTS`, `MENTOR_ELIGIBILITY_ROLES` (the teaching set the requirement applies to), `STUDENT_FACING_CAPABILITIES` (the exact gated set).
+
+**The gate — in the pure `can` layer (rationale):** a flag-guarded predicate that, during chapter/pod scope matching, skips a teaching membership marked `mentorEligible: false` for a student-facing capability — so a pure mentor denies opaque `out_of_scope`, composing with the existing `inForce` checks. `can` stays pure: it reads `Membership.mentorEligible` + `AuthContext.enforceMentorEligibility`, both hydrated by the app-layer context builder (`resolveAuthContext`) ONLY when the flag is on (flag off → no extra query, no field set). The **student-facing set**: `feed.view/post/comment/react`, `feed.moderate`, `feed.hide_safety`, `moderation.resolve`, `project.verify`, `media.review`, `narrative.review`, `narrative.remove`, `student.view_record`, `account.assist_recovery`. Deliberately excluded: `feed.report` (safety valve), `project.create`, all self/account-management caps — a mentor's own actions are never gated.
+
+**Config (`packages/app/src/config.ts`):** `MENTOR_ELIGIBILITY_ENFORCED` (default **false**; `process.env.X === 'true'`, exactly the P6a pattern). Gates ONLY enforcement (the `can` gate + the sweep); recording + reading always run.
+
+**Service (`packages/app/src/mentor-eligibility.ts`):** `MentorEligibilityService.record` (gated `mentor.manage_eligibility`; appends a clearance row + audit + access_ledger), `.read` (gated `membership.read`, reused; the four components' current status). `loadMentorEligibility(sql, membershipId, now)` — the DB loader the context builder + sweep use.
+
+**Auto-revoke — `runEligibilitySweep` (`packages/app/src/eligibility-sweep.ts`), a PEER sweep (rationale):** a separate sweep, not folded into `runTimeBoxSweep` — different trigger (eligibility lapse vs term end), different role set (teaching-with-eligibility vs all privileged term-bound), independent flag. Shares the closure mechanics + the `membership.time_box_revoked` access_ledger event, distinguished by `reason = eligibility_lapsed`. Flag-guarded NO-OP when off; when on, flips every active ineligible mentor/teaching membership `active -> inactive`, clears pod links, writes system-actor audit + ledger. Deterministic injected `now`; idempotent; students untouched.
+
+**Capability added:** `mentor.manage_eligibility` (chapter-scoped write, `chapter_director`; `platform_admin` via override). The READ reuses the P1 `membership.read`.
+
+**Endpoint (manifested):** `POST /api/ops/mentors/[membershipId]/eligibility` → `mentor.manage_eligibility`; `GET` at the same path → `membership.read` (GET-exempt). Ledger event `mentor.eligibility_recorded`.
+
+**Tests:** core `mentor-eligibility.test.ts` (15 — the pure predicate + the `can` gate flag-on/off + the narrow-scope guarantees) + registry meta-test extended (`mentor.manage_eligibility` allow/deny); db `mentor-eligibility-schema.test.ts` (12, RED@0024→GREEN@0025); app `mentor-eligibility.test.ts` (12 — record append-only + audit/ledger, unauthorized + cross-chapter denied, read, `loadMentorEligibility` + the gate, the sweep: expiry revoke with `reason=eligibility_lapsed` / eligible untouched / flag-off no-op / idempotent / student untouched). Suites green together: core 180, db 225, runtime 55, app 483, http 201 (route-manifest guard included).
+
+**Deferred / not done:** the sweep is a job body (pg-boss scheduling is a separate wiring step, like `runTimeBoxSweep`); evidence intake is an opaque `evidenceRef` string (no file storage, by design); no explicit per-component revoke (a lapse is expiry — a shorter/backdated `expiresAt` row supersedes). **Eligibility ENFORCEMENT stays OFF for production until `MENTOR_ELIGIBILITY_ENFORCED` is flipped post-legal-review — a mentor's current access is unchanged until then.**
+
 ## Notable behavior change to review
 
 - **Guardian reads of an 18+ child persist until the edge lapses.** The age-18 bar was corrected to guardian *writes* only, so a guardian still *reads* their 18+ child's record during the maturation window (soft landing), ending at staff-confirm or the 90-day backstop. Matches 04-state-machines / Flow D; loosens an M1 behavior on purpose. See `packages/core/src/can.ts`, `maturation.ts`.

@@ -683,4 +683,19 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: [],
     writes: true,
   },
+
+  // ---- mentor eligibility as state (admin/director backend §6) --------------
+  // mentor.manage_eligibility: the ops/director authority to RECORD a mentor's
+  // eligibility component clearances (background check, mandatory-reporter
+  // training, CWRU affiliation, signed code of conduct). Chapter-scoped write,
+  // chapter_director; platform_admin via the override (writes:true, so a read-only
+  // platform_staff does NOT reach it), mirroring term.manage / member.activate.
+  // The READ of a mentor's eligibility reuses the P1 `membership.read` roster read.
+  // The ENFORCEMENT this feeds (withdrawing student-facing access from an
+  // ineligible mentor) is a flag-gated predicate in `can`, not a capability.
+  'mentor.manage_eligibility': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
 }

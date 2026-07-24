@@ -148,6 +148,16 @@ export type {
   SafeguardSuspendResult,
 } from './controllers/ops.js'
 
+// Ops back office — mentor eligibility as state (§6, REVIEW-GATED)
+export {
+  recordMentorEligibility,
+  readMentorEligibility,
+} from './controllers/mentor-eligibility.js'
+export type {
+  RecordMentorEligibilityInput,
+  ReadMentorEligibilityInput,
+} from './controllers/mentor-eligibility.js'
+
 // Ops back office — director-portal READ surfaces (P1)
 export {
   listApplications,

@@ -250,6 +250,25 @@ export const CONSENT_GRANT_LEDGER_ENFORCED: boolean =
   process.env.CONSENT_GRANT_LEDGER_ENFORCED === 'true'
 
 /**
+ * §6 mentor eligibility as state — the REVIEW GATE. When FALSE (the default, and
+ * the production posture until legal review), eligibility is RECORDED but never
+ * blocks: a mentor's student-facing access is exactly as it is today, the `can`
+ * eligibility predicate is dormant, and the auto-revoke sweep records nothing on
+ * eligibility grounds. When TRUE, a mentor membership that is NOT currently
+ * eligible (any of the four components missing or expired) no longer confers the
+ * STUDENT-FACING capability set (`can` denies opaque out_of_scope), and the
+ * eligibility sweep transitions a lapsed mentor active -> inactive with
+ * reason = eligibility_lapsed.
+ *
+ * The eligibility-CAPTURE (recording clearances) and READ mechanisms are always
+ * available (they only WRITE / READ the ledger); the flag gates only ENFORCEMENT,
+ * so production data is untouched until the flag is flipped post-legal-review. A
+ * value, not a literal, per compliance-coppa.md Part 3 "Configuration, not code".
+ */
+export const MENTOR_ELIGIBILITY_ENFORCED: boolean =
+  process.env.MENTOR_ELIGIBILITY_ENFORCED === 'true'
+
+/**
  * §5 Rule 3 — the notify-and-object window. A standing `public_publication` grant
  * is not blanket pre-approval: a nominated item publishes only if the guardian
  * does not object within N days (default 5). A value, not a literal.
@@ -379,6 +398,8 @@ export interface AppConfig {
   guardianNameMatch: (nameOnAccount: string, nameOnForm: string) => boolean
   /** §5 REVIEW GATE: when true, publishing additionally requires the specific grant. */
   consentGrantLedgerEnforced: boolean
+  /** §6 REVIEW GATE: when true, an ineligible mentor loses student-facing access. */
+  mentorEligibilityEnforced: boolean
   /** §5 Rule 3: the notify-and-object hold window in ms (default 5 days). */
   publicationHoldWindowMs: number
   /** §5: the renewal clock per grant type (null = standing). */
@@ -414,6 +435,7 @@ export const defaultConfig: AppConfig = {
   guardianVerificationMethod: GUARDIAN_VERIFICATION_METHOD,
   guardianNameMatch: guardianNamesMatch,
   consentGrantLedgerEnforced: CONSENT_GRANT_LEDGER_ENFORCED,
+  mentorEligibilityEnforced: MENTOR_ELIGIBILITY_ENFORCED,
   publicationHoldWindowMs: PUBLICATION_HOLD_WINDOW_MS,
   grantRenewalMsByType: GRANT_RENEWAL_MS_BY_TYPE,
 }

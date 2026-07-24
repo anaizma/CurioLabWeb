@@ -28,7 +28,9 @@ import type {
   Role,
   SessionContext,
 } from '@curiolab/core'
+import { MENTOR_ELIGIBILITY_ROLES } from '@curiolab/core'
 import { validateSession } from '@curiolab/runtime'
+import { MENTOR_ELIGIBILITY_ENFORCED, loadMentorEligibility } from '@curiolab/app'
 
 /** Whole years from `dob` to `at` (birthday-aware, UTC). */
 function ageInYears(dob: Date, at: Date): number {
@@ -68,7 +70,7 @@ export async function resolveAuthContext(
   const age = ageInYears(new Date(acct.dob as string), now)
 
   const memRows = await sql`
-    select chapter_id, role, status, pod_id, current_tier,
+    select id, chapter_id, role, status, pod_id, current_tier,
            active_from::text as active_from, active_until::text as active_until
     from membership where account_id = ${effectiveAccountId}
   `
@@ -81,6 +83,21 @@ export async function resolveAuthContext(
     active_from: dateMs(r.active_from as string | null),
     active_until: dateMs(r.active_until as string | null),
   }))
+
+  // §6 mentor eligibility (REVIEW-GATED). Only when MENTOR_ELIGIBILITY_ENFORCED is
+  // on do we hydrate each teaching membership's `mentorEligible` and flip the
+  // context's enforcement flag — so `can` withdraws the student-facing set from an
+  // ineligible mentor. With the flag OFF (the production posture) this block is
+  // skipped entirely: no extra query, no field set, a mentor's access is unchanged.
+  if (MENTOR_ELIGIBILITY_ENFORCED) {
+    for (let i = 0; i < memberships.length; i++) {
+      const m = memberships[i]!
+      if (!MENTOR_ELIGIBILITY_ROLES.includes(m.role)) continue
+      const membershipId = memRows[i]!.id as string
+      const { eligible } = await loadMentorEligibility(sql, membershipId, now)
+      memberships[i] = { ...m, mentorEligible: eligible }
+    }
+  }
 
   // Verified edges only; a lapsed/revoked/pending edge confers no authority and
   // is absent from guardianOf (03-authorization.md).
@@ -137,5 +154,8 @@ export async function resolveAuthContext(
     memberships,
     guardianOf,
     consentsByChild,
+    // Only assert enforcement when the flag is on; absent/false preserves today's
+    // behavior (a mentor's access is unchanged until the legal flip).
+    ...(MENTOR_ELIGIBILITY_ENFORCED ? { enforceMentorEligibility: true } : {}),
   }
 }

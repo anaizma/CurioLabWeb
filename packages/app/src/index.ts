@@ -279,6 +279,28 @@ export {
   type RunTimeBoxSweepDeps,
   type RunTimeBoxSweepResult,
 } from './time-box-sweep.js'
+export {
+  MentorEligibilityService,
+  loadMentorEligibility,
+  MENTOR_ELIGIBILITY_COMPONENTS,
+  MENTOR_ELIGIBILITY_AUDIT_ACTION,
+} from './mentor-eligibility.js'
+export type {
+  MentorEligibilityServiceDeps,
+  MentorEligibilityAuthorizeFn,
+  MentorEligibilityComponent,
+  RecordClearanceOptions,
+  RecordClearanceResult,
+  ComponentStatusView,
+  MentorEligibilityView,
+} from './mentor-eligibility.js'
+export {
+  runEligibilitySweep,
+  ELIGIBILITY_LAPSED_REASON,
+  type RunEligibilitySweepDeps,
+  type RunEligibilitySweepResult,
+} from './eligibility-sweep.js'
+export { MENTOR_ELIGIBILITY_ENFORCED } from './config.js'
 export { DeletionFulfillmentService } from './deletion-fulfillment.js'
 export type {
   DeletionFulfillmentServiceDeps,

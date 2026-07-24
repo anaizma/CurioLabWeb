@@ -38,6 +38,13 @@ export type AccessLedgerEvent =
   // subject is the membership's account; detail carries the reason (term_ended /
   // eligibility_lapsed) and the membership id.
   | 'membership.time_box_revoked'
+  // Mentor eligibility as state (admin/director backend §6). A director/ops actor
+  // RECORDED a mentor's eligibility component clearance (background check,
+  // mandatory-reporter training, CWRU affiliation, signed code of conduct) — an
+  // access-provenance event, like the recovery events. actor is the recording
+  // director; subject is the mentor's account; detail carries the membershipId,
+  // component, and expiry (never PII).
+  | 'mentor.eligibility_recorded'
   // Consent grant ledger (admin/director backend §5). Every grant capture,
   // renewal, revocation, notify-and-object notification + outcome, and the
   // 18th-birthday transfer is recorded here with its method + artifact reference

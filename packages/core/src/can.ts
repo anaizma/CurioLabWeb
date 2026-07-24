@@ -1,5 +1,6 @@
 import { platformGrant } from './platformGrant.js'
 import { REGISTRY } from './registry.js'
+import { MENTOR_ELIGIBILITY_ROLES, STUDENT_FACING_CAPABILITIES } from './mentor-eligibility.js'
 import type {
   AuthContext,
   Capability,
@@ -44,6 +45,23 @@ function pickMembership(
     if (fallback === null) fallback = m
   }
   return fallback
+}
+
+/**
+ * §6 REVIEW GATE (flag-guarded). A membership passes the eligibility gate for
+ * this capability UNLESS: enforcement is on, the capability is student-facing, the
+ * membership's role is a mentor/teaching role, and the membership is explicitly
+ * marked ineligible. In that one case it does NOT confer the capability — it is
+ * skipped during scope matching, so a pure mentor denies opaque `out_of_scope`
+ * (no leak of why). With enforcement off (the default), this always returns true,
+ * so a mentor's access is exactly as today. Only `mentorEligible === false`
+ * blocks; an unhydrated/undefined value never restricts.
+ */
+function eligibilityOk(ctx: AuthContext, capability: Capability, m: Membership): boolean {
+  if (ctx.enforceMentorEligibility !== true) return true
+  if (!STUDENT_FACING_CAPABILITIES.has(capability)) return true
+  if (!MENTOR_ELIGIBILITY_ROLES.includes(m.role)) return true
+  return m.mentorEligible !== false
 }
 
 /** The subject consent snapshot travels on the resource; undefined = unknown. */
@@ -103,7 +121,11 @@ export function can(
   } else {
     for (const scope of scopes) {
       if (scope === 'chapter') {
-        const m = pickMembership(ctx, def.roles, (mm) => mm.chapter_id === resource.chapter_id)
+        const m = pickMembership(
+          ctx,
+          def.roles,
+          (mm) => mm.chapter_id === resource.chapter_id && eligibilityOk(ctx, capability, mm),
+        )
         if (m) {
           match = { via: 'chapter', membership: m }
           break
@@ -112,7 +134,10 @@ export function can(
         const m = pickMembership(
           ctx,
           def.roles,
-          (mm) => mm.pod_id !== null && mm.pod_id === resource.pod_id,
+          (mm) =>
+            mm.pod_id !== null &&
+            mm.pod_id === resource.pod_id &&
+            eligibilityOk(ctx, capability, mm),
         )
         if (m) {
           match = { via: 'pod', membership: m }

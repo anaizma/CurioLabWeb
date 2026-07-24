@@ -400,6 +400,17 @@ export const ROUTE_MANIFEST: RouteManifest = [
     capability: 'consent.revoke_safeguarding',
   },
   { method: 'POST', path: '/api/ops/memberships/[id]/activate', capability: 'member.activate' },
+  // §6 mentor eligibility as state (REVIEW-GATED): record a component clearance
+  // (background check, mandatory-reporter training, CWRU affiliation, code of
+  // conduct). Chapter-scoped write, chapter_director; platform_admin via override.
+  // The GET read at the same path reuses membership.read and is GET-exempt. The
+  // ENFORCEMENT this feeds is behind MENTOR_ELIGIBILITY_ENFORCED (default off);
+  // the record write always runs (it only writes the eligibility ledger).
+  {
+    method: 'POST',
+    path: '/api/ops/mentors/[membershipId]/eligibility',
+    capability: 'mentor.manage_eligibility',
+  },
   { method: 'POST', path: '/api/ops/maturations/[id]/confirm', capability: 'maturation.confirm' },
   { method: 'POST', path: '/api/ops/accounts/[id]/reissue-setup', capability: 'account.recover' },
   // §9: the logged mentor/director-assisted minor recovery (distinct from

@@ -837,6 +837,28 @@ The chapter-scoped list/detail GETs the director portal reads (`docs/platform/di
 
 ---
 
+## 6b. Mentor eligibility as state (§6 — REVIEW-GATED, additive)
+
+Mentor eligibility is recorded as **STATE**: an append-only `mentor_eligibility` clearance ledger (migration `0025`) per `(membership, component)`, over the four components `background_check`, `mandatory_reporter_training`, `cwru_affiliation_verified`, `signed_code_of_conduct`. A mentor is **eligible** iff all four are currently satisfied (present AND not past their expiry as of `now`); a renewal is a new row, a lapse is expiry. The current status is the `mentor_eligibility_current` view; `evaluateMentorEligibility` (core, pure) is the predicate.
+
+**The REVIEW GATE — `MENTOR_ELIGIBILITY_ENFORCED` (env, default `false`).** When **false** (production posture until legal review), eligibility is **recorded but never blocks**: a mentor's student-facing access is exactly as today, the `can` eligibility predicate is dormant, and the auto-revoke sweep records nothing on eligibility grounds. When **true**, a teaching membership marked ineligible no longer confers the **student-facing capability set** — `feed.view/post/comment/react`, `feed.moderate`, `feed.hide_safety`, `moderation.resolve`, `project.verify`, `media.review`, `narrative.review`, `narrative.remove`, `student.view_record`, `account.assist_recovery` — `can` denies opaque `out_of_scope` (no leak of why). A mentor's own non-student-facing actions (managing their own account, `feed.report` safety valve) are never gated; `student`/`alumni`/`comms` roles are never eligibility-gated. **The gate lives in the pure `can` layer** (a flag-guarded predicate composing with the existing `inForce` checks); the app-layer context builder hydrates `Membership.mentorEligible` + `AuthContext.enforceMentorEligibility` only when the flag is on (flag off → no extra query, no field set). The record/read endpoints below are always live (they only write/read the eligibility ledger); only the enforcement is gated.
+
+### `POST /api/ops/mentors/{membershipId}/eligibility` — record a component clearance
+- **Auth:** session — **`mentor.manage_eligibility`** (chapter-scoped write, `chapter_director`; `platform_admin` via override; a read-only `platform_staff` cannot).
+- **Path param:** `membershipId` (the mentor's membership). **Request body:** `component` (required — one of the four); `clearedAt` (optional ISO; defaults to now); `expiresAt` (optional ISO; null = standing); `version` (optional — code-of-conduct version); `evidenceRef` (optional — opaque artifact reference).
+- **Response `201`:** `{ eligibilityId, membershipId, component, clearedAt, expiresAt }`. Writes an `audit_entry` (`action = mentor.eligibility_recorded`) + an `access_ledger` row (`event = mentor.eligibility_recorded`, subject = the mentor's account).
+- **Errors:** `400` unknown component / bad date; `403`; `404` `MembershipNotFoundError`.
+
+### `GET /api/ops/mentors/{membershipId}/eligibility` — the mentor-eligibility panel read
+- **Auth:** session — **`membership.read`** (reuses the P1 chapter-scoped roster read; both platform overrides reach it). GET-exempt from the route-manifest guard.
+- **Path param:** `membershipId`.
+- **Response `200`:** `{ membershipId, eligible: boolean, unmet: component[], components: [{ component, active, clearedAt, expiresAt, version, evidenceRef }] }`.
+- **Errors:** `403`; `404` `MembershipNotFoundError`.
+
+**Auto-revoke sweep — `runEligibilitySweep({ sql }, now, config)` (job body, flag-guarded).** A PEER of `runTimeBoxSweep` (not folded in — different trigger, different role set, independent gate). With `mentorEligibilityEnforced` false it is a NO-OP. With it true, in one transaction every active mentor/teaching membership that is not currently eligible is flipped `active -> inactive`, its pod links cleared (like the time-box sweep), and a system-actor `audit_entry` + `access_ledger` row (`event = membership.time_box_revoked`, `reason = eligibility_lapsed`) written. Deterministic injected `now`; **idempotent**; a `student` membership is never touched. Returns `{ revokedCount, revokedMembershipIds }`.
+
+---
+
 ## 7. Platform admin
 
 ### `POST /api/admin/chapters`
