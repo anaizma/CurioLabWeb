@@ -216,6 +216,76 @@ export class InviteCredentialMismatchError extends Error {
 }
 
 /**
+ * An invite kind was requested through the ops issue endpoint that cannot be
+ * issued there (admin/director backend §1). `student` is never issuable this way
+ * — a student account originates only from a consented guardian via
+ * accept-student — so a `POST /ops/invites` with `kind: 'student'` is refused
+ * before any authorization or IO. Carries the kind for the route to surface.
+ */
+export class InviteKindNotIssuableError extends Error {
+  readonly kind: string
+  constructor(kind: string) {
+    super(`invite kind is not issuable through this endpoint: ${kind}`)
+    this.name = 'InviteKindNotIssuableError'
+    this.kind = kind
+  }
+}
+
+/**
+ * An issuer exceeded the per-issuer invite rate limit (admin/director backend §4):
+ * more than `inviteRateLimitMax` invites minted within `inviteRateLimitWindowMs`.
+ * A testable abuse guard evaluated at decision time over the issuer's recent
+ * invites; the caller retries after the window drains. Maps to 429.
+ */
+export class InviteRateLimitError extends Error {
+  readonly issuerAccountId: string
+  constructor(issuerAccountId: string) {
+    super(`invite issuance rate limit exceeded for issuer: ${issuerAccountId}`)
+    this.name = 'InviteRateLimitError'
+    this.issuerAccountId = issuerAccountId
+  }
+}
+
+/** The referenced director-invite request does not exist (approve of an unknown id). */
+export class DirectorInviteRequestNotFoundError extends Error {
+  readonly requestId: string
+  constructor(requestId: string) {
+    super(`director invite request not found: ${requestId}`)
+    this.name = 'DirectorInviteRequestNotFoundError'
+    this.requestId = requestId
+  }
+}
+
+/**
+ * A director-invite request approval was attempted by the SAME director who
+ * initiated it (admin/director backend §1). The two-person rule requires a
+ * SECOND, DISTINCT director; a single director acting alone cannot mint a director
+ * invite. The database CHECK is the floor; this is the service-layer refusal.
+ */
+export class DirectorInviteSameApproverError extends Error {
+  readonly requestId: string
+  constructor(requestId: string) {
+    super(`a director invite request must be approved by a distinct director: ${requestId}`)
+    this.name = 'DirectorInviteSameApproverError'
+    this.requestId = requestId
+  }
+}
+
+/**
+ * A director-invite request approval was attempted against a request that is not
+ * `pending` (already approved, or expired at decision time). Only a live pending
+ * request mints a token. Maps to 409.
+ */
+export class DirectorInviteRequestNotPendingError extends Error {
+  readonly requestId: string
+  constructor(requestId: string) {
+    super(`director invite request is not pending (approved or expired): ${requestId}`)
+    this.name = 'DirectorInviteRequestNotPendingError'
+    this.requestId = requestId
+  }
+}
+
+/**
  * A guardian invite's `target_email` must equal the guardian email on the bound
  * enrollment record (02-data-model; enforced at the DB by the
  * invite_guardian_email trigger, which is the floor — this is the service-layer

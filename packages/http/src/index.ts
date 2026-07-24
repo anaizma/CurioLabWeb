@@ -115,6 +115,8 @@ export {
   transitionApplication,
   createEnrollment,
   issueInvite,
+  initiateDirectorInvite,
+  approveDirectorInvite,
   resendInvite,
   verifyGuardianship,
   revokeGuardianship,

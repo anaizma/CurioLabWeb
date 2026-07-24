@@ -35,6 +35,8 @@ import {
   type FulfillExportResult,
   type InviteKind,
   type IssueInviteResult,
+  type InitiateDirectorInviteResult,
+  type ApproveDirectorInviteResult,
   type ActivateStudentResult,
   type ReviewDeletionResult,
   type RevokeGuardianshipResult,
@@ -160,7 +162,18 @@ export function createEnrollment(
 
 // ---- Invites --------------------------------------------------------------
 
-const INVITE_KINDS: readonly InviteKind[] = ['guardian', 'student', 'mentor', 'staff']
+// The kinds the ops issue endpoint accepts as input. `student` is a valid kind
+// value but is NOT issuable here (P2 §1) — the service refuses it with
+// InviteKindNotIssuableError (400). `director`/`admin` are gated by the per-kind
+// authority in the service (member.invite_admin), not member.invite.
+const INVITE_KINDS: readonly InviteKind[] = [
+  'guardian',
+  'student',
+  'mentor',
+  'staff',
+  'director',
+  'admin',
+]
 
 export interface IssueInviteInput extends AuthedInputBase {
   body: {
@@ -172,7 +185,11 @@ export interface IssueInviteInput extends AuthedInputBase {
   }
 }
 
-/** POST /api/ops/invites — issue an invite (member.invite). */
+/**
+ * POST /api/ops/invites — issue an invite. The gating capability is per-kind
+ * (P2 §1): guardian/mentor/staff -> member.invite; admin + a direct director mint
+ * -> member.invite_admin (platform_admin only); student -> refused (400).
+ */
 export function issueInvite(input: IssueInviteInput): Promise<ControllerResult<IssueInviteResult>> {
   return runAuthed(input, async (ctx, sql) => {
     const kind = reqStr(input.body?.kind, 'kind') as InviteKind
@@ -187,6 +204,52 @@ export function issueInvite(input: IssueInviteInput): Promise<ControllerResult<I
       },
       ctx,
     )
+    return { status: 201, body: result }
+  })
+}
+
+// ---- Two-person director invite (P2 §1) -----------------------------------
+
+export interface InitiateDirectorInviteInput extends AuthedInputBase {
+  body: { chapterId?: unknown; targetEmail?: unknown }
+}
+
+/**
+ * POST /api/ops/invites/director-requests — initiate a two-person director invite
+ * (member.invite_director). Returns a pending request id and NO token; a SECOND,
+ * DISTINCT director must approve before the director invite is minted.
+ */
+export function initiateDirectorInvite(
+  input: InitiateDirectorInviteInput,
+): Promise<ControllerResult<InitiateDirectorInviteResult>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const result = await new InviteService({ sql, authorize }).initiateDirectorInvite(
+      {
+        chapterId: reqStr(input.body?.chapterId, 'chapterId'),
+        targetEmail: reqStr(input.body?.targetEmail, 'targetEmail'),
+      },
+      ctx,
+    )
+    return { status: 201, body: result }
+  })
+}
+
+export interface ApproveDirectorInviteInput extends AuthedInputBase {
+  params: { id?: unknown }
+}
+
+/**
+ * POST /api/ops/invites/director-requests/:id/approve — a SECOND, DISTINCT
+ * director approves a pending request, minting the director invite
+ * (member.invite_director). Returns `{ requestId, inviteId, token, expiresAt }`
+ * (the raw token once). The same director approving their own request is refused.
+ */
+export function approveDirectorInvite(
+  input: ApproveDirectorInviteInput,
+): Promise<ControllerResult<ApproveDirectorInviteResult>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const requestId = reqStr(input.params?.id, 'id')
+    const result = await new InviteService({ sql, authorize }).approveDirectorInvite(requestId, ctx)
     return { status: 201, body: result }
   })
 }

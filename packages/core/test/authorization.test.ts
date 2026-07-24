@@ -30,6 +30,8 @@ import {
   leadInC1,
   enrollmentInC1,
   inviteInC1,
+  inviteAdminTarget,
+  inviteDirectorC1,
   membershipInC1,
   guardianshipInC1,
   dobCorrectInC1,
@@ -445,6 +447,31 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectAllow(actors.comms_associate_c1, 'member.invite', inviteInC1)
     expectDeny(actors.chapter_director_c2, 'member.invite', inviteInC1, 'out_of_scope')
     expectDeny(actors.lead_instructor_c1, 'member.invite', inviteInC1, 'role_not_permitted')
+  })
+
+  // P2 §1: the two privileged-invite-kind authorities.
+  // member.invite_admin — platform_admin's UNILATERAL authority to mint a
+  // privileged (admin, or director-direct) invite. Platform-scoped, writes:true:
+  // the platform_admin satisfies it via the override; a platform_staff (read-only
+  // override) and any chapter director deny out_of_scope (a lone director cannot
+  // mint a director invite directly).
+  test('member.invite_admin (platform_admin only; staff + a chapter director deny out_of_scope)', () => {
+    expectAllow(actors.platform_admin, 'member.invite_admin', inviteAdminTarget)
+    expectDeny(actors.platform_staff, 'member.invite_admin', inviteAdminTarget, 'out_of_scope')
+    expectDeny(actors.chapter_director_c1, 'member.invite_admin', inviteAdminTarget, 'out_of_scope')
+  })
+
+  // member.invite_director — the two-person director-invite flow. Chapter-scoped
+  // [chapter_director]: a director in the chapter participates (two distinct ones
+  // are required, enforced downstream), a platform_admin reaches it via the
+  // override; another chapter denies out_of_scope, and a non-director role
+  // (comms/instructor) denies role_not_permitted.
+  test('member.invite_director (director or admin-override; comms denies; other chapter out_of_scope)', () => {
+    expectAllow(actors.chapter_director_c1, 'member.invite_director', inviteDirectorC1)
+    expectAllow(actors.platform_admin, 'member.invite_director', inviteDirectorC1)
+    expectDeny(actors.chapter_director_c2, 'member.invite_director', inviteDirectorC1, 'out_of_scope')
+    expectDeny(actors.comms_associate_c1, 'member.invite_director', inviteDirectorC1, 'role_not_permitted')
+    expectDeny(actors.lead_instructor_c1, 'member.invite_director', inviteDirectorC1, 'role_not_permitted')
   })
 
   test('member.activate (Flow B step 3, couplings A+F, chapter-scoped write; chapter_director only)', () => {

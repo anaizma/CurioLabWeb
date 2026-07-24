@@ -285,6 +285,34 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director', 'comms_associate'],
     writes: true,
   },
+  // ---- privileged invite kinds (admin/director backend P2 §1) --------------
+  // Per-kind issuing authority for the two privileged kinds, layered ON TOP of
+  // the base member.invite (which stays guardian/mentor/staff, director+comms).
+  //
+  // member.invite_admin: scope 'platform', roles [] — reachable ONLY through the
+  // platform override, and writes:true, so a `platform_admin` satisfies it and a
+  // `platform_staff` (read-only override) does NOT. This is the platform_admin's
+  // UNILATERAL authority to mint a privileged invite: InviteService authorizes it
+  // for `kind = 'admin'` (admin invites are platform_admin-only) AND for the
+  // direct `kind = 'director'` path (a platform_admin acting alone may mint a
+  // director invite; a lone chapter_director cannot — they deny out_of_scope here
+  // and must use the two-person flow). Mirrors impersonation.start / chapter.manage.
+  'member.invite_admin': {
+    scope: 'platform',
+    roles: [],
+    writes: true,
+  },
+  // member.invite_director: scope 'chapter', roles [chapter_director] — the
+  // authority to PARTICIPATE in the two-person director-invite flow (initiate a
+  // pending request, and approve one). Two DISTINCT chapter_directors are required
+  // to mint a director invite (the distinct-approver rule is enforced by the
+  // service + the director_invite_request DB CHECK, not by `can`); a platform_admin
+  // reaches it via the override. writes:true, so platform_staff does not.
+  'member.invite_director': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
   // membership activation (Flow B step 3; 04-state-machines account/membership
   // `pending -> active`, actor chapter_director; couplings A + F). The Chapter
   // Director activates a pending membership: the membership and its account move

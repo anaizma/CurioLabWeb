@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { beforeAll, afterAll, describe, expect, test } from 'vitest'
-import { authorize, hashToken, withRequest } from '@curiolab/runtime'
+import { authorize, generateSessionToken, hashToken, withRequest } from '@curiolab/runtime'
 import { EnrollmentService, InMemoryStorageAdapter, InviteService } from '@curiolab/app'
 import { startHarness, type Harness } from './helpers/pg.js'
 import {
@@ -60,17 +60,19 @@ async function seedingEnrollment() {
   return { ...base, applicationId, guardianEmail, enrollmentRecordId, ctx }
 }
 
-/** Issue a student invite over a seeding enrollment; return the opaque token. */
+// A student invite is not issuable through the ops endpoint (P2 §1); seed one
+// directly over a seeding enrollment (synthetic) and return the opaque token.
 async function issueStudentInvite(chapter: string, enrollmentRecordId: string, ctx: ReturnType<typeof directorCtx>) {
-  let token!: string
-  await withRequest(async () => {
-    token = (
-      await new InviteService({ sql: h.sql, authorize }).issueInvite(
-        { kind: 'student', chapterId: chapter, enrollmentRecordId },
-        ctx,
-      )
-    ).token
-  })
+  const token = generateSessionToken()
+  await h.sql`
+    insert into invite (
+      token_hash, kind, enrollment_record_id, bound_chapter_id, issued_by,
+      expires_at, status, delivery_status
+    ) values (
+      ${hashToken(token)}, 'student', ${enrollmentRecordId}, ${chapter}, ${ctx.account.id},
+      now() + interval '7 days', 'issued', 'sent'
+    )
+  `
   return token
 }
 

@@ -378,6 +378,17 @@ export const enrollmentInC1: Resource = { id: 'enrollment-1', chapter_id: C1 }
 // is the chapter the invite is issued into; no subject snapshot.
 export const inviteInC1: Resource = { chapter_id: C1 }
 
+// member.invite_admin (P2 §1): platform-scoped, platform_admin only. The resource
+// carries the chapter the (admin/director) invite is issued into, but the platform
+// override ignores it; a chapter actor (director/staff) denies out_of_scope.
+export const inviteAdminTarget: Resource = { chapter_id: C1 }
+
+// member.invite_director (P2 §1): chapter-scoped [chapter_director], the two-person
+// director-invite flow. The resource is the chapter; a director in it (or a
+// platform_admin via override) participates, another chapter denies out_of_scope,
+// and a non-director role (comms/instructor) denies role_not_permitted.
+export const inviteDirectorC1: Resource = { chapter_id: C1 }
+
 // membership activation (member.activate; Flow B step 3, couplings A + F) —
 // chapter-scoped ops write, Chapter Director. The resource is the membership
 // being activated, scoped to its chapter; no subject consent snapshot (the

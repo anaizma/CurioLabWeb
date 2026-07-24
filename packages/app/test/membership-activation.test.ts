@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { Forbidden, authorize, withRequest } from '@curiolab/runtime'
+import { Forbidden, authorize, generateSessionToken, hashToken, withRequest } from '@curiolab/runtime'
 import { startHarness, type Harness } from './helpers/pg.js'
 import { makeAdult, makeChapter, makeMinor } from './helpers/fixtures.js'
 import { baseCtx, mem } from './helpers/ctx.js'
@@ -91,10 +91,18 @@ async function seededPendingStudent() {
   // accept-student: the account is created (DOB copied, provenance
   // enrollment_record) and the two form-sourced consents are written.
   const invites = new InviteService({ sql: h.sql, authorize })
-  let token!: string
-  await withRequest(async () => {
-    token = (await invites.issueInvite({ kind: 'student', chapterId: chapter, enrollmentRecordId }, ctx)).token
-  })
+  // A student invite is not issuable through the ops endpoint (P2 §1); seed one
+  // directly (synthetic) so acceptInvite can create the student account.
+  const token = generateSessionToken()
+  await h.sql`
+    insert into invite (
+      token_hash, kind, enrollment_record_id, bound_chapter_id, issued_by,
+      expires_at, status, delivery_status
+    ) values (
+      ${hashToken(token)}, 'student', ${enrollmentRecordId}, ${chapter}, ${director},
+      now() + interval '7 days', 'issued', 'sent'
+    )
+  `
   const username = `curio-${randomUUID().slice(0, 8)}`
   const { accountId } = await invites.acceptInvite(token, {
     username,

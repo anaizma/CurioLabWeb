@@ -17,14 +17,16 @@
 
 import {
   InviteService,
+  type AcceptExpectedBinding,
   type AcceptInviteResult,
   type EmailCredentials,
+  type InviteKind,
   type UsernameCredentials,
   type ValidateInviteResult,
 } from '@curiolab/app'
 import { authorize } from '@curiolab/runtime'
 import { runPublic } from '../run.js'
-import { reqStr } from '../respond.js'
+import { optStr, reqStr } from '../respond.js'
 import type { ControllerResult, PublicInputBase } from '../types.js'
 
 /** The InviteService needs an `authorize` dep for its ops methods; the inert
@@ -56,6 +58,11 @@ export interface AcceptInviteInput extends PublicInputBase {
     legalName?: unknown
     displayName?: unknown
     dateOfBirth?: unknown
+    // §4 redemption binding (optional): the acceptance context the accept page
+    // derived from the prior validateInvite. When present, each must match the
+    // invite's bound value or the accept is refused with opaque invalid_token.
+    kind?: unknown
+    chapter?: unknown
   }
 }
 
@@ -70,7 +77,14 @@ export function acceptInvite(input: AcceptInviteInput): Promise<ControllerResult
       displayName: reqStr(input.body?.displayName, 'displayName'),
       dateOfBirth: reqStr(input.body?.dateOfBirth, 'dateOfBirth'),
     }
-    const result = await inviteService(input.sql).acceptInvite(token, credentials)
+    // The email binding is enforced unconditionally from the credential; kind and
+    // chapter bind only when the acceptance context supplies them.
+    const expected: AcceptExpectedBinding = {
+      email: credentials.email,
+      kind: (optStr(input.body?.kind) as InviteKind | null) ?? null,
+      chapter: optStr(input.body?.chapter),
+    }
+    const result = await inviteService(input.sql).acceptInvite(token, credentials, expected)
     return { status: 201, body: result }
   })
 }
@@ -82,6 +96,8 @@ export interface AcceptStudentInput extends PublicInputBase {
     password?: unknown
     legalName?: unknown
     displayName?: unknown
+    // §4 redemption binding (optional): the chapter the student invite is bound to.
+    chapter?: unknown
   }
 }
 
@@ -95,7 +111,8 @@ export function acceptStudent(input: AcceptStudentInput): Promise<ControllerResu
       legalName: reqStr(input.body?.legalName, 'legalName'),
       displayName: reqStr(input.body?.displayName, 'displayName'),
     }
-    const result = await inviteService(input.sql).acceptInvite(token, credentials)
+    const expected: AcceptExpectedBinding = { kind: 'student', chapter: optStr(input.body?.chapter) }
+    const result = await inviteService(input.sql).acceptInvite(token, credentials, expected)
     return { status: 201, body: result }
   })
 }

@@ -337,8 +337,21 @@ export const ROUTE_MANIFEST: RouteManifest = [
   // ---- Operations back office (05 §Operations back office) ----
   { method: 'PATCH', path: '/api/ops/applications/[id]', capability: 'application.transition' },
   { method: 'POST', path: '/api/ops/enrollments', capability: 'enrollment.create' },
-  { method: 'POST', path: '/api/ops/invites', capability: 'member.invite' },
-  { method: 'POST', path: '/api/ops/invites/[id]/resend', capability: 'member.invite' },
+  // Per-kind issuing authority (P2 §1): the handler authorizes member.invite for
+  // guardian/mentor/staff, and member.invite_admin for admin + a direct director
+  // mint (platform_admin only). A genuine split of the capability, so the entry
+  // documents both branches (like the moderate-vs-safety hide).
+  { method: 'POST', path: '/api/ops/invites', capability: ['member.invite', 'member.invite_admin'] },
+  { method: 'POST', path: '/api/ops/invites/[id]/resend', capability: ['member.invite', 'member.invite_admin'] },
+  // The two-person director-invite flow (P2 §1): initiate a pending request, then
+  // a second, distinct director approves it and the token is minted. Both gate
+  // through member.invite_director (chapter_director; platform_admin via override).
+  { method: 'POST', path: '/api/ops/invites/director-requests', capability: 'member.invite_director' },
+  {
+    method: 'POST',
+    path: '/api/ops/invites/director-requests/[id]/approve',
+    capability: 'member.invite_director',
+  },
   { method: 'POST', path: '/api/ops/guardianships/[id]/verify', capability: 'guardianship.verify' },
   { method: 'POST', path: '/api/ops/guardianships/[id]/revoke', capability: 'guardianship.revoke' },
   {

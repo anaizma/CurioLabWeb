@@ -86,7 +86,17 @@ export const dobProvenanceEnum = pgEnum('dob_provenance', [
   'self_reported',
   'staff_entered',
 ])
-export const inviteKindEnum = pgEnum('invite_kind', ['guardian', 'student', 'mentor', 'staff'])
+export const inviteKindEnum = pgEnum('invite_kind', [
+  'guardian',
+  'student',
+  'mentor',
+  'staff',
+  // P2 (admin/director backend §1): the two privileged origination kinds. A
+  // `director` invite is minted only by a two-person director approval (or a
+  // platform_admin acting alone); an `admin` invite only by a platform_admin.
+  'director',
+  'admin',
+])
 export const inviteStatusEnum = pgEnum('invite_status', [
   'issued',
   'accepted',

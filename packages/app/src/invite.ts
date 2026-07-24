@@ -28,27 +28,38 @@ import {
   hashToken,
   type AuthorizeDeps,
 } from '@curiolab/runtime'
-import { type AppConfig, defaultConfig } from './config.js'
+import { type AppConfig, type InviteKindTtl, defaultConfig } from './config.js'
 import {
+  DirectorInviteRequestNotFoundError,
+  DirectorInviteRequestNotPendingError,
+  DirectorInviteSameApproverError,
   GuardianInviteEmailMismatchError,
   InvalidInviteError,
   InviteCredentialMismatchError,
+  InviteKindNotIssuableError,
   InviteNotFoundError,
+  InviteRateLimitError,
 } from './errors.js'
 
-export type InviteKind = 'guardian' | 'student' | 'mentor' | 'staff'
+export type InviteKind = 'guardian' | 'student' | 'mentor' | 'staff' | 'director' | 'admin'
+
+/** The capabilities the invite issue/resend paths gate through (P2 §1). */
+export type InviteCapability = 'member.invite' | 'member.invite_admin' | 'member.invite_director'
 
 /**
- * The injected `authorize` dependency, narrowed to this service's one
- * capability (structurally the runtime `authorize` wrapper; taken by injection
- * so the deny/backstop paths are testable without HTTP).
+ * The injected `authorize` dependency, narrowed to this service's capabilities
+ * (structurally the runtime `authorize` wrapper; taken by injection so the
+ * deny/backstop paths are testable without HTTP).
  */
 export type InviteAuthorizeFn = <T = void>(
   ctx: AuthContext,
-  capability: 'member.invite',
+  capability: InviteCapability,
   resource: Resource,
   deps: AuthorizeDeps<T>,
 ) => Promise<T | undefined>
+
+/** Kinds a platform_admin alone may mint directly (admin, and a director invite). */
+const PLATFORM_ADMIN_ONLY_KINDS: ReadonlySet<InviteKind> = new Set(['admin', 'director'])
 
 export interface InviteServiceDeps {
   sql: Sql
@@ -74,6 +85,33 @@ export interface IssueInviteResult {
   /** The opaque token handed to the caller (only its hash is stored). */
   token: string
   expiresAt: Date
+}
+
+/** Initiate a two-person director invite (§1). Returns a pending request — no token. */
+export interface InitiateDirectorInviteInput {
+  chapterId: string
+  targetEmail: string
+}
+export interface InitiateDirectorInviteResult {
+  requestId: string
+  /** Decision-time expiry of the pending request (adult 72h). */
+  expiresAt: Date
+}
+/** Approve a pending director invite (§1). Mints the token only on a distinct approval. */
+export interface ApproveDirectorInviteResult extends IssueInviteResult {
+  requestId: string
+}
+
+/**
+ * The acceptance-context binding checked at REDEMPTION (§4 token hardening). When
+ * present, each field must equal the invite's bound value, else the accept is
+ * refused with one opaque invalid_token. The accept page derives these from the
+ * prior validateInvite; the token itself is opaque random and carries no PII.
+ */
+export interface AcceptExpectedBinding {
+  email?: string | null
+  kind?: InviteKind | null
+  chapter?: string | null
 }
 
 /** The public validate result (GET /invites/:token). Uniform shape always. */
@@ -136,35 +174,48 @@ export class InviteService {
     this.config = { ...defaultConfig, ...deps.config }
   }
 
-  // ---- issue (POST /ops/invites, member.invite) ----------------------------
+  // ---- issue (POST /ops/invites) -------------------------------------------
   /**
    * Issue one invite: a fresh CSPRNG token (returned opaque; only its hash is
-   * stored), `status = 'issued'`, `expires_at = now + 14 days` (config). A
-   * guardian invite must bind an enrollment whose application guardian_email
+   * stored), `status = 'issued'`, per-kind `expires_at` (§4: adult 72h, guardian
+   * 7d), bound to `{ target_email, kind, chapter }` for redemption. The gating
+   * capability is chosen per kind (§1):
+   *   - `student` is NOT issuable here (originates from a consented guardian via
+   *     accept-student) — refused before any authorization or IO.
+   *   - `admin`, and a DIRECT `director` mint, require `member.invite_admin`
+   *     (platform_admin only; a lone chapter_director denies out_of_scope and must
+   *     use the two-person flow).
+   *   - `guardian` / `mentor` / `staff` use the base `member.invite`.
+   * A guardian invite must bind an enrollment whose application guardian_email
    * equals `targetEmail` — validated here AND enforced by the DB trigger floor.
-   * Email delivery is deferred: the returned token is the mailer's seam.
+   * Issuance is rate-limited per issuer (§4). Email delivery is deferred: the
+   * returned token is the mailer's seam.
    */
   async issueInvite(input: IssueInviteInput, ctx: AuthContext): Promise<IssueInviteResult> {
+    if (input.kind === 'student') {
+      throw new InviteKindNotIssuableError('student')
+    }
     const resource: Resource = { chapter_id: input.chapterId }
-    await this.authorize(ctx, 'member.invite', resource, { sql: this.sql })
+    await this.authorize(ctx, this.issueCapabilityFor(input.kind), resource, { sql: this.sql })
 
     if (input.kind === 'guardian') {
       await this.assertGuardianEmailMatches(input.enrollmentRecordId ?? null, input.targetEmail ?? null)
     }
+    await this.assertUnderRateLimit(ctx.account.id)
 
     const token = generateSessionToken()
     const tokenHash = hashToken(token)
-    const expiresAt = new Date(Date.now() + this.config.inviteTtlMs)
+    const expiresAt = new Date(Date.now() + this.ttlFor(input.kind))
 
     const inviteId = await this.sql.begin(async (tx) => {
       assertAuthorized() // runtime backstop: no mutation without a recorded decision
       const [row] = await tx`
         insert into invite (
           token_hash, kind, target_email, intended_account_id, enrollment_record_id,
-          issued_by, expires_at, status, delivery_status
+          bound_chapter_id, issued_by, expires_at, status, delivery_status
         ) values (
           ${tokenHash}, ${input.kind}, ${input.targetEmail ?? null}, ${input.intendedAccountId ?? null},
-          ${input.enrollmentRecordId ?? null}, ${ctx.account.id}, ${expiresAt}, 'issued',
+          ${input.enrollmentRecordId ?? null}, ${input.chapterId}, ${ctx.account.id}, ${expiresAt}, 'issued',
           ${this.config.inviteInitialDeliveryStatus}
         ) returning id
       `
@@ -172,6 +223,99 @@ export class InviteService {
     })
 
     return { inviteId, token, expiresAt }
+  }
+
+  // ---- two-person director invite (POST /ops/invites/director-requests) -----
+  /**
+   * Initiate a director-invite request (§1). A chapter_director (or a
+   * platform_admin via the override) opens a PENDING request; NO token is minted.
+   * A second, DISTINCT director must approve it before the director invite exists.
+   * Gated by `member.invite_director` on the chapter.
+   */
+  async initiateDirectorInvite(
+    input: InitiateDirectorInviteInput,
+    ctx: AuthContext,
+  ): Promise<InitiateDirectorInviteResult> {
+    const resource: Resource = { chapter_id: input.chapterId }
+    await this.authorize(ctx, 'member.invite_director', resource, { sql: this.sql })
+
+    const expiresAt = new Date(Date.now() + this.ttlFor('director'))
+    const requestId = await this.sql.begin(async (tx) => {
+      assertAuthorized()
+      const [row] = await tx`
+        insert into director_invite_request (
+          chapter_id, target_email, initiated_by, status, expires_at
+        ) values (
+          ${input.chapterId}, ${input.targetEmail}, ${ctx.account.id}, 'pending', ${expiresAt}
+        ) returning id
+      `
+      return row!.id as string
+    })
+    return { requestId, expiresAt }
+  }
+
+  /**
+   * Approve a pending director-invite request (§1). The approver MUST be a
+   * DISTINCT director from the initiator (the two-person rule; the DB CHECK is the
+   * floor). On approval the director invite is minted (kind `director`, bound to
+   * `{ target_email, chapter }`, adult 72h expiry) and the request is stamped
+   * `approved` with the approver + timestamp + minted invite_id, all in one
+   * transaction. Gated by `member.invite_director` on the request's chapter, and
+   * rate-limited per approver.
+   */
+  async approveDirectorInvite(
+    requestId: string,
+    ctx: AuthContext,
+  ): Promise<ApproveDirectorInviteResult> {
+    const [req] = await this.sql`
+      select chapter_id, target_email, initiated_by, status, (expires_at > now()) as not_expired
+      from director_invite_request where id = ${requestId}
+    `
+    if (req === undefined) throw new DirectorInviteRequestNotFoundError(requestId)
+
+    const resource: Resource = { chapter_id: req.chapter_id as string }
+    await this.authorize(ctx, 'member.invite_director', resource, { sql: this.sql })
+
+    if (req.status !== 'pending' || req.not_expired !== true) {
+      throw new DirectorInviteRequestNotPendingError(requestId)
+    }
+    if ((req.initiated_by as string) === ctx.account.id) {
+      throw new DirectorInviteSameApproverError(requestId)
+    }
+    await this.assertUnderRateLimit(ctx.account.id)
+
+    const chapterId = req.chapter_id as string
+    const targetEmail = req.target_email as string
+    const token = generateSessionToken()
+    const tokenHash = hashToken(token)
+    const expiresAt = new Date(Date.now() + this.ttlFor('director'))
+
+    const inviteId = await this.sql.begin(async (tx) => {
+      assertAuthorized()
+      // Claim the request atomically: only a still-pending, distinct-approver row
+      // flips (the DB CHECK guarantees approved_by <> initiated_by).
+      const claimed = await tx`
+        update director_invite_request
+           set status = 'approved', approved_by = ${ctx.account.id}, approved_at = now()
+         where id = ${requestId} and status = 'pending'
+        returning id
+      `
+      if (claimed.length === 0) throw new DirectorInviteRequestNotPendingError(requestId)
+      const [inv] = await tx`
+        insert into invite (
+          token_hash, kind, target_email, bound_chapter_id, issued_by,
+          expires_at, status, delivery_status
+        ) values (
+          ${tokenHash}, 'director', ${targetEmail}, ${chapterId}, ${ctx.account.id},
+          ${expiresAt}, 'issued', ${this.config.inviteInitialDeliveryStatus}
+        ) returning id
+      `
+      const newInviteId = inv!.id as string
+      await tx`update director_invite_request set invite_id = ${newInviteId} where id = ${requestId}`
+      return newInviteId
+    })
+
+    return { requestId, inviteId, token, expiresAt }
   }
 
   // ---- resend (POST /ops/invites/:id/resend, member.invite) ----------------
@@ -186,19 +330,25 @@ export class InviteService {
   async resendInvite(inviteId: string, ctx: AuthContext): Promise<IssueInviteResult> {
     const [existing] = await this.sql`
       select i.kind, i.target_email, i.intended_account_id, i.enrollment_record_id, i.status,
-             e.chapter_id as chapter_id
+             coalesce(e.chapter_id, i.bound_chapter_id) as chapter_id
       from invite i
       left join enrollment_record e on e.id = i.enrollment_record_id
       where i.id = ${inviteId}
     `
     if (existing === undefined) throw new InviteNotFoundError(inviteId)
 
-    const resource: Resource = { chapter_id: (existing.chapter_id as string | null) ?? null }
-    await this.authorize(ctx, 'member.invite', resource, { sql: this.sql })
+    const kind = existing.kind as InviteKind
+    const chapterId = (existing.chapter_id as string | null) ?? null
+    const resource: Resource = { chapter_id: chapterId }
+    // Per-kind authority (§1): a privileged invite (admin/director) may only be
+    // resent by a platform_admin (member.invite_admin); guardian/mentor/staff by
+    // the base member.invite. Keeps a director from resending an admin invite.
+    await this.authorize(ctx, this.issueCapabilityFor(kind), resource, { sql: this.sql })
+    await this.assertUnderRateLimit(ctx.account.id)
 
     const token = generateSessionToken()
     const tokenHash = hashToken(token)
-    const expiresAt = new Date(Date.now() + this.config.inviteTtlMs)
+    const expiresAt = new Date(Date.now() + this.ttlFor(kind))
 
     const newId = await this.sql.begin(async (tx) => {
       assertAuthorized()
@@ -210,11 +360,11 @@ export class InviteService {
       const [row] = await tx`
         insert into invite (
           token_hash, kind, target_email, intended_account_id, enrollment_record_id,
-          issued_by, expires_at, status, delivery_status
+          bound_chapter_id, issued_by, expires_at, status, delivery_status
         ) values (
           ${tokenHash}, ${existing.kind}, ${existing.target_email ?? null},
           ${existing.intended_account_id ?? null}, ${existing.enrollment_record_id ?? null},
-          ${ctx.account.id}, ${expiresAt}, 'issued', ${this.config.inviteInitialDeliveryStatus}
+          ${chapterId}, ${ctx.account.id}, ${expiresAt}, 'issued', ${this.config.inviteInitialDeliveryStatus}
         ) returning id
       `
       return row!.id as string
@@ -235,7 +385,7 @@ export class InviteService {
     const tokenHash = hashToken(token)
     const [row] = await this.sql`
       select i.token_hash, i.kind, i.status, (i.expires_at > now()) as not_expired,
-             e.chapter_id as chapter_id
+             coalesce(e.chapter_id, i.bound_chapter_id) as chapter_id
       from invite i
       left join enrollment_record e on e.id = i.enrollment_record_id
       where i.token_hash = ${tokenHash}
@@ -260,17 +410,49 @@ export class InviteService {
    * (`issued -> accepted`), so a second accept with the same token fails. An
    * invalid, expired, or revoked token is rejected with one opaque error.
    */
-  async acceptInvite(token: string, credentials: AcceptCredentials): Promise<AcceptInviteResult> {
+  async acceptInvite(
+    token: string,
+    credentials: AcceptCredentials,
+    expected?: AcceptExpectedBinding,
+  ): Promise<AcceptInviteResult> {
     const tokenHash = hashToken(token)
     const [invite] = await this.sql`
-      select id, kind, status, enrollment_record_id, (expires_at > now()) as not_expired
-      from invite where token_hash = ${tokenHash}
+      select invite.id, invite.kind, invite.status, invite.enrollment_record_id,
+             invite.target_email, (invite.expires_at > now()) as not_expired,
+             coalesce(e.chapter_id, invite.bound_chapter_id) as chapter_id
+      from invite
+      left join enrollment_record e on e.id = invite.enrollment_record_id
+      where invite.token_hash = ${tokenHash}
     `
     if (invite === undefined || invite.status !== 'issued' || invite.not_expired !== true) {
       throw new InvalidInviteError()
     }
 
     const kind = invite.kind as InviteKind
+    const boundEmail = (invite.target_email as string | null) ?? null
+    const boundChapter = (invite.chapter_id as string | null) ?? null
+
+    // §4 token hardening — bind {email, kind, chapter} at REDEMPTION. When the
+    // acceptance context supplies an expected value, it MUST equal the invite's
+    // bound value; a mismatch is refused with the SAME opaque invalid_token as a
+    // forged link (never reveals which field diverged).
+    if (expected !== undefined) {
+      const mismatch =
+        // An email binding applies only when the invite actually carries a bound
+        // email (adult/guardian kinds); a student invite has none, so a wrong
+        // credential SHAPE is caught below as a 400, not masked as invalid_token.
+        (expected.email != null && boundEmail !== null && !emailEq(expected.email, boundEmail)) ||
+        (expected.kind != null && expected.kind !== kind) ||
+        (expected.chapter != null && expected.chapter !== boundChapter)
+      if (mismatch) throw new InvalidInviteError()
+    }
+    // Independent of an explicit expected-binding, a presented credential email
+    // must match the invite's bound target_email (the email is bound to the token
+    // at issue, never chosen freely at redemption).
+    if (boundEmail !== null && isEmailCreds(credentials) && !emailEq(credentials.email, boundEmail)) {
+      throw new InvalidInviteError()
+    }
+
     const wantsEmail = kind !== 'student'
     if (wantsEmail && !isEmailCreds(credentials)) {
       throw new InviteCredentialMismatchError(kind, 'email')
@@ -439,6 +621,45 @@ export class InviteService {
       throw new GuardianInviteEmailMismatchError()
     }
   }
+
+  /**
+   * The capability that gates issuing (or resending) a given kind (§1):
+   *   - admin, and a direct director mint -> member.invite_admin (platform_admin
+   *     only; a lone chapter_director denies out_of_scope);
+   *   - guardian / mentor / staff -> member.invite (director/comms/admin).
+   * `student` never reaches here (refused before authorization).
+   */
+  private issueCapabilityFor(kind: InviteKind): InviteCapability {
+    return PLATFORM_ADMIN_ONLY_KINDS.has(kind) ? 'member.invite_admin' : 'member.invite'
+  }
+
+  /** The per-kind token lifetime in ms (§4: adult 72h, guardian/student ~7d). */
+  private ttlFor(kind: InviteKind): number {
+    return this.config.inviteTtlMsByKind[kind as InviteKindTtl] ?? this.config.inviteTtlMs
+  }
+
+  /**
+   * Per-issuer rate limit (§4): refuse if this issuer has minted at least
+   * `inviteRateLimitMax` invites within the rolling `inviteRateLimitWindowMs`
+   * window, counted at decision time over the invites it has issued (matching the
+   * lead-dedupe decision-time counting). A privileged/runaway issuer cannot spray.
+   */
+  private async assertUnderRateLimit(issuerAccountId: string): Promise<void> {
+    const windowStart = new Date(Date.now() - this.config.inviteRateLimitWindowMs)
+    const [row] = await this.sql`
+      select count(*)::int as n from invite
+      where issued_by = ${issuerAccountId} and created_at > ${windowStart}
+    `
+    if ((row?.n as number) >= this.config.inviteRateLimitMax) {
+      throw new InviteRateLimitError(issuerAccountId)
+    }
+  }
+}
+
+/** Case-insensitive email equality, mirroring the citext DB columns. */
+function emailEq(a: string | null, b: string | null): boolean {
+  if (a == null || b == null) return false
+  return a.toLowerCase() === b.toLowerCase()
 }
 
 /** Constant-time equality for two equal-length hex digest strings. */

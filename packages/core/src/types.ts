@@ -216,6 +216,16 @@ export type Capability =
   | 'lead.invite'
   | 'enrollment.create'
   | 'member.invite'
+  // P2 (admin/director backend §1): the per-kind issuing authority for the two
+  // privileged invite kinds. member.invite_admin is platform-scoped
+  // (platform_admin only) — a platform_admin's unilateral authority to mint an
+  // `admin` invite, and to mint a `director` invite directly (a chapter_director
+  // may NOT mint a director invite alone; they use the two-person flow).
+  // member.invite_director is chapter-scoped [chapter_director] — the two-person
+  // director-invite request + approve flow (a platform_admin reaches it via the
+  // override, satisfying the "admin acting alone" path there too).
+  | 'member.invite_admin'
+  | 'member.invite_director'
   | 'member.activate'
   | 'guardianship.verify'
   | 'dob.correct'

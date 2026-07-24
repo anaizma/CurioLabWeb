@@ -16,11 +16,18 @@
 
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { Forbidden, authorize, hashToken, verifyPassword, withRequest } from '@curiolab/runtime'
+import {
+  Forbidden,
+  authorize,
+  generateSessionToken,
+  hashToken,
+  verifyPassword,
+  withRequest,
+} from '@curiolab/runtime'
 import { startHarness, type Harness } from './helpers/pg.js'
 import { makeAdult, makeChapter, makeMinor } from './helpers/fixtures.js'
 import { baseCtx, mem } from './helpers/ctx.js'
-import { InviteService, INVITE_TTL_MS } from '../src/index.js'
+import { InviteService, INVITE_GUARDIAN_TTL_MS } from '../src/index.js'
 
 let h: Harness
 
@@ -134,6 +141,24 @@ function directorCtx(f: { director: string; chapter: string }) {
   return baseCtx(f.director, new Date(), [mem('chapter_director', f.chapter)])
 }
 
+// A student invite is NOT issuable through the ops issue endpoint (P2 §1: a
+// student account originates from a consented guardian via accept-student). The
+// invite itself is seeded here directly (synthetic) so the accept-student tests
+// can exercise redemption without the issuance authority path.
+async function seedStudentInvite(f: Awaited<ReturnType<typeof seedingStudentSetup>>) {
+  const token = generateSessionToken()
+  const [row] = await h.sql`
+    insert into invite (
+      token_hash, kind, enrollment_record_id, bound_chapter_id, issued_by,
+      expires_at, status, delivery_status
+    ) values (
+      ${hashToken(token)}, 'student', ${f.enrollmentRecordId}, ${f.chapter}, ${f.director},
+      now() + interval '7 days', 'issued', 'sent'
+    ) returning id
+  `
+  return { inviteId: row!.id as string, token }
+}
+
 /** Issue a guardian invite bound to the setup's enrollment, returning the token. */
 async function issueGuardian(f: Awaited<ReturnType<typeof guardianSetup>>) {
   const ctx = directorCtx(f)
@@ -180,7 +205,7 @@ async function activeMemberCount(accountId: string): Promise<number> {
 
 // ===========================================================================
 describe('issueInvite', () => {
-  test('creates an issued invite storing only the token HASH, with a 14-day expiry', async () => {
+  test('creates an issued invite storing only the token HASH, with the guardian (7-day) expiry', async () => {
     const f = await guardianSetup()
     const before = Date.now()
     const out = await issueGuardian(f)
@@ -198,9 +223,11 @@ describe('issueInvite', () => {
     expect(row!.enrollment_record_id).toBe(f.enrollmentRecordId)
     expect(row!.issued_by).toBe(f.director)
 
+    // §4: a guardian invite now carries the ~7-day family window, not the legacy 14d.
+    expect(row!.bound_chapter_id).toBe(f.chapter)
     const exp = new Date(row!.expires_at as string).getTime()
-    expect(exp).toBeGreaterThan(before + INVITE_TTL_MS - 60_000)
-    expect(exp).toBeLessThan(Date.now() + INVITE_TTL_MS + 60_000)
+    expect(exp).toBeGreaterThan(before + INVITE_GUARDIAN_TTL_MS - 60_000)
+    expect(exp).toBeLessThan(Date.now() + INVITE_GUARDIAN_TTL_MS + 60_000)
   })
 
   test('a guardian invite whose target_email differs from the bound enrollment email is rejected — service check', async () => {
@@ -340,11 +367,7 @@ describe('acceptInvite', () => {
 
   test('username accept creates a pending student account with a username and NULL email — no membership, no edge', async () => {
     const f = await seedingStudentSetup()
-    const ctx = directorCtx(f)
-    let issued!: Awaited<ReturnType<InviteService['issueInvite']>>
-    await withRequest(async () => {
-      issued = await svc().issueInvite({ kind: 'student', chapterId: f.chapter, enrollmentRecordId: f.enrollmentRecordId }, ctx)
-    })
+    const issued = await seedStudentInvite(f)
     const username = `curio-${randomUUID().slice(0, 8)}`
     const res = await svc().acceptInvite(issued.token, usernameCreds(username))
 
@@ -360,11 +383,7 @@ describe('acceptInvite', () => {
 
   test('accept-student copies the DOB from the seeding enrollment with enrollment_record provenance + dob_source_ref, NOT from caller input, and backfills student_account_id', async () => {
     const f = await seedingStudentSetup()
-    const ctx = directorCtx(f)
-    let issued!: Awaited<ReturnType<InviteService['issueInvite']>>
-    await withRequest(async () => {
-      issued = await svc().issueInvite({ kind: 'student', chapterId: f.chapter, enrollmentRecordId: f.enrollmentRecordId }, ctx)
-    })
+    const issued = await seedStudentInvite(f)
     const username = `curio-${randomUUID().slice(0, 8)}`
     // The caller supplies a DIFFERENT DOB; it must be ignored in favour of the
     // form DOB on the enrollment record.
@@ -404,11 +423,7 @@ describe('acceptInvite', () => {
 
   test('accept-student creates the two form-sourced consents (enrollment, data_collection) once the account exists, and consent_current shows both active', async () => {
     const f = await seedingStudentSetup()
-    const ctx = directorCtx(f)
-    let issued!: Awaited<ReturnType<InviteService['issueInvite']>>
-    await withRequest(async () => {
-      issued = await svc().issueInvite({ kind: 'student', chapterId: f.chapter, enrollmentRecordId: f.enrollmentRecordId }, ctx)
-    })
+    const issued = await seedStudentInvite(f)
     const username = `curio-${randomUUID().slice(0, 8)}`
     const res = await svc().acceptInvite(issued.token, usernameCreds(username))
 
@@ -446,11 +461,7 @@ describe('acceptInvite', () => {
     // Doctor the signature date to BEFORE the application submission (2013-01-01):
     // the consent insert at accept-student is then rejected by the temporal trigger.
     await h.sql`update enrollment_record set form_signed_at = '2012-01-01' where id = ${f.enrollmentRecordId}`
-    const ctx = directorCtx(f)
-    let issued!: Awaited<ReturnType<InviteService['issueInvite']>>
-    await withRequest(async () => {
-      issued = await svc().issueInvite({ kind: 'student', chapterId: f.chapter, enrollmentRecordId: f.enrollmentRecordId }, ctx)
-    })
+    const issued = await seedStudentInvite(f)
     const username = `curio-${randomUUID().slice(0, 8)}`
 
     let caught: unknown

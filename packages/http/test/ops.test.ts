@@ -25,6 +25,8 @@ import {
   transitionApplication,
   createEnrollment,
   issueInvite,
+  initiateDirectorInvite,
+  approveDirectorInvite,
   resendInvite,
   verifyGuardianship,
   activateMembership,
@@ -211,6 +213,88 @@ describe('issueInvite / resendInvite', () => {
     expect(resent.body.token).not.toBe(issued.body.token)
     const [old] = await h.sql`select status from invite where id = ${issued.body.inviteId}`
     expect(old!.status).toBe('revoked')
+  })
+
+  test('student is not issuable through the ops endpoint (400)', async () => {
+    const d = await seedDirector(h.sql)
+    const res = await issueInvite({
+      sql: h.sql,
+      sessionToken: d.directorToken,
+      body: { kind: 'student', chapterId: d.chapter },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  test('a lone director cannot issue an admin invite (opaque 403)', async () => {
+    const d = await seedDirector(h.sql)
+    const res = await issueInvite({
+      sql: h.sql,
+      sessionToken: d.directorToken,
+      body: { kind: 'admin', chapterId: d.chapter, targetEmail: `a-${randomUUID().slice(0, 8)}@example.test` },
+    })
+    expect(res.status).toBe(403)
+  })
+})
+
+// ===========================================================================
+// Two-person director invite (P2 §1): initiate + approve by a SECOND, DISTINCT
+// director mints the token; the same director cannot approve their own request.
+describe('director two-person invite flow', () => {
+  /** A second chapter_director in an existing chapter, with a live session. */
+  async function secondDirector(chapter: string): Promise<{ id: string; token: string }> {
+    const [dir] = await h.sql`
+      insert into account (
+        email, legal_name, display_name, date_of_birth, dob_provenance,
+        credential_owner, status, maturation_state
+      ) values (
+        ${`director2-${randomUUID().slice(0, 8)}@example.test`}, 'Director Two', 'Director II',
+        '1980-01-01', 'staff_entered', 'self_private', 'active', 'self_managed'
+      ) returning id
+    `
+    const id = dir!.id as string
+    await h.sql`insert into membership (account_id, chapter_id, role, status) values (${id}, ${chapter}, 'chapter_director', 'active')`
+    return { id, token: await sessionFor(id) }
+  }
+
+  test('initiate returns a pending request id and NO token; a distinct director approves and mints the token', async () => {
+    const d = await seedDirector(h.sql)
+    const d2 = await secondDirector(d.chapter)
+    const targetEmail = `newdir-${randomUUID().slice(0, 8)}@example.test`
+
+    const init = await initiateDirectorInvite({
+      sql: h.sql,
+      sessionToken: d.directorToken,
+      body: { chapterId: d.chapter, targetEmail },
+    })
+    expect(init.status).toBe(201)
+    expect(init.body.requestId).toBeTruthy()
+    expect((init.body as { token?: unknown }).token).toBeUndefined()
+
+    const approve = await approveDirectorInvite({
+      sql: h.sql,
+      sessionToken: d2.token,
+      params: { id: init.body.requestId },
+    })
+    expect(approve.status).toBe(201)
+    expect(approve.body.token).toBeTruthy()
+    const [inv] = await h.sql`select kind, target_email from invite where id = ${approve.body.inviteId}`
+    expect(inv!.kind).toBe('director')
+    expect(inv!.target_email).toBe(targetEmail)
+  })
+
+  test('the same director cannot approve their own request (409)', async () => {
+    const d = await seedDirector(h.sql)
+    const init = await initiateDirectorInvite({
+      sql: h.sql,
+      sessionToken: d.directorToken,
+      body: { chapterId: d.chapter, targetEmail: `newdir-${randomUUID().slice(0, 8)}@example.test` },
+    })
+    const approve = await approveDirectorInvite({
+      sql: h.sql,
+      sessionToken: d.directorToken,
+      params: { id: init.body.requestId },
+    })
+    expect(approve.status).toBe(409)
   })
 })
 

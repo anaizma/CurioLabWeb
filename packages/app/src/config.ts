@@ -57,6 +57,38 @@ export const SIGNED_FORM_CONTENT_TYPE = 'application/pdf'
 export const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000 // 14 days
 
 /**
+ * Per-kind invite token lifetimes (admin/director backend §4 token hardening).
+ * The adult, self-managed kinds (mentor / staff / director / admin) get a SHORT
+ * 72-hour window — a privileged link should go stale fast. A guardian invite gets
+ * ~7 days, the slower family-onboarding clock. A student invite (not issuable
+ * through the ops endpoint; seeded from a consented guardian) inherits the same
+ * 7-day family window. All are evaluated at DECISION TIME against `now`, like
+ * every other token in the codebase. Values, not literals, per compliance-coppa.md
+ * Part 3 "Configuration, not code" — a policy change is a config edit.
+ */
+export const INVITE_ADULT_TTL_MS = 72 * 60 * 60 * 1000 // 72 hours
+export const INVITE_GUARDIAN_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+export type InviteKindTtl = 'guardian' | 'student' | 'mentor' | 'staff' | 'director' | 'admin'
+export const INVITE_TTL_MS_BY_KIND: Record<InviteKindTtl, number> = {
+  mentor: INVITE_ADULT_TTL_MS,
+  staff: INVITE_ADULT_TTL_MS,
+  director: INVITE_ADULT_TTL_MS,
+  admin: INVITE_ADULT_TTL_MS,
+  guardian: INVITE_GUARDIAN_TTL_MS,
+  student: INVITE_GUARDIAN_TTL_MS,
+}
+
+/**
+ * Invite issuance rate limit (admin/director backend §4). A per-ISSUER cap: an
+ * account may mint at most INVITE_RATE_LIMIT_MAX invites within a rolling
+ * INVITE_RATE_LIMIT_WINDOW_MS window (counted over the invites it has issued).
+ * A testable guard mirroring the lead dedupe window's decision-time counting,
+ * so a compromised or runaway issuer cannot spray invites. Values, not literals.
+ */
+export const INVITE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000 // 1 hour
+export const INVITE_RATE_LIMIT_MAX = 30
+
+/**
  * Password-reset token lifetime (05-api-surface POST /auth/password/reset). A
  * reset token is short-lived — long enough to reach the recipient and be used,
  * short enough that a leaked-but-unused link goes stale quickly. Validity is
@@ -198,8 +230,15 @@ export interface AppConfig {
   signedFormKeyPrefix: string
   /** Default content type for a stored signed form. */
   signedFormContentType: string
-  /** Invite token lifetime in ms (14 days), evaluated at decision time. */
+  /** Invite token lifetime in ms (14 days), evaluated at decision time. Legacy
+   * fallback for any kind absent from inviteTtlMsByKind. */
   inviteTtlMs: number
+  /** Per-kind invite token lifetimes (adult 72h, guardian/student ~7d). */
+  inviteTtlMsByKind: Record<InviteKindTtl, number>
+  /** The per-issuer invite rate-limit rolling window in ms. */
+  inviteRateLimitWindowMs: number
+  /** The max invites one issuer may mint within the window. */
+  inviteRateLimitMax: number
   /** Password-reset token lifetime in ms (1 hour), evaluated at decision time. */
   passwordResetTtlMs: number
   /** delivery_status stamped on a freshly issued invite (delivery deferred). */
@@ -224,6 +263,9 @@ export const defaultConfig: AppConfig = {
   signedFormKeyPrefix: SIGNED_FORM_KEY_PREFIX,
   signedFormContentType: SIGNED_FORM_CONTENT_TYPE,
   inviteTtlMs: INVITE_TTL_MS,
+  inviteTtlMsByKind: INVITE_TTL_MS_BY_KIND,
+  inviteRateLimitWindowMs: INVITE_RATE_LIMIT_WINDOW_MS,
+  inviteRateLimitMax: INVITE_RATE_LIMIT_MAX,
   passwordResetTtlMs: PASSWORD_RESET_TTL_MS,
   inviteInitialDeliveryStatus: INVITE_INITIAL_DELIVERY_STATUS,
   guardianRelationshipDefault: GUARDIAN_RELATIONSHIP_DEFAULT,

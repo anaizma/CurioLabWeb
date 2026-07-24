@@ -478,17 +478,45 @@ All `session`, chapter-scoped to the Chapter Director (platform_admin via overri
 
 ### `POST /api/ops/invites`
 
-- **Auth:** session — **`member.invite`** (`chapter_director` or `comms_associate`).
-- **Request body:** `kind` (required; one of `guardian`, `student`, `mentor`, `staff`); `chapterId` (required); `targetEmail` (optional); `enrollmentRecordId` (optional); `intendedAccountId` (optional).
-- **Response `201`:** `{ inviteId, token, expiresAt }` — the raw token returned once (only its hash is stored).
-- **Errors:** `400` missing/unknown `kind`; `403`.
+- **Auth:** session — **per-kind capability** (see the authority matrix below). The route manifest binds this endpoint to `['member.invite', 'member.invite_admin']`; the service picks the gating capability from `kind`.
+- **Request body:** `kind` (required; one of `guardian`, `mentor`, `staff`, `director`, `admin` — `student` is a valid kind value but is **not issuable here**); `chapterId` (required); `targetEmail` (optional; **required in practice for the adult kinds** so the redemption email binding has a value); `enrollmentRecordId` (optional; carries the chapter for guardian invites); `intendedAccountId` (optional).
+- **Response `201`:** `{ inviteId, token, expiresAt }` — the raw token returned once (only its SHA-256 hash is stored). `expiresAt` is the **per-kind TTL** (below).
+- **Errors:** `400` missing/unknown `kind`, or `InviteKindNotIssuableError` for `kind: "student"`; `403` opaque (per-kind authority not met — e.g. a lone director trying `admin` or a direct `director`); `429` `InviteRateLimitError` (per-issuer cap tripped).
+
+**Per-kind issuing authority (§1).** The base `member.invite` is `chapter_director` OR `comms_associate` (platform_admin via override). The two privileged kinds refine it:
+
+| kind | who may issue | gating capability |
+|---|---|---|
+| `guardian` / `mentor` / `staff` | chapter_director or comms_associate (platform_admin via override) | `member.invite` |
+| `admin` | **platform_admin only** | `member.invite_admin` |
+| `director` (direct) | **platform_admin only** — a lone chapter_director is refused and must use the two-person flow | `member.invite_admin` |
+| `director` (two-person) | **two DISTINCT chapter_directors** (platform_admin reaches it via override) | `member.invite_director` (see below) |
+| `student` | **not issuable here** — a student account originates from a consented guardian via `accept-student` | — |
+
+**Per-kind expiries (§4).** Adult kinds (`mentor`, `staff`, `director`, `admin`) expire in **72h**; `guardian` (and the seeded `student`) invites in **~7 days**. Evaluated at decision time against `now`.
+
+**Token hardening (§4).** The token is opaque CSPRNG output and carries **no email or name** — the email lives only on the invite row (`target_email`), and the chapter is bound on the row (`bound_chapter_id`). At redemption the accept endpoints verify the presented `{ email, kind, chapter }` match the invite's bound values and refuse (opaque `invalid_token`) on mismatch. Issuance is **rate-limited per issuer** (default 30 invites / 60 min).
+
+### `POST /api/ops/invites/director-requests` — initiate a two-person director invite (§1)
+
+- **Auth:** session — **`member.invite_director`** (`chapter_director`; platform_admin via override).
+- **Request body:** `chapterId` (required); `targetEmail` (required).
+- **Response `201`:** `{ requestId, expiresAt }` — a **pending request with NO token**. A second, distinct director must approve before the director invite exists. `expiresAt` is the adult 72h window.
+- **Errors:** `400` missing field; `403`.
+
+### `POST /api/ops/invites/director-requests/{id}/approve` — approve + mint (§1)
+
+- **Auth:** session — **`member.invite_director`**. The approver **MUST be a director DISTINCT from the initiator** (the two-person rule; the `director_invite_request` DB CHECK is the floor).
+- **Path param:** `id` (director-invite request id).
+- **Response `201`:** `{ requestId, inviteId, token, expiresAt }` — the director invite is minted (kind `director`, bound to `{ target_email, chapter }`, 72h expiry) and the request is stamped `approved` with the approver + timestamp + minted `invite_id`, all in one transaction. The raw token is returned once.
+- **Errors:** `403`; `404` `DirectorInviteRequestNotFoundError`; `409` `DirectorInviteSameApproverError` (same director) or `DirectorInviteRequestNotPendingError` (already approved / expired); `429` `InviteRateLimitError`.
 
 ### `POST /api/ops/invites/{id}/resend`
 
-- **Auth:** session — **`member.invite`**. Supersedes + reissues.
+- **Auth:** session — **per-kind capability** (manifest `['member.invite', 'member.invite_admin']`): a privileged invite (`admin`/`director`) may only be resent by a platform_admin; `guardian`/`mentor`/`staff` by the base `member.invite`. Supersedes + reissues with the per-kind TTL and the same chapter binding.
 - **Path param:** `id` (invite id).
 - **Response `201`:** `{ inviteId, token, expiresAt }`.
-- **Errors:** `403`; `404` `InviteNotFoundError`.
+- **Errors:** `403`; `404` `InviteNotFoundError`; `429` `InviteRateLimitError`.
 
 ### `POST /api/ops/guardianships/{id}/verify`
 

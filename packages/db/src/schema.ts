@@ -201,6 +201,10 @@ export const invite = pgTable('invite', {
   targetEmail: citext('target_email'),
   intendedAccountId: uuid('intended_account_id').references(() => account.id),
   enrollmentRecordId: uuid('enrollment_record_id').references(() => enrollmentRecord.id),
+  // The chapter the token is bound to at redemption (§4 token hardening). Adult
+  // invites carry no enrollment record, so the chapter is recorded directly here;
+  // acceptInvite verifies the presented {email, kind, chapter} against the row.
+  boundChapterId: uuid('bound_chapter_id').references(() => chapter.id),
   issuedBy: uuid('issued_by')
     .notNull()
     .references(() => account.id),
@@ -208,6 +212,29 @@ export const invite = pgTable('invite', {
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
   status: inviteStatusEnum('status').notNull(),
   deliveryStatus: deliveryStatusEnum('delivery_status').notNull(),
+  createdAt: createdAt(),
+})
+
+// The two-person director-invite approval record (§1). A director INITIATES a
+// pending request; a second, DISTINCT director APPROVES it, and only then is the
+// director invite minted (invite_id stamped). Both actors + both timestamps are
+// recorded; a DB CHECK enforces the distinct approver. See migration
+// 0021_invite_kinds_and_binding.sql for the authoritative DDL + guarantees.
+export const directorInviteRequest = pgTable('director_invite_request', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  chapterId: uuid('chapter_id')
+    .notNull()
+    .references(() => chapter.id),
+  targetEmail: citext('target_email').notNull(),
+  initiatedBy: uuid('initiated_by')
+    .notNull()
+    .references(() => account.id),
+  initiatedAt: timestamp('initiated_at', { withTimezone: true }).notNull().defaultNow(),
+  approvedBy: uuid('approved_by').references(() => account.id),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  inviteId: uuid('invite_id').references(() => invite.id),
+  status: text('status').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: createdAt(),
 })
 
