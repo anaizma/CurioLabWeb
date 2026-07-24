@@ -484,5 +484,26 @@ export const ROUTE_MANIFEST: RouteManifest = [
     inert: 'marketing contact form (frontend-owned); sends an email via Resend, no account-graph write, no actor — not in 05-api-surface',
     specEnumerated: false,
   },
+
+  // ---- Director invite email proxies (frontend-owned; §12 mail-the-link) ----
+  // These app/api/director/* routes are thin frontend wrappers that forward the
+  // director's session cookie to the authorized ops invite endpoints (POST
+  // /api/ops/invites{,/[id]/resend}, both gated by member.invite) and then email
+  // the returned link via Resend. They perform NO account-graph write and call NO
+  // authorize of their own — the real capability gate lives downstream in ops.
+  // Inert, like /api/contact and /api/apply. Backend-owned manifest bookkeeping
+  // for a frontend-authored route (the frontend never edits packages/).
+  {
+    method: 'POST',
+    path: '/api/director/invites',
+    inert: 'frontend Resend proxy; forwards the director session to POST /api/ops/invites (member.invite gates the write), then emails the link — no account-graph write, no actor of its own',
+    specEnumerated: false,
+  },
+  {
+    method: 'POST',
+    path: '/api/director/invites/resend',
+    inert: 'frontend Resend proxy; forwards the director session to POST /api/ops/invites/[id]/resend (member.invite gates the write), then emails the fresh link — no account-graph write, no actor of its own',
+    specEnumerated: false,
+  },
 ]
 
