@@ -112,6 +112,11 @@ export type AccessLedgerEvent =
   | 'dm.visibility_revoked'
   | 'dm.visibility_restored'
   | 'dm.thread_frozen'
+  // Mentor-student direct messaging Phase 4 (student-side safety, design C.12). A
+  // student's "something feels off" report routes to the safety officer AS a
+  // monitoring-ledger entry (never a mentor-visible signal): the mentor has no read
+  // path to the ledger or dm_report. detail carries ids only, NEVER any PII.
+  | 'dm.student_report'
 
 export interface AccessLedgerInput {
   event: AccessLedgerEvent

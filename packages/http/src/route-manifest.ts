@@ -481,6 +481,18 @@ export const ROUTE_MANIFEST: RouteManifest = [
     path: '/api/ops/dm/suspensions/[id]/acknowledge',
     capability: 'dm.acknowledge_visibility_suspension',
   },
+  // Phase 4 (participant & guardian surfaces, built DARK). The participant SEND
+  // (dm.message) — a mentor OR the student writes their authorized pair; the
+  // onboarding ACK (dm.read_own) — the student records the first-open onboarding
+  // acknowledgement; and the participant REPORT (dm.report) — a participant files a
+  // "something feels off" report that routes to the safety officer and does NOT
+  // notify the mentor. The reads (GET /api/dm/threads, GET /api/dm/threads/[threadId],
+  // GET /api/dm/onboarding, GET /api/ops/dm/reports, GET /api/guardian/children/[id]/dm,
+  // GET /api/guardian/children/[id]/dm/digest) are read-exempt from the manifest. All
+  // dark-gated behind MENTOR_DM_ENABLED.
+  { method: 'POST', path: '/api/dm/messages', capability: 'dm.message' },
+  { method: 'POST', path: '/api/dm/onboarding/ack', capability: 'dm.read_own' },
+  { method: 'POST', path: '/api/dm/threads/[threadId]/report', capability: 'dm.report' },
   // Phase 2 (structural constraints, built DARK). The pre-send contact-info check
   // (design C.4) is a session-gated PURE detector over a draft body — it writes
   // NOTHING and calls no `authorize`, so it is INERT (POST only because the draft

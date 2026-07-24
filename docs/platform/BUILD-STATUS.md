@@ -119,7 +119,9 @@ Mentor eligibility recorded as **STATE**, and the youth-facing access gate + aut
 - **Job scheduling** — the sweep/escalation/scheduled-publish/backstop/time-box job bodies exist (incl. `runTimeBoxSweep`, §7); pg-boss scheduling is a wiring step.
 - **Rate limiting** on the unauthenticated write set — an edge/middleware concern.
 
-## Mentor-student direct messaging — Phase 1 (built DARK, COUNSEL-GATED)
+## Mentor-student direct messaging — Phases 1–4, FULLY BUILT and DARK (COUNSEL-GATED)
+
+### Phase 1 — model & provisioning (built DARK, COUNSEL-GATED)
 
 The highest-risk surface (adult-to-minor messaging). Built fully against **synthetic data**, **OFF by default** behind the global flag `MENTOR_DM_ENABLED` (default `false`, `=== 'true'`), so **no real minor can be a party** — enabling requires the design-doc Part A/B board + counsel + insurance sign-off (`docs/platform/plans/mentor-student-dm-design.md`). Built exactly as Part E.1. What is done and verified this pass:
 
@@ -155,7 +157,19 @@ Built exactly as design Part E.3, all behind `MENTOR_DM_ENABLED` (default off), 
 
 **New capabilities:** `dm.suspend_guardian_visibility` + `dm.acknowledge_visibility_suspension` (both chapter-scoped, staff-only, **no student party** → exempt from the no-direct-messaging guard via the existing staff-channel rule; the guard still returns `[]` for the real REGISTRY). New mutating routes manifested (`.../read`, `.../review`, `.../suspensions`, `.../suspensions/[id]/acknowledge`); the two GET reads (queue, oversight-report) are read-exempt. Everything **dark**: with `MENTOR_DM_ENABLED=false` the oversee / suspension / send paths refuse (`DmNotAuthorizedForPairError`).
 
-**Deferred to Phase 4:** the participant `dm.message` (send) / `dm.read_own` (read) HTTP endpoints, first-open onboarding + the "something feels off" report, and the guardian read/export/digest surfaces. The send/read/oversight **services** exist and are tested; behavioral ranking/sampling stays deferred (scale-triggered, with the transition threshold exposed). Attachments are OUT (v1 text-only).
+### Phase 4 — participant & guardian surfaces (built DARK, this pass)
+
+Built exactly as design Part E.4, all behind `MENTOR_DM_ENABLED` (default off), synthetic data + deterministic clocks. Migration `0033_mentor_student_dm_phase4.sql` (proved RED@0032 → GREEN@0033); Drizzle mirror updated. Both new tables are **append-only** (shared `reject_append_only_mutation` trigger + SELECT/INSERT-only grants).
+
+- **Participant send (C.2):** `POST /api/dm/messages` (`dm.message`) over the existing `DmThreadService.sendMessage` — a mentor **or** the student sends within an authorized pair; enforces `canDirectMessage` + closed-hours + frozen + content-flag checks; stores the **encrypted** body; returns `{ threadId, messageId }`. A student may only send in their own thread, a mentor only in an assigned pair; everyone else 403.
+- **Participant list + read (C.2):** `GET /api/dm/threads` (own threads) + `GET /api/dm/threads/{id}` (party-gated, suspension-aware). `DmParticipantService`. **Every payload carries the permanent visibility header (`DM_VISIBILITY_HEADER_TEXT`, C.2) AND the who-can-read statement (`DM_WHO_CAN_READ_TEXT`, C.12).** A non-party → opaque 403. GET (read-exempt).
+- **First-open onboarding (C.12):** `GET /api/dm/onboarding` (content `DM_ONBOARDING` — a backend constant: who reads this, what happens when you report, that reporting does not get anyone in trouble by default — plus the acknowledged state) + `POST /api/dm/onboarding/ack` (`dm.read_own`, append-only `dm_onboarding_ack`, idempotent).
+- **"Something feels off" report (C.12):** `POST /api/dm/threads/{id}/report` (**new cap `dm.report`**, participant floor + the party check) writes an append-only `dm_report` **and** a `dm.student_report` monitoring-ledger entry. It **routes to the safety officer and does NOT notify the mentor**: nothing is written to the thread (no `dm_message`, no `dm_flag`), and the mentor has **no read path** to `dm_report` or the ledger. The officer reads reports at `GET /api/ops/dm/reports` (`dm.oversee`); a mentor there → opaque 403.
+- **Guardian read + digest (C.10):** `GET /api/guardian/children/{id}/dm` (own child; decrypted; **suspension-aware** — an active suspension excludes the guardian) + `GET /api/guardian/children/{id}/dm/digest` (`{ threadCount, messageCount, flagCount, flagsByCategory, since, generatedAt }` for that child only). `DmGuardianDmService`. Another child → opaque 403. The email is frontend-owned (Resend); this exposes the data. Full-thread **export** already exists (`GET /api/dm/threads/{id}/export`, Phase 2).
+
+**New capability:** `dm.report` (chapter-scoped write, closed `{student} ∪ teaching` floor, `pairGated` — a student IS a party, so it rides the fully-gated-pair exemption in the no-direct-messaging guard; the guard still returns `[]` for the real REGISTRY). **New ledger event:** `dm.student_report`. **New manifested routes:** `POST /api/dm/messages` (`dm.message`), `POST /api/dm/onboarding/ack` (`dm.read_own`), `POST /api/dm/threads/[threadId]/report` (`dm.report`); the six GET reads are read-exempt. Everything **dark**: with `MENTOR_DM_ENABLED=false` every Phase-4 route refuses (`DmNotAuthorizedForPairError` → 409).
+
+**With Phase 4 the DM feature is FULLY BUILT and DARK** (`MENTOR_DM_ENABLED=false`). Enabling still requires the design-doc **Part A** board ratification, the **Part B** counsel sign-off (the COPPA posture change + the no-DM guard amendment), abuse-and-molestation **insurance**, and every **Part D** enable-precondition satisfied in the system. Behavioral ranking/sampling stays deferred (scale-triggered). Attachments are OUT (v1 text-only).
 
 ## Open questions for you (small, non-blocking)
 

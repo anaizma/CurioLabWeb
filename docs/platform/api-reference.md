@@ -1093,9 +1093,9 @@ Provider webhooks. **No actor / no `authorize`.** Each verifies the provider sig
 
 ---
 
-## 10. Mentor-student direct messaging (Phases 1–3 — REVIEW-GATED, built DARK)
+## 10. Mentor-student direct messaging (Phases 1–4 — REVIEW-GATED, built DARK, FULLY BUILT)
 
-The highest-risk surface in the platform (adult-to-minor messaging). Built fully against **synthetic data**, **OFF by default** behind the global build flag `MENTOR_DM_ENABLED` (default `false`, `=== 'true'`) and **COUNSEL-GATED** (the design doc Part A/B legal sign-off). With the flag off, `canDirectMessage` returns false and **no DM send is accepted — no real minor can be a party**. See `docs/platform/plans/mentor-student-dm-design.md`. Phase 1 ships the **setup + provisioning** endpoints only; the participant **send/read** endpoints are Phase 4.
+The highest-risk surface in the platform (adult-to-minor messaging). Built fully against **synthetic data**, **OFF by default** behind the global build flag `MENTOR_DM_ENABLED` (default `false`, `=== 'true'`) and **COUNSEL-GATED** (the design doc Part A/B legal sign-off). With the flag off, `canDirectMessage` returns false and **no DM send is accepted — no real minor can be a party**. See `docs/platform/plans/mentor-student-dm-design.md`. All four build phases are complete: Phase 1 setup + provisioning, Phase 2 structural constraints, Phase 3 detection + oversight, and **Phase 4 the participant + guardian surfaces (send/read, onboarding, report, guardian read/digest)** — the feature is fully built and dark.
 
 The runtime pair gate is the pure predicate **`canDirectMessage(mentor, student, now)`** (`@curiolab/core`), re-evaluated at every send/read, true only when ALL hold: the student is in a pod the mentor is assigned to in the current term; a current (non-expired, non-revoked) `mentor_dm` consent grant is on file; `evaluateMentorEligibility` passes; the chapter DM switch is on; and `MENTOR_DM_ENABLED` is on.
 
@@ -1166,7 +1166,27 @@ Phase 3 adds the design C.5–C.8/C.15 detection-and-oversight layer over the Ph
 
 **Mentor-departure freeze (C.15).** `runDmFreezeOnDeparture(sql, { mentorMembershipId, handoffDecision, reason?, frozenByAccountId?, now? })` — a sweep-composable service step (no HTTP route) that writes an append-only `dm_thread_freeze` row (one per thread) for a departed mentor's threads, recording the **handoff decision** (successor mentor / paused / safety-officer conversation — a recorded field, not improvised). A frozen thread **rejects new sends** (`DmThreadFrozenError` → `409`, even if the pair is later re-enabled) but **still reads** for the authorized parties and is **never deleted**. `canDirectMessage` already goes false on the mentor's revoke; the freeze adds the preserve semantics on top.
 
-> **Phase 4 (not built):** the participant `dm.message` (send) / `dm.read_own` (read) HTTP endpoints, the first-open onboarding + "something feels off" report, and the guardian read/export/digest surfaces. The send/read/oversight **services** exist and are tested; the participant HTTP send/read surface is deferred.
+### Phase 4 — participant & guardian surfaces (built DARK)
+
+Phase 4 adds the design C.2/C.10/C.12 participant + guardian HTTP surfaces over the Phase 1–3 store (migration `0033` adds two append-only tables: `dm_onboarding_ack`, `dm_report`). Everything remains dark behind `MENTOR_DM_ENABLED` — **every** route below refuses (`DmNotAuthorizedForPairError` → `409`) with the flag off. New capability: `dm.report` (participant floor, `pairGated`). New ledger event: `dm.student_report`.
+
+**Participant send (C.2).** `POST /api/dm/messages` (`dm.message`) — a mentor **or** the student sends within an **authorized pair**. Body `{ mentorMembershipId, studentAccountId, chapterId, body }`. The service enforces `canDirectMessage` (assignment + `mentor_dm` consent + eligibility + chapter switch + global flag) plus the Phase-2 closed-hours + frozen + content-flag checks, stores the **encrypted** body, and returns `{ threadId, messageId }` (`201`). A student may only send in their own thread; a mentor only in an assigned pair; everyone else `403`.
+
+**Participant list + read (C.2).** Both carry the permanent **visibility header** and the plain **who-can-read** statement (`DM_WHO_CAN_READ_TEXT`).
+- `GET /api/dm/threads` (participant, GET read-exempt) — the caller's **own** threads (a student sees their thread(s); a mentor sees the pairs they are assigned). Returns `{ items: [{ threadId, chapterId, mentorMembershipId, studentAccountId, visibilityHeader, whoCanRead, lastMessageAt, messageCount }] }`.
+- `GET /api/dm/threads/{threadId}` (party-gated, GET read-exempt) — one thread with its **decrypted** messages, gated by the suspension-aware four-party party check (a suspended guardian is excluded; participants + safety officer + non-suspended guardian admitted). Returns `{ threadId, chapterId, mentorMembershipId, studentAccountId, visibilityHeader, whoCanRead, messages: [{ id, seq, senderAccountId, body, sentAt }] }`. A non-party gets an opaque `403`.
+
+**First-open onboarding (C.12).** Shown the first time a student opens any thread: who reads this, what happens when you report, and that reporting does not get anyone in trouble by default (a backend constant `DM_ONBOARDING`).
+- `GET /api/dm/onboarding` (participant, GET read-exempt) — `{ content: { title, whoReads, reporting, noTrouble }, acknowledged, acknowledgedAt }`.
+- `POST /api/dm/onboarding/ack` (`dm.read_own`) — records an append-only `dm_onboarding_ack` (idempotent; the earliest ack is the record). Returns `{ acknowledged: true, acknowledgedAt }` (`201`).
+
+**"Something feels off" report (C.12).** `POST /api/dm/threads/{threadId}/report` (`dm.report`) — a participant files a low-key report. Body `{ note? }`. Gated by the party check on top of `dm.report`; a non-party gets an opaque `403`. Writes an append-only `dm_report` **and** a `dm.student_report` monitoring-ledger entry. It **routes to the safety officer and does NOT notify the mentor** — nothing is written to the thread (no `dm_message`, no `dm_flag`), and the mentor has **no read path** to `dm_report` or the ledger. Returns `{ reportId, threadId }` (`201`). The officer reads reports at `GET /api/ops/dm/reports?chapterId=…` (`dm.oversee`, GET read-exempt) → `{ items: [{ reportId, threadId, reporterAccountId, note, createdAt }] }`; a non-officer / the mentor gets an opaque `403`.
+
+**Guardian read + digest (C.10).** Guardian-scoped to their **own verified child**; another child / a lapsed edge is an opaque `403`; suspension-aware.
+- `GET /api/guardian/children/{id}/dm` (GET read-exempt) — the child's threads, **decrypted**, each with the visibility header + who-can-read; an **active** visibility suspension excludes the guardian from a thread. Returns `{ items: [ { threadId, chapterId, mentorMembershipId, studentAccountId, visibilityHeader, whoCanRead, messages } ] }`. (Full-thread **export** already exists at `GET /api/dm/threads/{threadId}/export`, reachable by the student or a verified guardian.)
+- `GET /api/guardian/children/{id}/dm/digest` (GET read-exempt) — the weekly digest **data**: `{ childAccountId, generatedAt, since, threadCount, messageCount, flagCount, flagsByCategory }`, aggregated over **only** that child's visible threads since the last digest (~7 days). The email itself is frontend-owned (Resend); this exposes the data.
+
+**The DM feature is now FULLY BUILT and DARK** (`MENTOR_DM_ENABLED=false`), pending the board (Part A), counsel (Part B), and insurer sign-off and every Part D enable-precondition before any enable.
 
 ---
 

@@ -884,6 +884,23 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     writes: false,
     pairGated: true,
   },
+  // dm.report: the PARTICIPANT "something feels off" report (design C.12; Phase 4).
+  // A student (or a participant) files a low-stakes report that routes to the safety
+  // officer and does NOT notify the mentor. Same chapter scope + closed participant
+  // floor {student} ∪ TEACHING + `pairGated` shape as dm.message (a student IS a
+  // party, so it needs the fully-gated-pair exemption in the no-DM guard); writes:true
+  // — a read-only platform override cannot file a report. `can` floors "a participant
+  // role in the chapter"; the SPECIFIC thread-party check (the reporter is a party to
+  // the thread) and the safety-officer routing with NO mentor-visible signal are
+  // DmParticipantService concerns on top. Its runtime is additionally dark-gated
+  // (MENTOR_DM_ENABLED) — a report only exists over a real thread, which only exists
+  // if canDirectMessage held at send time.
+  'dm.report': {
+    scope: 'chapter',
+    roles: ['student', ...TEACHING],
+    writes: true,
+    pairGated: true,
+  },
   // dm.oversee: the safety officer's chapter-wide DM read + flag review. Chapter-scoped,
   // roles [safety_officer] (a staff-only floor with NO student party — it rides the
   // existing guardian-staff exemption in the no-DM guard). writes:true (flag review /

@@ -407,6 +407,15 @@ export type Capability =
   | 'dm.message'
   | 'dm.read_own'
   | 'dm.oversee'
+  // mentor-student DM Phase 4 (participant & guardian surfaces, design C.12; built
+  // DARK). dm.report is the PARTICIPANT "something feels off" report-affordance: a
+  // student (or a participant) files a low-stakes report that routes to the safety
+  // officer and does NOT notify the mentor. Chapter-scoped write, the closed
+  // participant floor {student} ∪ TEACHING, `pairGated` (the fully-gated
+  // supervised-pair shape the no-direct-messaging guard admits) — a student IS a
+  // party. The specific thread-party check + the safety-officer routing (no
+  // mentor-visible signal) are DmParticipantService concerns on top of this floor.
+  | 'dm.report'
   // mentor-student DM Phase 3 (detection & oversight, design C.7/C.8; built DARK).
   // dm.suspend_guardian_visibility is the safety officer's guarded, two-adult
   // suspension of a guardian's standing read access (chapter-scoped write,

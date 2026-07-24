@@ -921,6 +921,48 @@ export const dmThreadFreeze = pgTable(
   (t) => [uniqueIndex('dm_thread_freeze_thread_unique').on(t.threadId)],
 )
 
+// --- Mentor-student DM Phase 4 (participant & guardian surfaces, migration 0033; DARK) ---
+// Both are APPEND-ONLY (shared reject_append_only_mutation trigger +
+// SELECT/INSERT-only grants), like dm_thread/dm_message/dm_flag.
+
+// dm_onboarding_ack (C.12): the student's first-open onboarding acknowledgement.
+// The "acknowledged" state is COMPUTED (any row exists for the student).
+export const dmOnboardingAck = pgTable(
+  'dm_onboarding_ack',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    studentAccountId: uuid('student_account_id')
+      .notNull()
+      .references(() => account.id),
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('dm_onboarding_ack_student_idx').on(t.studentAccountId)],
+)
+
+// dm_report (C.12): the "something feels off" student report. Routed to the safety
+// officer via a monitoring-ledger entry (dm.student_report); the mentor is NEVER
+// notified and has no read path here. `note` is optional (a minor may report
+// without explaining).
+export const dmReport = pgTable(
+  'dm_report',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => dmThread.id),
+    reporterAccountId: uuid('reporter_account_id')
+      .notNull()
+      .references(() => account.id),
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('dm_report_thread_idx').on(t.threadId, t.createdAt),
+    index('dm_report_reporter_idx').on(t.reporterAccountId),
+  ],
+)
+
 // --- Audit -----------------------------------------------------------------
 
 export const auditEntry = pgTable(

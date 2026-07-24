@@ -18,15 +18,22 @@
 import {
   ConsentGrantService,
   DmEnableService,
+  DmGuardianDmService,
   DmOversightService,
+  DmParticipantService,
   DmThreadService,
   DmVisibilitySuspensionService,
   SafetyOfficerService,
+  type DmChildDigest,
   type DmDraftCheckResult,
+  type DmOnboardingView,
   type DmOversightReport,
   type DmReadingQueue,
+  type DmReportView,
   type DmSuspensionInitiateResult,
+  type DmThreadDetail,
   type DmThreadExport,
+  type DmThreadListItem,
   type GrantResult,
   type SafetyOfficerAssignResult,
 } from '@curiolab/app'
@@ -297,5 +304,185 @@ export function acknowledgeDmSuspension(
     const now = input.now ?? new Date()
     const result = await new DmVisibilitySuspensionService({ sql, authorize }).acknowledge(suspensionId, ctx, now)
     return { status: 201, body: result }
+  })
+}
+
+// ---- Phase 4: participant & guardian surfaces (design C.2, C.10, C.12) ------
+// All DARK behind MENTOR_DM_ENABLED — the services refuse with the flag off.
+//
+//   sendDmMessage      POST /api/dm/messages                       (dm.message)
+//   listDmThreads      GET  /api/dm/threads                        (participant; GET read-exempt)
+//   readDmThread       GET  /api/dm/threads/:threadId              (party-gated; GET read-exempt)
+//   getDmOnboarding    GET  /api/dm/onboarding                     (participant; GET read-exempt)
+//   ackDmOnboarding    POST /api/dm/onboarding/ack                 (dm.read_own)
+//   reportDmThread     POST /api/dm/threads/:threadId/report       (dm.report)
+//   listDmReports      GET  /api/ops/dm/reports                    (dm.oversee; GET read-exempt)
+//   readChildDm        GET  /api/guardian/children/:id/dm          (guardian-scoped; GET read-exempt)
+//   readChildDmDigest  GET  /api/guardian/children/:id/dm/digest   (guardian-scoped; GET read-exempt)
+
+export interface SendDmMessageInput extends AuthedInputBase {
+  body: { mentorMembershipId?: unknown; studentAccountId?: unknown; chapterId?: unknown; body?: unknown }
+}
+
+/**
+ * POST /api/dm/messages — a participant (a mentor OR the student) sends within an
+ * AUTHORIZED pair (design C.2; dm.message). The service resolves the pair and
+ * enforces canDirectMessage (assignment + mentor_dm consent + eligibility + chapter
+ * switch + the global flag) + the closed-hours + frozen + content-flag checks, stores
+ * the ENCRYPTED body, and returns the created message. Dark-gated.
+ */
+export function sendDmMessage(
+  input: SendDmMessageInput,
+): Promise<ControllerResult<{ threadId: string; messageId: string }>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const now = input.now ?? new Date()
+    const result = await new DmThreadService({ sql, authorize }).sendMessage(
+      {
+        mentorMembershipId: reqStr(input.body?.mentorMembershipId, 'mentorMembershipId'),
+        studentAccountId: reqStr(input.body?.studentAccountId, 'studentAccountId'),
+        chapterId: reqStr(input.body?.chapterId, 'chapterId'),
+        body: reqStr(input.body?.body, 'body'),
+      },
+      ctx,
+      now,
+    )
+    return { status: 201, body: result }
+  })
+}
+
+/**
+ * GET /api/dm/threads — the caller's OWN threads (design C.2): a student sees their
+ * thread(s); a mentor sees the pairs they are assigned. Each item carries the
+ * permanent visibility header + the who-can-read statement. GET (read-exempt),
+ * dark-gated.
+ */
+export function listDmThreads(input: AuthedInputBase): Promise<ControllerResult<{ items: DmThreadListItem[] }>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const now = input.now ?? new Date()
+    const result = await new DmParticipantService({ sql, authorize }).listThreads(ctx.account.id, now)
+    return { status: 200, body: result }
+  })
+}
+
+export interface ReadDmThreadInput extends AuthedInputBase {
+  params: { threadId?: unknown }
+}
+
+/**
+ * GET /api/dm/threads/:threadId — one thread with its decrypted messages (design
+ * C.2), gated by the suspension-aware four-party party check (a suspended guardian is
+ * excluded; participants + safety officer + non-suspended guardian admitted). The
+ * payload INCLUDES the permanent visibility header + the who-can-read statement. GET
+ * (read-exempt), dark-gated.
+ */
+export function readDmThread(input: ReadDmThreadInput): Promise<ControllerResult<DmThreadDetail>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const threadId = reqStr(input.params?.threadId, 'threadId')
+    const now = input.now ?? new Date()
+    const result = await new DmParticipantService({ sql, authorize }).readThread(threadId, ctx.account.id, now)
+    return { status: 200, body: result }
+  })
+}
+
+/**
+ * GET /api/dm/onboarding — the first-open onboarding screen content + whether this
+ * student has acknowledged it (design C.12). GET (read-exempt), dark-gated.
+ */
+export function getDmOnboarding(input: AuthedInputBase): Promise<ControllerResult<DmOnboardingView>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const result = await new DmParticipantService({ sql, authorize }).getOnboarding(ctx.account.id)
+    return { status: 200, body: result }
+  })
+}
+
+/**
+ * POST /api/dm/onboarding/ack — record the student's first-open onboarding
+ * acknowledgement (design C.12; dm.read_own). Idempotent. Dark-gated.
+ */
+export function ackDmOnboarding(
+  input: AuthedInputBase,
+): Promise<ControllerResult<{ acknowledged: true; acknowledgedAt: string }>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const now = input.now ?? new Date()
+    const result = await new DmParticipantService({ sql, authorize }).acknowledgeOnboarding(ctx, now)
+    return { status: 201, body: result }
+  })
+}
+
+export interface ReportDmThreadInput extends AuthedInputBase {
+  params: { threadId?: unknown }
+  body: { note?: unknown }
+}
+
+/**
+ * POST /api/dm/threads/:threadId/report — a participant files a low-key "something
+ * feels off" report (design C.12; dm.report) that routes to the SAFETY OFFICER and
+ * does NOT notify the mentor. The service writes an append-only dm_report + a
+ * dm.student_report monitoring-ledger entry; nothing appears on the thread. Gated by
+ * the party check on top of dm.report. Dark-gated.
+ */
+export function reportDmThread(
+  input: ReportDmThreadInput,
+): Promise<ControllerResult<{ reportId: string; threadId: string }>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const threadId = reqStr(input.params?.threadId, 'threadId')
+    const now = input.now ?? new Date()
+    const result = await new DmParticipantService({ sql, authorize }).reportThread(
+      threadId,
+      ctx,
+      { note: optStr(input.body?.note) },
+      now,
+    )
+    return { status: 201, body: result }
+  })
+}
+
+/**
+ * GET /api/ops/dm/reports?chapterId=… — the safety officer's view of the student
+ * reports in their chapter (design C.12; dm.oversee). The report "routes to the safety
+ * officer's view": this is it. A non-officer / the mentor gets an opaque 403. GET
+ * (read-exempt), dark-gated.
+ */
+export function listDmReports(input: ReadDmQueueInput): Promise<ControllerResult<{ items: DmReportView[] }>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const chapterId = reqStr(optStr(input.query?.chapterId), 'chapterId')
+    const now = input.now ?? new Date()
+    const result = await new DmParticipantService({ sql, authorize }).listReports(chapterId, ctx, now)
+    return { status: 200, body: result }
+  })
+}
+
+export interface ReadChildDmInput extends AuthedInputBase {
+  params: { id?: unknown }
+}
+
+/**
+ * GET /api/guardian/children/:id/dm — a verified guardian reads their OWN child's DM
+ * threads (decrypted), UNLESS an active visibility suspension excludes them (design
+ * C.10; suspension-aware via the party check). Another child / a lapsed edge is an
+ * opaque 403. GET (read-exempt), dark-gated.
+ */
+export function readChildDm(input: ReadChildDmInput): Promise<ControllerResult<{ items: DmThreadDetail[] }>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const childId = reqStr(input.params?.id, 'id')
+    const now = input.now ?? new Date()
+    const result = await new DmGuardianDmService({ sql }).listChildThreads(ctx.account.id, childId, now)
+    return { status: 200, body: result }
+  })
+}
+
+/**
+ * GET /api/guardian/children/:id/dm/digest — the weekly digest DATA for the
+ * guardian's OWN child (design C.10): thread count, message count since the last
+ * digest, and any flags on that child's threads. The email itself is frontend-owned
+ * (Resend); this exposes the data. Another child is an opaque 403. GET (read-exempt),
+ * dark-gated.
+ */
+export function readChildDmDigest(input: ReadChildDmInput): Promise<ControllerResult<DmChildDigest>> {
+  return runAuthed(input, async (ctx, sql) => {
+    const childId = reqStr(input.params?.id, 'id')
+    const now = input.now ?? new Date()
+    const result = await new DmGuardianDmService({ sql }).childDigest(ctx.account.id, childId, now)
+    return { status: 200, body: result }
   })
 }

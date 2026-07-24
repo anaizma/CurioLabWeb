@@ -925,6 +925,19 @@ describe('mentor-student DM capabilities (Phase 1)', () => {
     expectDeny(actors.chapter_director_c2, 'dm.read_own', dmChapterC1, 'out_of_scope')
   })
 
+  test('dm.report (a participant — student OR mentor — files a "something feels off" report; a safety officer is not a participant; cross-chapter out_of_scope; read-only override barred)', () => {
+    // Phase 4 (design C.12): the participant report-affordance floor mirrors the
+    // dm.message participant shape ({student} ∪ TEACHING, pairGated). The SPECIFIC
+    // thread-party check + the safety-officer routing (no mentor signal) are
+    // DmParticipantService concerns on top of this floor.
+    expectAllow(actors.student_minor_consented, 'dm.report', dmChapterC1)
+    expectAllow(actors.junior_mentor_adult, 'dm.report', dmChapterC1)
+    expectDeny(actors.safety_officer_c1, 'dm.report', dmChapterC1, 'role_not_permitted')
+    expectDeny(actors.chapter_director_c2, 'dm.report', dmChapterC1, 'out_of_scope')
+    // writes:true, so the read-only platform_staff override does NOT reach it.
+    expectDeny(actors.platform_staff, 'dm.report', dmChapterC1, 'out_of_scope')
+  })
+
   test('dm.oversee (the safety officer reads + reviews their chapter; platform_admin via override; a mentor role_not_permitted; cross-chapter out_of_scope; read-only staff barred)', () => {
     expectAllow(actors.safety_officer_c1, 'dm.oversee', dmChapterC1)
     expectAllow(actors.platform_admin, 'dm.oversee', dmChapterC1)

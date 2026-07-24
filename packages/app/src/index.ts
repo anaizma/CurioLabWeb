@@ -666,3 +666,20 @@ export type {
   RunDmFreezeOnDepartureArgs,
   RunDmFreezeOnDepartureResult,
 } from './dm-oversight.js'
+export {
+  DmParticipantService,
+  DmGuardianDmService,
+  DM_WHO_CAN_READ_TEXT,
+  DM_ONBOARDING,
+} from './dm-participant.js'
+export type {
+  DmParticipantServiceDeps,
+  DmParticipantAuthorizeFn,
+  DmReportOptions,
+  DmThreadListItem,
+  DmThreadDetail,
+  DmOnboardingView,
+  DmReportView,
+  DmGuardianDmServiceDeps,
+  DmChildDigest,
+} from './dm-participant.js'

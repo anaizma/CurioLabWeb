@@ -136,6 +136,24 @@ describe('no-direct-messaging guard (compliance 1.8)', () => {
     expect(directMessagingCapabilities(REGISTRY)).toEqual([])
   })
 
+  // Phase 4 adds the participant REPORT cap dm.report (design C.12): a student (or
+  // a participant) files a "something feels off" report. It is the exact
+  // fully-gated supervised-pair shape (chapter scope, {student} ∪ teaching,
+  // pairGated), so it is admitted like dm.message/dm.read_own — a student is a
+  // party, but the runtime is gated by the DM feature + the thread-party check.
+  test('the Phase-4 participant report cap dm.report is EXEMPT (fully-gated pair shape)', () => {
+    expect(
+      directMessagingCapabilities({
+        'dm.report': { scope: 'chapter', roles: PAIR_PARTICIPANT_ROLES, writes: true, pairGated: true },
+      }),
+    ).toEqual([])
+  })
+
+  test('the real REGISTRY contains dm.report and still trips nothing', () => {
+    expect('dm.report' in REGISTRY).toBe(true)
+    expect(directMessagingCapabilities(REGISTRY)).toEqual([])
+  })
+
   test('a student-to-student dm cap STILL trips even if marked pairGated (no mentor party)', () => {
     expect(
       directMessagingCapabilities({ 'dm.peer': { scope: 'chapter', roles: ['student'], writes: true, pairGated: true } }),
