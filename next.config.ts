@@ -14,6 +14,13 @@ const nextConfig: NextConfig = {
     "@curiolab/app",
     "@curiolab/http",
   ],
+  // `@curiolab/runtime` (via `next build`) pulls in `@node-rs/argon2`, whose
+  // platform binary (`argon2.win32-x64-msvc.node`) webpack cannot parse — the
+  // build fails with "Module parse failed: Unexpected character" on the .node
+  // file. Marking it a server-external keeps it a runtime `require` instead of
+  // bundling it (the correct treatment for a native addon). Not listed in
+  // transpilePackages, so no conflict.
+  serverExternalPackages: ["@node-rs/argon2"],
   // Map the packages' ESM ".js" specifiers onto their ".ts" sources.
   // TypeScript's NodeNext style writes `./config.js` for a file that exists as
   // `config.ts`. Turbopack has no extensionAlias equivalent, so the dev/build
