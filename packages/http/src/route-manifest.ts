@@ -466,6 +466,17 @@ export const ROUTE_MANIFEST: RouteManifest = [
   { method: 'POST', path: '/api/ops/dm/attestations', capability: 'dm.enable' },
   { method: 'POST', path: '/api/ops/dm/enable', capability: 'dm.enable' },
   { method: 'POST', path: '/api/guardian/children/[id]/dm-consent', capability: 'consent.grant' },
+  // Phase 2 (structural constraints, built DARK). The pre-send contact-info check
+  // (design C.4) is a session-gated PURE detector over a draft body — it writes
+  // NOTHING and calls no `authorize`, so it is INERT (POST only because the draft
+  // travels in the body). The thread EXPORT is a GET (student-or-guardian scoped,
+  // dark-gated) and is read-exempt from the manifest, so it has no entry here.
+  {
+    method: 'POST',
+    path: '/api/dm/check-draft',
+    inert: 'session-gated pre-send contact-info check; a pure detector over a draft body, writes nothing, no account-graph mutation, no authorize',
+    specEnumerated: false,
+  },
   { method: 'POST', path: '/api/ops/maturations/[id]/confirm', capability: 'maturation.confirm' },
   { method: 'POST', path: '/api/ops/accounts/[id]/reissue-setup', capability: 'account.recover' },
   // §9: the logged mentor/director-assisted minor recovery (distinct from

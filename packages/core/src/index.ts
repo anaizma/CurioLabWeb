@@ -22,6 +22,8 @@ export type {
   DirectMessageStudent,
   DmGrantSnapshot,
 } from './direct-messaging.js'
+export { detectDmContentFlags, DM_CONTENT_MATCHERS } from './dm-content-flags.js'
+export type { DmContentFlag, DmContentMatcher } from './dm-content-flags.js'
 export type {
   MentorEligibilityComponent,
   MentorEligibilityComponentSnapshot,

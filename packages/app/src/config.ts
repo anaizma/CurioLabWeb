@@ -286,6 +286,30 @@ export const MENTOR_ELIGIBILITY_ENFORCED: boolean =
 export const MENTOR_DM_ENABLED: boolean = process.env.MENTOR_DM_ENABLED === 'true'
 
 /**
+ * Mentor-student DM CLOSED HOURS (design C.4; Phase 2) — the DEFAULT allowed local
+ * window for sends, `[open, close)` in the chapter's local wall-clock hour. Sends
+ * are refused outside 07:00-21:00 local ("late-night one-on-one contact has no
+ * program purpose"); a chapter may override per-chapter via `chapter.dm_open_hour`
+ * / `dm_close_hour` (migration 0031), which take precedence when set. READS are
+ * NEVER hours-gated. Values, not literals, per compliance-coppa.md Part 3
+ * "Configuration, not code" — a policy change is a config edit.
+ */
+export const DM_OPEN_HOUR_DEFAULT = 7
+export const DM_CLOSE_HOUR_DEFAULT = 21
+
+/**
+ * Mentor-student DM RETENTION carve-out (design C.11; Phase 2) — a clearly-labelled
+ * PLACEHOLDER pending counsel. DM threads/messages are EXCLUDED from deletion-request
+ * fulfillment and retained to the OUTER BOUND of Ohio's childhood-claim limitations
+ * window (counsel to confirm the exact age; working assumption ~age 30, deliberately
+ * not a round number). This constant records the working retention interval as a
+ * duration from the subject's DOB; it is disclosed at consent (design C.10) as a
+ * deliberate carve-out from the right-to-deletion policy. NOT YET legally confirmed
+ * — do not treat as final. ~30 years in ms.
+ */
+export const DM_RETENTION_MS = 30 * 365 * 24 * 60 * 60 * 1000 // ~30 years (PLACEHOLDER, pending counsel)
+
+/**
  * §5 Rule 3 — the notify-and-object window. A standing `public_publication` grant
  * is not blanket pre-approval: a nominated item publishes only if the guardian
  * does not object within N days (default 5). A value, not a literal.
@@ -437,6 +461,12 @@ export interface AppConfig {
   mentorEligibilityEnforced: boolean
   /** Part D GLOBAL flag: when true, mentor-student DM is live (default false = dark). */
   mentorDmEnabled: boolean
+  /** C.4: the DEFAULT allowed-hours window open hour (local), used when a chapter has no override. */
+  dmOpenHourDefault: number
+  /** C.4: the DEFAULT allowed-hours window close hour (local, exclusive). */
+  dmCloseHourDefault: number
+  /** C.11: the DM retention interval from DOB (PLACEHOLDER, pending counsel; ~age 30). */
+  dmRetentionMs: number
   /** §5 Rule 3: the notify-and-object hold window in ms (default 5 days). */
   publicationHoldWindowMs: number
   /** §5: the renewal clock per grant type (null = standing). */
@@ -474,6 +504,9 @@ export const defaultConfig: AppConfig = {
   consentGrantLedgerEnforced: CONSENT_GRANT_LEDGER_ENFORCED,
   mentorEligibilityEnforced: MENTOR_ELIGIBILITY_ENFORCED,
   mentorDmEnabled: MENTOR_DM_ENABLED,
+  dmOpenHourDefault: DM_OPEN_HOUR_DEFAULT,
+  dmCloseHourDefault: DM_CLOSE_HOUR_DEFAULT,
+  dmRetentionMs: DM_RETENTION_MS,
   publicationHoldWindowMs: PUBLICATION_HOLD_WINDOW_MS,
   grantRenewalMsByType: GRANT_RENEWAL_MS_BY_TYPE,
 }

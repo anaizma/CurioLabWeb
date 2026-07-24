@@ -239,18 +239,23 @@ export type {
   ReplyMessageInput,
 } from './controllers/messaging.js'
 
-// Mentor-student direct messaging (Phase 1, built DARK behind MENTOR_DM_ENABLED)
+// Mentor-student direct messaging (Phase 1 setup + Phase 2 structural constraints,
+// built DARK behind MENTOR_DM_ENABLED)
 export {
   assignSafetyOfficer,
   recordDmInsurance,
   enableChapterDm,
   captureMentorDmConsent,
+  checkDmDraft,
+  exportDmThread,
 } from './controllers/mentor-dm.js'
 export type {
   AssignSafetyOfficerInput,
   RecordDmInsuranceInput,
   EnableChapterDmInput,
   CaptureMentorDmConsentInput,
+  CheckDmDraftInput,
+  ExportDmThreadInput,
 } from './controllers/mentor-dm.js'
 
 // Guardian portal

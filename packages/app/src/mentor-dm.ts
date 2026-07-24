@@ -26,9 +26,11 @@
 import type { Sql, TransactionSql } from 'postgres'
 import {
   canDirectMessage,
+  detectDmContentFlags,
   type AuthContext,
   type DirectMessageMentor,
   type DirectMessageStudent,
+  type DmContentFlag,
   type Resource,
 } from '@curiolab/core'
 import {
@@ -43,6 +45,7 @@ import {
 import { type AppConfig, defaultConfig } from './config.js'
 import { loadMentorEligibility } from './mentor-eligibility.js'
 import {
+  DmClosedHoursError,
   DmEnablePreconditionError,
   DmNotAuthorizedForPairError,
   DmThreadNotFoundError,
@@ -50,6 +53,22 @@ import {
 } from './errors.js'
 
 type Db = Sql | TransactionSql
+
+/**
+ * The sender's LOCAL wall-clock hour (0-23) in a timezone, at `now`. Deterministic
+ * given `now` + the IANA zone — used by the closed-hours check (design C.4). Uses
+ * Intl (the platform tz database), never a process-local clock.
+ */
+function localHourInZone(now: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    hour12: false,
+    hourCycle: 'h23',
+  }).formatToParts(now)
+  const hour = parts.find((p) => p.type === 'hour')?.value ?? '0'
+  return Number.parseInt(hour, 10) % 24
+}
 
 /**
  * The permanent, identical-to-all visibility header (design C.2). Every thread
@@ -312,6 +331,30 @@ export interface DmDecryptedMessage {
   sentAt: string
 }
 
+/**
+ * The result of the PRE-SEND draft check (design C.4): the contact-info flags a
+ * draft body would raise, WITHOUT sending. The frontend renders its interstitial
+ * from `flags`; sending is a separate call (a flag is friction, not a block).
+ */
+export interface DmDraftCheckResult {
+  flags: DmContentFlag[]
+}
+
+/** The full decrypted export of a thread (design C.4): the thread + its messages in order. */
+export interface DmThreadExport {
+  /** When the export was generated (the injected `now`). */
+  generatedAt: string
+  thread: {
+    id: string
+    chapterId: string
+    mentorMembershipId: string
+    studentAccountId: string
+    visibilityHeader: string
+    createdAt: string
+  }
+  messages: DmDecryptedMessage[]
+}
+
 export class DmThreadService {
   private readonly sql: Sql
   private readonly config: AppConfig
@@ -496,6 +539,18 @@ export class DmThreadService {
     const isSender = isMentor.length > 0 || senderAccountId === args.studentAccountId
     if (!isSender) throw new Forbidden()
 
+    // Closed hours (design C.4): a SEND is refused outside the chapter's allowed
+    // LOCAL window (default 07:00-21:00, per-chapter overridable). Deterministic —
+    // computed from the chapter timezone at the injected `now`. Reads are NEVER
+    // hours-gated. Refuse BEFORE any write, so nothing is stored out of hours.
+    await this.assertWithinAllowedHours(this.sql, args.chapterId, now)
+
+    // Off-platform contact-info detection (design C.4/C.5): run the PURE detector on
+    // the PLAINTEXT (before encryption — never against ciphertext). A match records
+    // an append-only dm_flag AFTER the message is written; it does NOT block the send
+    // (friction, not a block). `detail` is the matched KIND, never the raw match.
+    const contentFlags = detectDmContentFlags(args.body)
+
     const envelope: EncryptedField = encryptField(args.body)
 
     return this.sql.begin(async (tx) => {
@@ -524,16 +579,118 @@ export class DmThreadService {
         values (${threadId}, ${senderAccountId}, ${tx.json(envelope as unknown as Parameters<typeof tx.json>[0])})
         returning id
       `
+      const messageId = m!.id as string
+      // Record the content flags (append-only dm_flag), routed to the safety officer
+      // (Phase 3 queue). The send is NOT blocked by a flag.
+      for (const flag of contentFlags) {
+        await tx`
+          insert into dm_flag (thread_id, message_id, category, detail)
+          values (${threadId}, ${messageId}, ${flag.category}, ${flag.detail})
+        `
+      }
       await writeAccessLedger(tx, {
         event: 'dm.message_sent',
         actorAccountId: senderAccountId,
         realActorAccountId: ctx.session.impersonation?.real_actor_account_id ?? null,
         subjectAccountId: args.studentAccountId,
         chapterId: args.chapterId,
-        detail: { threadId, messageId: m!.id as string },
+        detail: { threadId, messageId, flagCount: contentFlags.length },
       })
-      return { threadId, messageId: m!.id as string }
+      return { threadId, messageId }
     }) as Promise<{ threadId: string; messageId: string }>
+  }
+
+  /**
+   * Refuse a SEND outside the chapter's allowed messaging window (design C.4). The
+   * window is `[open, close)` in the chapter's LOCAL wall-clock hour: per-chapter
+   * `dm_open_hour`/`dm_close_hour` when set (migration 0031), else the config
+   * default (07:00-21:00). Deterministic — the local hour is derived from the
+   * chapter timezone at the injected `now`. Throws DmClosedHoursError when closed.
+   */
+  private async assertWithinAllowedHours(db: Db, chapterId: string, now: Date): Promise<void> {
+    const [ch] = await db`
+      select timezone, dm_open_hour, dm_close_hour from chapter where id = ${chapterId}
+    `
+    // A missing chapter row cannot happen for an authorized pair; default safely.
+    const timezone = (ch?.timezone as string | undefined) ?? 'America/New_York'
+    const openHour = (ch?.dm_open_hour as number | null | undefined) ?? this.config.dmOpenHourDefault
+    const closeHour = (ch?.dm_close_hour as number | null | undefined) ?? this.config.dmCloseHourDefault
+    const localHour = localHourInZone(now, timezone)
+    if (!(localHour >= openHour && localHour < closeHour)) {
+      throw new DmClosedHoursError(localHour, openHour, closeHour)
+    }
+  }
+
+  /**
+   * The PRE-SEND draft check (design C.4): return the contact-info flags a draft
+   * body would raise, WITHOUT sending anything. PURE (over the core detector) — the
+   * frontend renders its interstitial from the result. A flag is friction the sender
+   * can proceed past; it never blocks the send.
+   */
+  checkDraft(body: string): DmDraftCheckResult {
+    return { flags: detectDmContentFlags(body) }
+  }
+
+  /**
+   * Export the FULL decrypted thread on demand (design C.4), scoped so ONLY the
+   * STUDENT (their own thread) or a VERIFIED GUARDIAN of that student can export.
+   * Everyone else — the mentor, the safety officer, a stranger, another chapter —
+   * gets an opaque Forbidden. Gated behind the global flag: with MENTOR_DM_ENABLED
+   * off the feature is dark and export refuses (there are no real threads anyway).
+   * A read of already-authorized data, so it is NOT hours-gated.
+   */
+  async exportThread(
+    threadId: string,
+    readerAccountId: string,
+    now: Date = new Date(),
+  ): Promise<DmThreadExport> {
+    if (!this.config.mentorDmEnabled) throw new DmNotAuthorizedForPairError()
+
+    const [thread] = await this.sql`
+      select id, chapter_id, mentor_membership_id, student_account_id,
+             visibility_header_text, created_at
+      from dm_thread where id = ${threadId}
+    `
+    if (thread === undefined) throw new DmThreadNotFoundError(threadId)
+
+    // Student-or-guardian scope (NOT the four-party read): the student themselves,
+    // or a verified guardian of the student. Anyone else -> opaque Forbidden.
+    const isStudent = thread.student_account_id === readerAccountId
+    let allowed = isStudent
+    if (!allowed) {
+      const guardian = await this.sql`
+        select 1 from guardianship
+        where student_account_id = ${thread.student_account_id}
+          and guardian_account_id = ${readerAccountId} and status = 'verified'
+        limit 1
+      `
+      allowed = guardian.length > 0
+    }
+    if (!allowed) throw new Forbidden()
+
+    const rows = await this.sql`
+      select id, seq, sender_account_id, body, sent_at from dm_message
+      where thread_id = ${threadId} order by seq asc
+    `
+    const messages: DmDecryptedMessage[] = rows.map((r) => ({
+      id: r.id as string,
+      seq: String(r.seq),
+      senderAccountId: r.sender_account_id as string,
+      body: decryptField(r.body as unknown as EncryptedField),
+      sentAt: new Date(r.sent_at as string).toISOString(),
+    }))
+    return {
+      generatedAt: now.toISOString(),
+      thread: {
+        id: thread.id as string,
+        chapterId: thread.chapter_id as string,
+        mentorMembershipId: thread.mentor_membership_id as string,
+        studentAccountId: thread.student_account_id as string,
+        visibilityHeader: thread.visibility_header_text as string,
+        createdAt: new Date(thread.created_at as string).toISOString(),
+      },
+      messages,
+    }
   }
 
   /**

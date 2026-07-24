@@ -24,6 +24,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -105,6 +106,10 @@ export const chapter = pgTable('chapter', {
   tier: chapterTierEnum('tier').notNull(),
   status: chapterStatusEnum('status').notNull(),
   timezone: text('timezone').notNull(),
+  // Mentor-student DM Phase 2 (migration 0031): OPTIONAL per-chapter closed-hours
+  // override of the config default window (07:00-21:00 local). NULL = use default.
+  dmOpenHour: smallint('dm_open_hour'),
+  dmCloseHour: smallint('dm_close_hour'),
   createdAt: createdAt(),
 })
 
@@ -789,6 +794,33 @@ export const dmChapterSwitch = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('dm_chapter_switch_chapter_unique').on(t.chapterId)],
+)
+
+// --- Mentor-student DM Phase 2 (migration 0031; built DARK) -----------------
+// The append-only content-flag record (design C.5). A send whose plaintext body
+// matches a content matcher (Phase 2: contact-info) records a flag routed to the
+// safety officer. `detail` is the matched KIND (e.g. 'email'), never the raw
+// plaintext match (the body is encrypted at rest). Append-only (shared trigger +
+// SELECT/INSERT-only grants), like dm_thread/dm_message.
+export const dmFlag = pgTable(
+  'dm_flag',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => dmThread.id),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => dmMessage.id),
+    category: text('category').notNull(),
+    detail: text('detail'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('dm_flag_thread_idx').on(t.threadId, t.createdAt),
+    index('dm_flag_message_idx').on(t.messageId),
+    index('dm_flag_category_idx').on(t.category),
+  ],
 )
 
 // --- Audit -----------------------------------------------------------------

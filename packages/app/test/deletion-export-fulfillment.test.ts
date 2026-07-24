@@ -15,8 +15,11 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { Forbidden, authorize, generateSessionToken, hashToken, withRequest } from '@curiolab/runtime'
 import { startHarness, type Harness } from './helpers/pg.js'
-import { makeChapter } from './helpers/fixtures.js'
+import { makeAdult, makeChapter } from './helpers/fixtures.js'
 import { baseCtx, mem } from './helpers/ctx.js'
+
+/** A synthetic AES-256-GCM {v,iv,ct,tag} envelope (the DB CHECK asserts the KEYS). */
+const DM_ENVELOPE = { v: 1, iv: 'aXYtaXYtaXYtaXY=', ct: 'Y2lwaGVydGV4dA==', tag: 'dGFndGFndGFndGFndGFndGE=' }
 import {
   EnrollmentService,
   InviteService,
@@ -499,6 +502,63 @@ describe('fulfillDeletion — authorization', () => {
     expect(caught).toBeInstanceOf(Forbidden)
     const [dr] = await h.sql`select status from deletion_request where id = ${requestId}`
     expect(dr!.status).toBe('requested')
+  })
+})
+
+// ===========================================================================
+describe('fulfillDeletion — DM retention carve-out (design C.11)', () => {
+  // Seed a mentor-student DM thread + message with the subject as the student party.
+  async function seedDmForStudent(f: SeededStudent): Promise<{ threadId: string; messageId: string }> {
+    const mentorAcct = await makeAdult(h.sql)
+    const [mem] = await h.sql`
+      insert into membership (account_id, chapter_id, role, status)
+      values (${mentorAcct}, ${f.chapter}, 'junior_mentor', 'active') returning id
+    `
+    const [thread] = await h.sql`
+      insert into dm_thread (
+        chapter_id, mentor_membership_id, student_account_id,
+        visibility_header_version, visibility_header_text
+      ) values (${f.chapter}, ${mem!.id}, ${f.accountId}, 'v1', 'saved permanently')
+      returning id
+    `
+    const [msg] = await h.sql`
+      insert into dm_message (thread_id, sender_account_id, body)
+      values (${thread!.id}, ${mentorAcct}, ${h.sql.json(DM_ENVELOPE)}) returning id
+    `
+    return { threadId: thread!.id as string, messageId: msg!.id as string }
+  }
+
+  test('a full deletion PRESERVES the subject DM threads/messages while erasing the rest', async () => {
+    const f = await seededActiveStudent()
+    const { threadId, messageId } = await seedDmForStudent(f)
+    const requestId = await fileDeletionRequest(f.accountId, f.director, 'full')
+    const ctx = directorCtx(f.director, f.chapter)
+
+    await withRequest(async () => {
+      await deletionSvc().reviewDeletion(requestId, ctx)
+      await deletionSvc().fulfillDeletion(requestId, ctx, { decision: 'full' })
+    })
+
+    // The NON-DM deletion happened as usual: account closed, PII redacted, skeleton gone.
+    const acct = await accountRow(f.accountId)
+    expect(acct.status).toBe('closed')
+    expect(acct.legal_name).toBe('[redacted]')
+    expect(await tierCount(f.membershipId)).toBe(0)
+
+    // The DM thread + message are RETAINED (never deleted by the fulfill path — the
+    // append-only trigger forbids deletion, and the carve-out intentionally skips them).
+    const [t] = await h.sql`select id from dm_thread where id = ${threadId}`
+    expect(t).toBeTruthy()
+    const [m] = await h.sql`select body from dm_message where id = ${messageId}`
+    expect(m).toBeTruthy()
+    // Still readable: the encrypted envelope is intact (not tombstoned/redacted).
+    expect(m!.body).toMatchObject({ v: 1 })
+
+    // The carve-out is recorded explicitly in the fulfillment audit detail.
+    const [audit] = await h.sql`
+      select detail from audit_entry where action = 'deletion.fulfilled' and subject_id = ${f.accountId}
+    `
+    expect((audit!.detail as { dmThreadsRetained?: number }).dmThreadsRetained).toBeGreaterThan(0)
   })
 })
 

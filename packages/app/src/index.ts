@@ -612,7 +612,12 @@ export {
   DmNotAuthorizedForPairError,
   DmThreadNotFoundError,
 } from './errors.js'
-export { MENTOR_DM_ENABLED } from './config.js'
+export {
+  MENTOR_DM_ENABLED,
+  DM_OPEN_HOUR_DEFAULT,
+  DM_CLOSE_HOUR_DEFAULT,
+  DM_RETENTION_MS,
+} from './config.js'
 export {
   SafetyOfficerService,
   DmEnableService,
@@ -629,4 +634,7 @@ export type {
   InsuranceAttestationInput,
   DmThreadServiceDeps,
   DmDecryptedMessage,
+  DmDraftCheckResult,
+  DmThreadExport,
 } from './mentor-dm.js'
+export { DmClosedHoursError } from './errors.js'

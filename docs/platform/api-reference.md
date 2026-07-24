@@ -1093,7 +1093,7 @@ Provider webhooks. **No actor / no `authorize`.** Each verifies the provider sig
 
 ---
 
-## 10. Mentor-student direct messaging (Phase 1 — REVIEW-GATED, built DARK)
+## 10. Mentor-student direct messaging (Phases 1–2 — REVIEW-GATED, built DARK)
 
 The highest-risk surface in the platform (adult-to-minor messaging). Built fully against **synthetic data**, **OFF by default** behind the global build flag `MENTOR_DM_ENABLED` (default `false`, `=== 'true'`) and **COUNSEL-GATED** (the design doc Part A/B legal sign-off). With the flag off, `canDirectMessage` returns false and **no DM send is accepted — no real minor can be a party**. See `docs/platform/plans/mentor-student-dm-design.md`. Phase 1 ships the **setup + provisioning** endpoints only; the participant **send/read** endpoints are Phase 4.
 
@@ -1132,7 +1132,22 @@ The runtime pair gate is the pure predicate **`canDirectMessage(mentor, student,
 - **Response `201`:** `{ grantId, subjectStudentAccountId, grantType: "mentor_dm", method, expiresAt, renewal }`.
 - **Errors:** `403` opaque; `400` `GrantSignedFormRequiredError` (weak method / no artifact).
 
-> **Phase 4 (not built):** the participant `dm.message` (send) / `dm.read_own` (read) endpoints and the safety-officer `dm.oversee` reading queue. The capabilities and the append-only encrypted `dm_thread`/`dm_message` store exist and are tested; the participant HTTP surface is deferred.
+### Phase 2 — structural constraints (built DARK)
+
+Phase 2 adds the design C.4/C.5/C.11 structural constraints over the Phase 1 store. All remain dark behind `MENTOR_DM_ENABLED`.
+
+**Closed hours (C.4).** A DM **send** is refused outside the chapter's allowed **local** window — default **07:00–21:00**, `[open, close)` in the chapter's `timezone`. A chapter may override per-chapter via `chapter.dm_open_hour` / `dm_close_hour` (migration 0031; NULL = use the config default `dmOpenHourDefault` / `dmCloseHourDefault`). The window is checked deterministically against an injected `now` in the chapter timezone (never an uncontrollable clock). **Reads are never hours-gated.** A closed-hours send throws `DmClosedHoursError` (→ `409`) and writes nothing. This gates sends only (which already require the flag on), so it is dark.
+
+**Off-platform contact-info flagging (C.4/C.5).** A pure, data-driven detector (`detectDmContentFlags`, `@curiolab/core`) finds contact-info patterns in a draft body — phone, email, social handle, off-platform URL (category `contact_info`). It is data-driven so Phase 3 extends it (secrecy framing, in-person arrangements, …) without a rewrite. Two uses:
+
+- On an actual **send**, a match records an append-only `dm_flag` row (`{ id, thread_id, message_id, category, detail, created_at }`; migration 0031) routed to the safety officer's Phase-3 queue. `detail` is the matched **kind** (e.g. `email`), never the raw plaintext match (the body is encrypted at rest). This does **not** block the send — friction, not a block. The detector runs on the **plaintext** at send time, never against ciphertext.
+- `POST /api/dm/check-draft` — the **pre-send check** for the frontend's interstitial. Session-gated; runs the pure detector over `{ body }` and returns `{ flags: [{ category, detail }] }` **without sending**. Writes nothing and calls no `authorize` (**inert** in the route manifest; POST only because the draft travels in the body).
+
+**Thread export (C.4).** `GET /api/dm/threads/{threadId}/export` — export the **full decrypted** thread, scoped so **only** the **student** (their own thread) or a **verified guardian** of that student may export; the mentor, the safety officer, a stranger, or another chapter get an opaque `403`. Returns `{ generatedAt, thread: { id, chapterId, mentorMembershipId, studentAccountId, visibilityHeader, createdAt }, messages: [{ id, seq, senderAccountId, body, sentAt }] }` in `seq` order. A read of already-authorized data (GET, read-exempt from the manifest), but **dark-gated**: with `MENTOR_DM_ENABLED` off it refuses (`DmNotAuthorizedForPairError` → `409`) — there are no real threads anyway.
+
+**Retention carve-out (C.11).** DM threads and messages are **excluded** from deletion-request fulfillment (`DeletionFulfillmentService.fulfillDeletion`) and retained to the outer bound of the limitations window — config `DM_RETENTION_MS` (a **placeholder** pending counsel; working assumption ~age 30). The fulfill path never enumerates `dm_thread`/`dm_message`, so a subject's DM logs are preserved even when the rest of their record is erased/anonymized (the append-only trigger already forbids deleting them); the fulfillment audit records `dmThreadsRetained` so the exclusion is explicit and observable. This is a deliberate carve-out from the right-to-deletion policy, disclosed at consent (design C.10).
+
+> **Phase 4 (not built):** the participant `dm.message` (send) / `dm.read_own` (read) endpoints and the safety-officer `dm.oversee` reading queue. The capabilities and the append-only encrypted `dm_thread`/`dm_message` store (plus the send SERVICE with the hours + contact-info flagging) exist and are tested; the participant HTTP send/read surface is deferred.
 
 ---
 

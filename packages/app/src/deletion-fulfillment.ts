@@ -235,6 +235,7 @@ export class DeletionFulfillmentService {
     return this.sql.begin(async (tx) => {
       assertAuthorized() // runtime backstop: no mutation without a recorded decision
 
+      let dmThreadsRetained = 0
       if (erasing) {
         // The sanctioned DOB-erase bypass: transaction-local, so it cannot leak
         // to any other write path (migration 0009).
@@ -245,6 +246,18 @@ export class DeletionFulfillmentService {
 
         // 2. Apply the tier: strip PII always; remove the skeleton only for full.
         await this.eraseChildData(tx, subjectAccountId, skeletonRemoved)
+
+        // 3. DM RETENTION CARVE-OUT (mentor-student-dm design C.11): dm_thread /
+        // dm_message are DELIBERATELY EXCLUDED from deletion-request fulfillment and
+        // retained to the outer bound of the limitations window (config DM_RETENTION_MS,
+        // a placeholder pending counsel). Unlike account/enrollment PII, tier history,
+        // and sessions above, this path NEVER touches the DM store — the rows are
+        // preserved even when the rest of the subject's record is erased. (The
+        // append-only trigger already forbids deleting them; this method simply does
+        // not enumerate them.) The carve-out is disclosed at consent (design C.10). We
+        // record the retained-thread count for the audit trail so the exclusion is
+        // explicit and observable, never a silent absence.
+        dmThreadsRetained = await this.countRetainedDmThreads(tx, subjectAccountId)
       }
 
       // The decision record. For `refused` a null reason trips the DB CHECK here,
@@ -273,6 +286,8 @@ export class DeletionFulfillmentService {
           decision: outcome.decision,
           participationTerminated: erasing,
           skeletonRemoved,
+          // The DM retention carve-out (design C.11): DM threads preserved, not deleted.
+          dmThreadsRetained,
           ...(decisionReason !== null ? { decisionReason } : {}),
         },
       })
@@ -310,6 +325,19 @@ export class DeletionFulfillmentService {
       where revoked_at is null
         and (account_id = ${subjectAccountId} or impersonated_account_id = ${subjectAccountId})
     `
+  }
+
+  /**
+   * Count the subject's DM threads that are RETAINED past this deletion (design
+   * C.11): the DM store is a carve-out from deletion-request fulfillment, so these
+   * rows are intentionally NOT erased. The count is recorded in the fulfillment
+   * audit so the exclusion is explicit and auditable, never a silent absence.
+   */
+  private async countRetainedDmThreads(tx: Db, subjectAccountId: string): Promise<number> {
+    const [row] = await tx`
+      select count(*)::int as n from dm_thread where student_account_id = ${subjectAccountId}
+    `
+    return (row?.n as number | undefined) ?? 0
   }
 
   /**

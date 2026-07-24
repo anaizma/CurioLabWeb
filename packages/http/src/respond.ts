@@ -121,6 +121,8 @@ const CONFLICT = new Set([
   'SafetyOfficerPeerConflictError',
   'DmEnablePreconditionError',
   'DmNotAuthorizedForPairError',
+  // Mentor-student DM (Phase 2): a send outside the chapter's allowed hours (C.4).
+  'DmClosedHoursError',
 ])
 
 /** Too-many-requests: the per-issuer invite rate limit (P2 §4) + the §10 TOTP attempt limit -> 429. */

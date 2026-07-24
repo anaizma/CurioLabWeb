@@ -1414,6 +1414,30 @@ export class DmThreadNotFoundError extends Error {
 }
 
 /**
+ * A DM SEND was refused because the sender's local time is outside the chapter's
+ * allowed messaging window (design C.4; Phase 2). Default 07:00-21:00 local,
+ * overridable per chapter. Reads are NEVER hours-gated. Deterministic: the window
+ * is checked against an injected `now` in the chapter's timezone, never an
+ * uncontrollable clock. Distinct from a Forbidden (an authorization failure) —
+ * this is a feature-state/structural refusal; a route maps it to a 409. Carries
+ * the sender's local hour and the window for the caller/interstitial.
+ */
+export class DmClosedHoursError extends Error {
+  readonly localHour: number
+  readonly openHour: number
+  readonly closeHour: number
+  constructor(localHour: number, openHour: number, closeHour: number) {
+    super(
+      `direct messaging is closed at this hour (local ${localHour}:00; window ${openHour}:00-${closeHour}:00)`,
+    )
+    this.name = 'DmClosedHoursError'
+    this.localHour = localHour
+    this.openHour = openHour
+    this.closeHour = closeHour
+  }
+}
+
+/**
  * A calendar event write failed validation before any authorization decision:
  * `time_range` (endsAt is not strictly after startsAt), `audiences` (empty or an
  * invalid value — must be a non-empty subset of parent|mentor|director), or
