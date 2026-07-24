@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CalendarEvent, CalendarAudience, CalendarKind } from "@/lib/portal/director/calendar-data";
 
 const MON = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -183,6 +183,16 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
   const [open, setOpen] = useState(false);
   const [menuCat, setMenuCat] = useState<CalendarAudience | null>(null);
   const [members, setMembers] = useState<Record<string, string[]>>({});
+  const guestRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (guestRef.current && !guestRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
 
   const startWeekday = (() => { const p = date.split("-").map(Number); return isNaN(p[0]) ? new Date().getDay() : new Date(p[0], (p[1] || 1) - 1, p[2] || 1).getDay(); })();
   const valid = title.trim().length > 0 && date.length > 0 && start.length > 0 && end.length > 0 && selected.length > 0;
@@ -222,7 +232,7 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
     void loadCat(cat);
   }
   function addAll(cat: CalendarAudience) {
-    setSelected((p) => (p.some((s) => s.kind === "all" && s.cat === cat) ? p : [...p, { kind: "all", cat }]));
+    setSelected((p) => (p.some((s) => s.kind === "all" && s.cat === cat) ? p : [...p.filter((s) => !(s.kind === "person" && s.cat === cat)), { kind: "all", cat }]));
   }
   function addPerson(cat: CalendarAudience, name: string) {
     setSelected((p) => (p.some((s) => s.kind === "person" && s.name === name) ? p : [...p, { kind: "person", cat, name }]));
@@ -267,6 +277,8 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
     }
   }
 
+  const allOn = menuCat ? selected.some((s) => s.kind === "all" && s.cat === menuCat) : false;
+
   return (
     <>
       <Overlay onClose={onClose}>
@@ -309,7 +321,7 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
 
           <div className="flex flex-col gap-1.5 text-xs text-ink/60">
             Add guests
-            <div className="relative">
+            <div className="relative" ref={guestRef}>
               <button type="button" onClick={() => { setOpen((o) => !o); setMenuCat(null); }} className={inputCls + " text-left flex items-center justify-between"}>
                 <span className={selected.length ? "text-ink" : "text-ink/40"}>{selected.length ? `${selected.length} added` : "Add mentors, parents, or directors…"}</span>
                 <span className="text-ink/40">▾</span>
@@ -325,16 +337,17 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
                   ) : (
                     <>
                       <button type="button" onClick={() => setMenuCat(null)} className="flex w-full items-center gap-2 px-3 py-2 text-xs text-ink/50 border-b border-ink/5">‹ Back</button>
-                      <button type="button" onClick={() => addAll(menuCat)} className="flex w-full items-center px-3 py-2 text-sm font-semibold hover:bg-cream" style={{ color: "var(--pt-accent-fg)" }}>
-                        All {CAT_LABEL[menuCat].toLowerCase()}
+                      <button type="button" disabled={allOn} onClick={() => addAll(menuCat)} className="flex w-full items-center px-3 py-2 text-sm font-semibold hover:bg-cream disabled:opacity-50" style={{ color: "var(--pt-accent-fg)" }}>
+                        All {CAT_LABEL[menuCat].toLowerCase()}{allOn ? " ✓" : ""}
                       </button>
                       {(members[menuCat] ?? []).length === 0 ? (
                         <div className="px-3 py-2 text-xs text-ink/40">No members to show (sign in as a director).</div>
                       ) : (
                         (members[menuCat] ?? []).map((n) => {
                           const on = selected.some((s) => s.kind === "person" && s.name === n);
+                          const dis = on || allOn;
                           return (
-                            <button key={n} type="button" disabled={on} onClick={() => addPerson(menuCat, n)} className="block w-full text-left px-3 py-2 text-sm hover:bg-cream disabled:text-ink/40">
+                            <button key={n} type="button" disabled={dis} onClick={() => addPerson(menuCat, n)} className="block w-full text-left px-3 py-2 text-sm hover:bg-cream disabled:text-ink/30 disabled:hover:bg-transparent">
                               {n}{on ? " ✓" : ""}
                             </button>
                           );
@@ -369,7 +382,7 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
           <div className="flex gap-2 justify-end mt-1">
             <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-semibold border border-ink/15">Cancel</button>
             <button type="submit" disabled={!valid || busy} className="rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--pt-accent)", color: "var(--pt-on-accent)" }}>
-              {busy ? "Publishing…" : freq !== "none" ? "Publish series" : "Publish"}
+              {busy ? "Saving…" : freq !== "none" ? "Save series" : "Save"}
             </button>
           </div>
         </form>
@@ -423,11 +436,19 @@ function EventModal({ ev, canWrite, onClose, onDone }: { ev: CalendarEvent; canW
   );
 }
 
+function EventChip({ ev, onOpen }: { ev: CalendarEvent; onOpen: () => void }) {
+  return (
+    <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(); }} className="block w-full min-w-0 text-left text-[10.5px] rounded px-1.5 py-0.5 truncate" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
+      {timeOf(ev.startsAt)} {ev.title}
+    </button>
+  );
+}
+
 export default function CalendarClient({ chapterId, events }: { chapterId: string | null; events: CalendarEvent[] }) {
   const router = useRouter();
   const today = new Date();
-  const [viewY, setViewY] = useState(today.getFullYear());
-  const [viewM, setViewM] = useState(today.getMonth());
+  const [cursor, setCursor] = useState(today);
+  const [view, setView] = useState<"month" | "week">("month");
   const [modal, setModal] = useState<null | { type: "new"; dateKey: string } | { type: "event"; ev: CalendarEvent }>(null);
 
   const byDay = new Map<string, CalendarEvent[]>();
@@ -439,54 +460,95 @@ export default function CalendarClient({ chapterId, events }: { chapterId: strin
     arr.push(e);
     byDay.set(k, arr);
   });
-
-  const first = new Date(viewY, viewM, 1);
-  const startPad = first.getDay();
-  const days = new Date(viewY, viewM + 1, 0).getDate();
-  const cells: (Date | null)[] = [];
-  for (let i = 0; i < startPad; i++) cells.push(null);
-  for (let d = 1; d <= days; d++) cells.push(new Date(viewY, viewM, d));
-  while (cells.length % 7 !== 0) cells.push(null);
+  byDay.forEach((arr) => arr.sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()));
 
   const canWrite = chapterId !== null;
   const todayKey = keyOf(today);
 
+  function go(delta: number) {
+    if (view === "month") setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
+    else { const d = new Date(cursor); d.setDate(d.getDate() + delta * 7); setCursor(d); }
+  }
+
+  const weekStart = new Date(cursor);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekDays = Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d; });
+  const weekEnd = weekDays[6];
+  const label = view === "month"
+    ? `${MON[cursor.getMonth()]} ${cursor.getFullYear()}`
+    : `${MON[weekStart.getMonth()].slice(0, 3)} ${weekStart.getDate()} – ${weekStart.getMonth() !== weekEnd.getMonth() ? MON[weekEnd.getMonth()].slice(0, 3) + " " : ""}${weekEnd.getDate()}`;
+
+  const mFirst = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const mPad = mFirst.getDay();
+  const mDays = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+  const monthCells: (Date | null)[] = [];
+  for (let i = 0; i < mPad; i++) monthCells.push(null);
+  for (let d = 1; d <= mDays; d++) monthCells.push(new Date(cursor.getFullYear(), cursor.getMonth(), d));
+  while (monthCells.length % 7 !== 0) monthCells.push(null);
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="text-lg font-bold">{MON[viewM]} {viewY}</div>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="text-lg font-bold">{label}</div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => { const d = new Date(viewY, viewM - 1, 1); setViewY(d.getFullYear()); setViewM(d.getMonth()); }} className="rounded-md border border-ink/15 w-8 h-8 text-sm">‹</button>
-          <button type="button" onClick={() => { setViewY(today.getFullYear()); setViewM(today.getMonth()); }} className="rounded-md border border-ink/15 px-3 h-8 text-xs font-semibold">Today</button>
-          <button type="button" onClick={() => { const d = new Date(viewY, viewM + 1, 1); setViewY(d.getFullYear()); setViewM(d.getMonth()); }} className="rounded-md border border-ink/15 w-8 h-8 text-sm">›</button>
+          <div className="flex rounded-md border border-ink/15 overflow-hidden text-xs font-semibold">
+            <button type="button" onClick={() => setView("month")} className="px-3 h-8" style={view === "month" ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)" } : undefined}>Month</button>
+            <button type="button" onClick={() => setView("week")} className="px-3 h-8 border-l border-ink/15" style={view === "week" ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)" } : undefined}>Week</button>
+          </div>
+          <button type="button" onClick={() => go(-1)} className="rounded-md border border-ink/15 w-8 h-8 text-sm">‹</button>
+          <button type="button" onClick={() => setCursor(new Date())} className="rounded-md border border-ink/15 px-3 h-8 text-xs font-semibold">Today</button>
+          <button type="button" onClick={() => go(1)} className="rounded-md border border-ink/15 w-8 h-8 text-sm">›</button>
         </div>
       </div>
       {!canWrite && <p className="text-xs text-ink/50">Sign in as a Chapter Director to create events.</p>}
 
-      <div className="rounded-xl border border-ink/10 bg-white overflow-hidden">
-        <div className="grid grid-cols-7 border-b border-ink/10">
-          {DOW.map((w) => <div key={w} className="text-center text-[10px] font-mono uppercase tracking-wide text-ink/40 py-2">{w}</div>)}
+      {view === "month" ? (
+        <div className="rounded-xl border border-ink/10 bg-white overflow-hidden">
+          <div className="grid grid-cols-7 border-b border-ink/10">
+            {DOW.map((w) => <div key={w} className="text-center text-[10px] font-mono uppercase tracking-wide text-ink/40 py-2">{w}</div>)}
+          </div>
+          <div className="grid grid-cols-7">
+            {monthCells.map((d, i) => {
+              if (!d) return <div key={`e${i}`} className="min-h-[94px] border-b border-r border-ink/5 bg-black/[.01]" />;
+              const k = keyOf(d);
+              const dayEvents = byDay.get(k) ?? [];
+              const isToday = k === todayKey;
+              return (
+                <div key={k} onClick={() => canWrite && setModal({ type: "new", dateKey: k })} className={`min-h-[94px] min-w-0 overflow-hidden border-b border-r border-ink/5 p-1.5 flex flex-col gap-1 ${canWrite ? "cursor-pointer hover:bg-cream transition-colors" : ""}`}>
+                  <div className="text-[11px] font-semibold self-start px-1.5 rounded" style={isToday ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)" } : undefined}>{d.getDate()}</div>
+                  {dayEvents.slice(0, 3).map((ev) => <EventChip key={ev.id} ev={ev} onOpen={() => setModal({ type: "event", ev })} />)}
+                  {dayEvents.length > 3 && <span className="text-[10px] text-ink/40 px-1">+{dayEvents.length - 3} more</span>}
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="grid grid-cols-7">
-          {cells.map((d, i) => {
-            if (!d) return <div key={`e${i}`} className="min-h-[94px] border-b border-r border-ink/5 bg-black/[.01]" />;
-            const k = keyOf(d);
-            const dayEvents = byDay.get(k) ?? [];
-            const isToday = k === todayKey;
-            return (
-              <div key={k} onClick={() => canWrite && setModal({ type: "new", dateKey: k })} className={`min-h-[94px] border-b border-r border-ink/5 p-1.5 flex flex-col gap-1 ${canWrite ? "cursor-pointer hover:bg-cream transition-colors" : ""}`}>
-                <div className="text-[11px] font-semibold self-start px-1.5 rounded" style={isToday ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)" } : undefined}>{d.getDate()}</div>
-                {dayEvents.slice(0, 3).map((ev) => (
-                  <button key={ev.id} type="button" onClick={(e) => { e.stopPropagation(); setModal({ type: "event", ev }); }} className="text-left text-[10.5px] rounded px-1.5 py-0.5 truncate w-full" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
-                    {timeOf(ev.startsAt)} {ev.title}
-                  </button>
-                ))}
-                {dayEvents.length > 3 && <span className="text-[10px] text-ink/40 px-1">+{dayEvents.length - 3} more</span>}
-              </div>
-            );
-          })}
+      ) : (
+        <div className="rounded-xl border border-ink/10 bg-white overflow-hidden">
+          <div className="grid grid-cols-7 border-b border-ink/10">
+            {weekDays.map((d) => {
+              const isToday = keyOf(d) === todayKey;
+              return (
+                <div key={keyOf(d)} className="text-center py-2 border-r border-ink/5 last:border-r-0">
+                  <div className="text-[10px] font-mono uppercase tracking-wide text-ink/40">{DOW[d.getDay()]}</div>
+                  <div className="mt-1"><span className="inline-grid place-items-center w-6 h-6 rounded-full text-sm font-semibold" style={isToday ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)" } : undefined}>{d.getDate()}</span></div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-7">
+            {weekDays.map((d) => {
+              const k = keyOf(d);
+              const dayEvents = byDay.get(k) ?? [];
+              return (
+                <div key={k} onClick={() => canWrite && setModal({ type: "new", dateKey: k })} className={`min-h-[380px] min-w-0 overflow-hidden border-r border-ink/5 last:border-r-0 p-1.5 flex flex-col gap-1 ${canWrite ? "cursor-pointer hover:bg-cream transition-colors" : ""}`}>
+                  {dayEvents.map((ev) => <EventChip key={ev.id} ev={ev} onOpen={() => setModal({ type: "event", ev })} />)}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {modal?.type === "new" && chapterId && (
         <NewEventModal chapterId={chapterId} dateKey={modal.dateKey} onClose={() => setModal(null)} onDone={() => { setModal(null); router.refresh(); }} />
