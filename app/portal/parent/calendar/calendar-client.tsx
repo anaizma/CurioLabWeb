@@ -36,6 +36,7 @@ export default function GuardianCalendarClient({ events, absentKeys }: { events:
   const [view, setView] = useState<"month" | "week">("month");
   const [openEv, setOpenEv] = useState<GuardianCalEvent | null>(null);
   const [rsvps, setRsvps] = useState<Record<string, Rsvp>>({});
+  const [open, setOpen] = useState<Record<Section, boolean>>({ upcoming: true, past: false, mine: false });
   const [expanded, setExpanded] = useState<Record<Section, boolean>>({ upcoming: false, past: false, mine: false });
   const anyExpanded = expanded.upcoming || expanded.past || expanded.mine;
 
@@ -60,8 +61,12 @@ export default function GuardianCalendarClient({ events, absentKeys }: { events:
     if (view === "month" || anyExpanded) setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
     else { const d = new Date(cursor); d.setDate(d.getDate() + delta * 7); setCursor(d); }
   }
-  function toggle(s: Section) {
-    setExpanded((p) => ({ ...p, [s]: !p[s] }));
+  function toggleOpen(s: Section) {
+    setOpen((p) => {
+      const next = !p[s];
+      if (!next) setExpanded((e) => ({ ...e, [s]: false }));
+      return { ...p, [s]: next };
+    });
   }
 
   const weekStart = new Date(cursor);
@@ -110,24 +115,34 @@ export default function GuardianCalendarClient({ events, absentKeys }: { events:
     );
   }
 
-  function sectionCard(id: Section, title: string, items: GuardianCalEvent[], opts: { previewCount?: number; badgeFor?: (ev: GuardianCalEvent) => "attended" | "absent" | undefined }) {
-    const open = expanded[id];
-    const preview = opts.previewCount ?? 0;
-    const shown = open ? items : items.slice(0, preview);
+  function sectionCard(id: Section, title: string, items: GuardianCalEvent[], opts: { badgeFor?: (ev: GuardianCalEvent) => "attended" | "absent" | undefined }) {
+    const isOpen = open[id];
+    const isExpanded = expanded[id];
+    const PREVIEW = 4;
+    const shown = isExpanded ? items : isOpen ? items.slice(0, PREVIEW) : [];
     return (
       <div className="bg-white border border-black/[.08] rounded-lg overflow-hidden">
-        <button type="button" onClick={() => toggle(id)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-cream">
+        <button type="button" onClick={() => toggleOpen(id)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-cream">
           <span className="label text-[10.5px]">{title} <span className="font-mono normal-case tracking-normal">({items.length})</span></span>
-          <span className={`text-muted text-[13px] transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
+          <span className={`text-muted text-[13px] transition-transform ${isOpen ? "rotate-180" : ""}`}>▾</span>
         </button>
-        {shown.length > 0 && (
+        {isOpen && shown.length > 0 && (
           <div className="border-t border-black/[.06]">
             {shown.map((ev) => eventRow(ev, opts.badgeFor?.(ev)))}
           </div>
         )}
-        {!open && items.length > preview && preview > 0 && (
-          <div className="px-4 py-2 text-[11px] text-muted border-t border-black/[.04]">+{items.length - preview} more — expand to see all</div>
+        {isOpen && items.length > PREVIEW && (
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => ({ ...e, [id]: !isExpanded }))}
+            className="w-full flex items-center justify-center gap-1 px-4 py-2 text-[11.5px] font-semibold border-t border-black/[.06] hover:bg-cream transition-colors"
+            style={{ color: "var(--pt-accent)" }}
+          >
+            {isExpanded ? "Show fewer" : `See all ${items.length} events`}
+            <span className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}>▾</span>
+          </button>
         )}
+        {isOpen && shown.length === 0 && <div className="px-4 py-2 text-[11.5px] text-muted border-t border-black/[.04]">Nothing here.</div>}
       </div>
     );
   }
@@ -169,6 +184,14 @@ export default function GuardianCalendarClient({ events, absentKeys }: { events:
                 );
               })}
             </div>
+            <button
+              type="button"
+              onClick={() => setExpanded({ upcoming: false, past: false, mine: false })}
+              className="mt-1.5 w-full rounded-md border border-black/[.10] px-3 py-1.5 text-[11.5px] font-semibold hover:bg-cream transition-colors"
+              style={{ color: "var(--pt-accent)" }}
+            >
+              ⤢ Expand calendar
+            </button>
           </div>
         ) : view === "month" ? (
           <div className="rounded-lg border border-black/[.08] bg-white overflow-hidden">
@@ -221,7 +244,7 @@ export default function GuardianCalendarClient({ events, absentKeys }: { events:
 
       {/* Sections column */}
       <div className="flex flex-col gap-3 min-w-0">
-        {sectionCard("upcoming", "Upcoming events", upcoming, { previewCount: 3 })}
+        {sectionCard("upcoming", "Upcoming events", upcoming, {})}
         {sectionCard("past", "Past events", past, { badgeFor: (ev) => (absentSet.has(keyOf(new Date(ev.startsAt))) ? "absent" : "attended") })}
         {sectionCard("mine", "My events · attended", mine, { badgeFor: () => "attended" })}
       </div>
