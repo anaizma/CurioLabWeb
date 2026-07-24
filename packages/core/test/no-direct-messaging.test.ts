@@ -75,4 +75,71 @@ describe('no-direct-messaging guard (compliance 1.8)', () => {
       directMessagingCapabilities({ 'message.dm': { scope: 'pod', roles: ['student', 'junior_mentor'] } }),
     ).toContain('message.dm')
   })
+
+  // -------------------------------------------------------------------------
+  // COUNSEL-GATED mentor-student DM exemption (mentor-student-dm-design.md Part B).
+  // The Phase-1 mentor-student DM capabilities trip the guard because a student IS
+  // a party (that is the whole COPPA posture change). The exemption is amended
+  // NARROWLY: it admits ONLY the fully-gated supervised-pair shape and STILL trips
+  // for anything broader. dm.enable / dm.oversee / safety_officer.assign are
+  // staff-only (no student party) and ride the existing guardian-staff exemption;
+  // only the two PARTICIPANT caps (dm.message, dm.read_own) — which include a
+  // student — need the new rule.
+  // -------------------------------------------------------------------------
+  const PAIR_PARTICIPANT_ROLES = [
+    'student',
+    'junior_mentor',
+    'senior_instructor',
+    'lead_instructor',
+    'chapter_director',
+  ]
+
+  test('the exact Phase-1 mentor-student DM participant caps are EXEMPT (fully-gated pair shape)', () => {
+    expect(
+      directMessagingCapabilities({
+        'dm.message': { scope: 'chapter', roles: PAIR_PARTICIPANT_ROLES, writes: true, pairGated: true },
+        'dm.read_own': { scope: 'chapter', roles: PAIR_PARTICIPANT_ROLES, writes: false, pairGated: true },
+      }),
+    ).toEqual([])
+  })
+
+  test('the staff-only DM caps (dm.oversee safety_officer, dm.enable director) are exempt via the staff channel rule', () => {
+    expect(
+      directMessagingCapabilities({
+        'dm.oversee': { scope: 'chapter', roles: ['safety_officer'], writes: true },
+        'dm.enable': { scope: 'chapter', roles: ['chapter_director'], writes: true },
+      }),
+    ).toEqual([])
+  })
+
+  test('a student-to-student dm cap STILL trips even if marked pairGated (no mentor party)', () => {
+    expect(
+      directMessagingCapabilities({ 'dm.peer': { scope: 'chapter', roles: ['student'], writes: true, pairGated: true } }),
+    ).toContain('dm.peer')
+  })
+
+  test('a bare/empty-roles dm cap STILL trips', () => {
+    expect(
+      directMessagingCapabilities({ 'dm.message': { scope: 'chapter', roles: [], writes: true } }),
+    ).toContain('dm.message')
+  })
+
+  test('an un-gated student dm cap (no pairGated marker) STILL trips', () => {
+    expect(
+      directMessagingCapabilities({ 'dm.message': { scope: 'chapter', roles: ['student', 'junior_mentor'], writes: true } }),
+    ).toContain('dm.message')
+  })
+
+  test('a pod-scoped or over-broad-role pair cap STILL trips (shape must be exact)', () => {
+    // pod scope, not chapter
+    expect(
+      directMessagingCapabilities({ 'dm.message': { scope: 'pod', roles: PAIR_PARTICIPANT_ROLES, writes: true, pairGated: true } }),
+    ).toContain('dm.message')
+    // a role outside the participant floor (comms_associate) sneaking in
+    expect(
+      directMessagingCapabilities({
+        'dm.message': { scope: 'chapter', roles: ['student', 'comms_associate'], writes: true, pairGated: true },
+      }),
+    ).toContain('dm.message')
+  })
 })

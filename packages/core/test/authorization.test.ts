@@ -55,6 +55,7 @@ import {
   messageViewOwnOfS,
   messageViewC1,
   messageReplyC1,
+  dmChapterC1,
   childRecord18,
   safetyReport,
   ordinaryReport,
@@ -878,6 +879,59 @@ describe('guardian <-> chapter-staff messaging capabilities (Feature 3)', () => 
     expectDeny(actors.platform_staff, 'message.reply', messageReplyC1, 'out_of_scope')
     expectDeny(actors.chapter_director_c2, 'message.reply', messageReplyC1, 'out_of_scope')
     expectDeny(actors.student_18, 'message.reply', messageReplyC1, 'role_not_permitted')
+  })
+})
+
+// ===========================================================================
+// Mentor-student direct messaging (design C.1, C.14; Phase 1, built DARK behind
+// MENTOR_DM_ENABLED). The five new capabilities' scope/role FLOORS. `can` gates
+// only these floors; the specific mentor↔student pair, the four DM legs, the
+// four-party read model, and the enable-preconditions are enforced by
+// canDirectMessage + the DM services on top — so these tests assert the floor only.
+// ===========================================================================
+describe('mentor-student DM capabilities (Phase 1)', () => {
+  test('safety_officer.assign (a director assigns; platform_admin via override; read-only staff barred; cross-chapter out_of_scope; non-director role_not_permitted)', () => {
+    expectAllow(actors.chapter_director_c1, 'safety_officer.assign', dmChapterC1)
+    expectAllow(actors.platform_admin, 'safety_officer.assign', dmChapterC1)
+    expectDeny(actors.platform_staff, 'safety_officer.assign', dmChapterC1, 'out_of_scope')
+    expectDeny(actors.chapter_director_c2, 'safety_officer.assign', dmChapterC1, 'out_of_scope')
+    expectDeny(actors.junior_mentor_adult, 'safety_officer.assign', dmChapterC1, 'role_not_permitted')
+  })
+
+  test('dm.enable (a director flips the chapter switch; platform_admin via override; read-only staff barred; cross-chapter out_of_scope; non-director role_not_permitted)', () => {
+    expectAllow(actors.chapter_director_c1, 'dm.enable', dmChapterC1)
+    expectAllow(actors.platform_admin, 'dm.enable', dmChapterC1)
+    expectDeny(actors.platform_staff, 'dm.enable', dmChapterC1, 'out_of_scope')
+    expectDeny(actors.chapter_director_c2, 'dm.enable', dmChapterC1, 'out_of_scope')
+    expectDeny(actors.junior_mentor_adult, 'dm.enable', dmChapterC1, 'role_not_permitted')
+  })
+
+  test('dm.message (a participant — student OR mentor in the chapter — may write; a safety officer is NOT a participant; cross-chapter out_of_scope; read-only override barred)', () => {
+    expectAllow(actors.student_minor_consented, 'dm.message', dmChapterC1)
+    expectAllow(actors.junior_mentor_adult, 'dm.message', dmChapterC1)
+    // the safety officer is an overseer, not a participant writer.
+    expectDeny(actors.safety_officer_c1, 'dm.message', dmChapterC1, 'role_not_permitted')
+    expectDeny(actors.chapter_director_c2, 'dm.message', dmChapterC1, 'out_of_scope')
+    // writes:true, so the read-only platform_staff override does NOT reach it.
+    expectDeny(actors.platform_staff, 'dm.message', dmChapterC1, 'out_of_scope')
+  })
+
+  test('dm.read_own (either participant reads; both platform overrides reach it; a safety officer is not a participant; cross-chapter out_of_scope)', () => {
+    expectAllow(actors.student_minor_consented, 'dm.read_own', dmChapterC1)
+    expectAllow(actors.junior_mentor_adult, 'dm.read_own', dmChapterC1)
+    // writes:false, so the read-only platform_staff override also grants it.
+    expectAllow(actors.platform_staff, 'dm.read_own', dmChapterC1)
+    expectDeny(actors.safety_officer_c1, 'dm.read_own', dmChapterC1, 'role_not_permitted')
+    expectDeny(actors.chapter_director_c2, 'dm.read_own', dmChapterC1, 'out_of_scope')
+  })
+
+  test('dm.oversee (the safety officer reads + reviews their chapter; platform_admin via override; a mentor role_not_permitted; cross-chapter out_of_scope; read-only staff barred)', () => {
+    expectAllow(actors.safety_officer_c1, 'dm.oversee', dmChapterC1)
+    expectAllow(actors.platform_admin, 'dm.oversee', dmChapterC1)
+    expectDeny(actors.junior_mentor_adult, 'dm.oversee', dmChapterC1, 'role_not_permitted')
+    expectDeny(actors.safety_officer_c2, 'dm.oversee', dmChapterC1, 'out_of_scope')
+    // writes:true, so the read-only platform_staff override does NOT reach it.
+    expectDeny(actors.platform_staff, 'dm.oversee', dmChapterC1, 'out_of_scope')
   })
 })
 

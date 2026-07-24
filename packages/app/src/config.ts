@@ -269,6 +269,23 @@ export const MENTOR_ELIGIBILITY_ENFORCED: boolean =
   process.env.MENTOR_ELIGIBILITY_ENFORCED === 'true'
 
 /**
+ * Mentor-student direct messaging (design Part D) — the GLOBAL build flag. When
+ * FALSE (the default, and the production posture until the board, counsel, and
+ * insurer sign off), the entire mentor-student DM feature is DARK: `canDirectMessage`
+ * returns false, no DM send is accepted, and no real minor can be a party — even if
+ * a chapter's DM switch was somehow recorded on. The mechanism is fully built and
+ * tested against SYNTHETIC data behind this flag. When TRUE (only after the Part A/B
+ * sign-off AND every Part D enable-precondition holds in the system), the per-chapter
+ * switch governs. Mirrors CONSENT_GRANT_LEDGER_ENFORCED / MENTOR_ELIGIBILITY_ENFORCED:
+ * a value, not a literal — the flip is a config edit, never a code change.
+ *
+ * COUNSEL-GATED: flipping this requires the Part B legal sign-off (the COPPA posture
+ * change + the no-direct-messaging guard amendment). Building the feature imposes no
+ * obligation to enable it (Part A.6).
+ */
+export const MENTOR_DM_ENABLED: boolean = process.env.MENTOR_DM_ENABLED === 'true'
+
+/**
  * §5 Rule 3 — the notify-and-object window. A standing `public_publication` grant
  * is not blanket pre-approval: a nominated item publishes only if the guardian
  * does not object within N days (default 5). A value, not a literal.
@@ -288,6 +305,12 @@ export type ConsentGrantType =
   | 'photo_video_likeness'
   | 'emergency_medical_pickup'
   | 'verification_link_sharing'
+  // mentor-student DM consent (design C.3, C.10; Phase 1). A guardian's consent
+  // for a supervised mentor-student messaging channel for their child. Captured as
+  // a SIGNED FORM (a click is refused — deliberate friction that tests guardian
+  // engagement), with a non-null evidence_artifact_ref. Expires at term end,
+  // independently revocable via the existing per-grant revoke.
+  | 'mentor_dm'
 
 export type ConsentGrantMethod =
   | 'click'
@@ -315,7 +338,19 @@ export const GRANT_RENEWAL_MS_BY_TYPE: Record<ConsentGrantType, number | null> =
   photo_video_likeness: ANNUAL_MS,
   emergency_medical_pickup: TERM_MS,
   verification_link_sharing: null,
+  // mentor_dm expires at term end (design C.3): re-confirmed per cohort.
+  mentor_dm: TERM_MS,
 }
+
+/**
+ * Grant types whose capture REQUIRES a strong `signed_form` method with a non-null
+ * evidence artifact — a click is refused at the service AND a DB-trigger backstop
+ * (design C.3). Today only `mentor_dm`: the signed form is deliberate friction, a
+ * load-bearing test of guardian engagement the program wants to learn BEFORE
+ * enabling the channel, not after. (This is distinct from the under-13
+ * public_publication floor, which is age-conditioned; mentor_dm is unconditional.)
+ */
+export const SIGNED_FORM_REQUIRED_GRANT_TYPES: readonly ConsentGrantType[] = ['mentor_dm'] as const
 
 /**
  * The two grant types that CANNOT be revoked alone — revoking them ends
@@ -400,6 +435,8 @@ export interface AppConfig {
   consentGrantLedgerEnforced: boolean
   /** §6 REVIEW GATE: when true, an ineligible mentor loses student-facing access. */
   mentorEligibilityEnforced: boolean
+  /** Part D GLOBAL flag: when true, mentor-student DM is live (default false = dark). */
+  mentorDmEnabled: boolean
   /** §5 Rule 3: the notify-and-object hold window in ms (default 5 days). */
   publicationHoldWindowMs: number
   /** §5: the renewal clock per grant type (null = standing). */
@@ -436,6 +473,7 @@ export const defaultConfig: AppConfig = {
   guardianNameMatch: guardianNamesMatch,
   consentGrantLedgerEnforced: CONSENT_GRANT_LEDGER_ENFORCED,
   mentorEligibilityEnforced: MENTOR_ELIGIBILITY_ENFORCED,
+  mentorDmEnabled: MENTOR_DM_ENABLED,
   publicationHoldWindowMs: PUBLICATION_HOLD_WINDOW_MS,
   grantRenewalMsByType: GRANT_RENEWAL_MS_BY_TYPE,
 }

@@ -16,6 +16,12 @@ export {
   isComponentCurrent,
   evaluateMentorEligibility,
 } from './mentor-eligibility.js'
+export { canDirectMessage } from './direct-messaging.js'
+export type {
+  DirectMessageMentor,
+  DirectMessageStudent,
+  DmGrantSnapshot,
+} from './direct-messaging.js'
 export type {
   MentorEligibilityComponent,
   MentorEligibilityComponentSnapshot,

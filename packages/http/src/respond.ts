@@ -74,6 +74,8 @@ const NOT_FOUND = new Set([
   'AttendanceExceptionNotFoundError',
   // Messaging (Feature 3): append/read/reply of an unknown thread.
   'MessageThreadNotFoundError',
+  // Mentor-student DM (Phase 1): read/send against an unknown thread.
+  'DmThreadNotFoundError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */
@@ -114,6 +116,11 @@ const CONFLICT = new Set([
   'PublicationGrantRequiredError',
   // Attendance (Feature 2): completing a late exception (no make-up applies).
   'AttendanceMakeupNotApplicableError',
+  // Mentor-student DM (Phase 1): the not-a-peer safety-officer refusal, an
+  // unsatisfied enable precondition, and a DM send while the feature is dark.
+  'SafetyOfficerPeerConflictError',
+  'DmEnablePreconditionError',
+  'DmNotAuthorizedForPairError',
 ])
 
 /** Too-many-requests: the per-issuer invite rate limit (P2 §4) + the §10 TOTP attempt limit -> 429. */
@@ -157,6 +164,8 @@ const BAD_REQUEST = new Set([
   'CredentialWitnessIsGuardianError',
   // §5 Rule 2: under-13 public_publication captured with a weak method / no artifact.
   'GrantStrongMethodRequiredError',
+  // Mentor-student DM (Phase 1): mentor_dm captured without a signed_form + artifact.
+  'GrantSignedFormRequiredError',
   // Shared chapter calendar (Feature 1): a bad time range / audience set / kind.
   'CalendarValidationError',
   // Attendance (Feature 2): a bad type / session / consent / slots / arrive_at.

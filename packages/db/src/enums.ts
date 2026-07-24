@@ -172,6 +172,10 @@ export const consentGrantTypeEnum = pgEnum('consent_grant_type', [
   'photo_video_likeness',
   'emergency_medical_pickup',
   'verification_link_sharing',
+  // mentor-student DM consent (migration 0029). A guardian's signed-form consent
+  // for a supervised mentor-student messaging channel; expires at term end,
+  // independently revocable. Built DARK behind MENTOR_DM_ENABLED (design C.3).
+  'mentor_dm',
 ])
 // The capture methods: the FTC strong methods for verifiable parental consent,
 // plus the portal `click` (email-plus).

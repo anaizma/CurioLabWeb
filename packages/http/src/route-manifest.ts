@@ -455,6 +455,17 @@ export const ROUTE_MANIFEST: RouteManifest = [
     path: '/api/ops/messages/[threadId]/reply',
     capability: 'message.reply',
   },
+  // Mentor-student direct messaging (Phase 1, built DARK behind MENTOR_DM_ENABLED,
+  // COUNSEL-GATED). The director/admin setup writes: name the chapter's safety
+  // officer (safety_officer.assign), record the abuse-and-molestation insurance
+  // attestation + flip the chapter DM switch (both dm.enable, refused unless the
+  // Part D preconditions hold). The guardian captures the mentor_dm signed-form
+  // consent (consent.grant; method fixed to signed_form). The participant SEND/READ
+  // endpoints are Phase 4 — NONE exist yet, and no DM flows with the flag off.
+  { method: 'POST', path: '/api/ops/safety-officers', capability: 'safety_officer.assign' },
+  { method: 'POST', path: '/api/ops/dm/attestations', capability: 'dm.enable' },
+  { method: 'POST', path: '/api/ops/dm/enable', capability: 'dm.enable' },
+  { method: 'POST', path: '/api/guardian/children/[id]/dm-consent', capability: 'consent.grant' },
   { method: 'POST', path: '/api/ops/maturations/[id]/confirm', capability: 'maturation.confirm' },
   { method: 'POST', path: '/api/ops/accounts/[id]/reissue-setup', capability: 'account.recover' },
   // §9: the logged mentor/director-assisted minor recovery (distinct from

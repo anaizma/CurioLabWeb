@@ -36,6 +36,13 @@ export {
   type CreatedSession,
   type ValidatedSession,
 } from './sessions.js'
+export {
+  encryptField,
+  decryptField,
+  FIELD_CRYPTO_VERSION,
+  DM_ENCRYPTION_KEY_ENV,
+  type EncryptedField,
+} from './field-crypto.js'
 export { writeAudit, type AuditEntryInput } from './audit.js'
 export { writeAccessLedger, type AccessLedgerInput, type AccessLedgerEvent } from './ledger.js'
 export { withRlsContext, type RlsContext } from './rls.js'

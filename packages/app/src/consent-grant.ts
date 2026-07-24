@@ -35,12 +35,14 @@ import {
   type ConsentGrantType,
   ENROLLMENT_REQUIRED_GRANT_TYPES,
   SELF_RECONFIRM_GRANT_TYPES,
+  SIGNED_FORM_REQUIRED_GRANT_TYPES,
   STRONG_GRANT_METHODS,
   defaultConfig,
 } from './config.js'
 import {
   GrantNotActiveError,
   GrantRevocationEndsEnrollmentError,
+  GrantSignedFormRequiredError,
   GrantStrongMethodRequiredError,
   GrantSubjectNotFoundError,
   PublicationHoldNotFoundError,
@@ -255,6 +257,18 @@ export class ConsentGrantService {
       }
       if (artifact == null) {
         throw new GrantStrongMethodRequiredError(subjectStudentAccountId, 'artifact_missing')
+      }
+    }
+
+    // mentor_dm (design C.3): unconditionally requires the strong `signed_form`
+    // method AND a non-null evidence artifact — a click is deliberate-friction
+    // refused. The DB trigger (0030) is the backstop; this fails cleanly first.
+    if (SIGNED_FORM_REQUIRED_GRANT_TYPES.includes(grantType)) {
+      if (method !== 'signed_form') {
+        throw new GrantSignedFormRequiredError(subjectStudentAccountId, 'weak_method')
+      }
+      if (artifact == null) {
+        throw new GrantSignedFormRequiredError(subjectStudentAccountId, 'artifact_missing')
       }
     }
 

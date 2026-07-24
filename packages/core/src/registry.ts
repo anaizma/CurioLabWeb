@@ -835,4 +835,62 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: TEACHING,
     writes: true,
   },
+
+  // ---- mentor-student direct messaging (design C.1, C.14; Phase 1, DARK) ------
+  // Built behind MENTOR_DM_ENABLED (default false) and COUNSEL-GATED (Part B). No
+  // capability here authorizes a real send with the flag off — canDirectMessage +
+  // the DM services enforce the runtime gate on top of these floors.
+  //
+  // safety_officer.assign: the director/admin authority to name a chapter's
+  // INDEPENDENT safety officer. Chapter-scoped write, chapter_director; platform_admin
+  // via the override (writes:true, so a read-only platform_staff does NOT reach it),
+  // mirroring term.manage / calendar.manage. The not-a-peer rule (the target may not
+  // be a mentor/teaching or student in that chapter) is a SafetyOfficerService concern
+  // + a DB guard, not `can`.
+  'safety_officer.assign': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+  // dm.enable: the director/admin write that flips the chapter DM switch ON. Chapter-
+  // scoped write, chapter_director; platform_admin via override. The enable-precondition
+  // gate (a safety officer assigned + an insurance attestation recorded + ≥1 current-term
+  // pod) is a DmEnableService concern, not `can`.
+  'dm.enable': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
+  // dm.message: the PARTICIPANT pair WRITE (a mentor OR the student writes to their
+  // authorized thread). Chapter-scoped; the role floor is the closed participant set
+  // {student} ∪ TEACHING; `pairGated` marks it as the fully-gated supervised-pair shape
+  // the no-direct-messaging guard admits (Part B). `can` floors "a participant role in
+  // the chapter"; the SPECIFIC pair (this mentor ↔ this student) + the five DM legs are
+  // enforced by canDirectMessage + the DM service on top. writes:true — a read-only
+  // platform override cannot post.
+  'dm.message': {
+    scope: 'chapter',
+    roles: ['student', ...TEACHING],
+    writes: true,
+    pairGated: true,
+  },
+  // dm.read_own: the PARTICIPANT pair READ (either participant reads their own thread).
+  // Same chapter scope + participant floor + `pairGated` shape as dm.message; writes:false,
+  // so both platform overrides reach it. The four-party read authorization (participants +
+  // safety officer + guardians) is a DmThreadService concern layered on this floor.
+  'dm.read_own': {
+    scope: 'chapter',
+    roles: ['student', ...TEACHING],
+    writes: false,
+    pairGated: true,
+  },
+  // dm.oversee: the safety officer's chapter-wide DM read + flag review. Chapter-scoped,
+  // roles [safety_officer] (a staff-only floor with NO student party — it rides the
+  // existing guardian-staff exemption in the no-DM guard). writes:true (flag review /
+  // read-receipts write), so a read-only platform override does not reach the write path.
+  'dm.oversee': {
+    scope: 'chapter',
+    roles: ['safety_officer'],
+    writes: true,
+  },
 }

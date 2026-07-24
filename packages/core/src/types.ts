@@ -15,6 +15,14 @@ export type Role =
   | 'comms_associate'
   | 'student'
   | 'alumni'
+  // Mentor-student DM Phase 1 (design C.1): a chapter-scoped INDEPENDENT safety
+  // officer who reads every DM thread in their chapter and reviews/flags. It is
+  // NOT a teaching role and NOT a student role — deliberately kept out of the
+  // TEACHING set, the PARTICIPANTS set, and any mentor-eligibility logic. An
+  // account cannot hold it in a chapter where it also holds a mentor/teaching or
+  // student membership (the not-a-peer rule, enforced at assignment). It IS a
+  // privileged (2FA-required) adult staff role.
+  | 'safety_officer'
 
 export const ALL_ROLES: readonly Role[] = [
   'platform_admin',
@@ -26,6 +34,7 @@ export const ALL_ROLES: readonly Role[] = [
   'comms_associate',
   'student',
   'alumni',
+  'safety_officer',
 ] as const
 
 export type Scope = 'platform' | 'chapter' | 'pod' | 'own' | 'guardian'
@@ -181,6 +190,16 @@ export interface CapabilityDef {
   subjectConsent?: (resource: Resource) => SubjectConsentReq[]
   /** Emits a transactional minor_record.read obligation for out-of-pod minors. */
   logsRead?: boolean
+  /**
+   * Mentor-student DM Phase 1 (design Part B / C.14). Marks a PARTICIPANT DM
+   * capability (dm.message / dm.read_own) as the fully-gated supervised-pair shape
+   * — the def is only ever invoked behind `canDirectMessage` (pod assignment + a
+   * current mentor_dm grant + mentor eligibility + the chapter switch + the global
+   * MENTOR_DM_ENABLED flag). The no-direct-messaging guard reads this marker (with
+   * the exact scope/roles shape) to admit ONLY these caps while still tripping for
+   * any broader student-messaging shape. It authorizes NOTHING on its own.
+   */
+  pairGated?: boolean
 }
 
 export type Obligation = {
@@ -371,3 +390,20 @@ export type Capability =
   | 'message.view_own'
   | 'message.view'
   | 'message.reply'
+  // mentor-student direct messaging (design C.1, C.14; Phase 1, built DARK behind
+  // MENTOR_DM_ENABLED, COUNSEL-GATED). safety_officer.assign is the director/admin
+  // authority to name a chapter's independent safety officer (chapter-scoped write,
+  // chapter_director; platform_admin via override; the not-a-peer rule is enforced
+  // in the assignment service + a DB guard). dm.enable is the director/admin write
+  // that flips the chapter DM switch on, refused unless the enable-preconditions
+  // hold (a safety officer assigned, an insurance attestation recorded, ≥1
+  // current-term pod). dm.message (the participant pair WRITE) and dm.read_own (the
+  // participant pair READ) are the two `pairGated` PARTICIPANT caps a student may be
+  // party to — the narrow no-direct-messaging exemption admits exactly these; every
+  // invocation is additionally gated by `canDirectMessage`. dm.oversee is the safety
+  // officer's chapter-wide read + flag review. NONE of these run while the flag is off.
+  | 'safety_officer.assign'
+  | 'dm.enable'
+  | 'dm.message'
+  | 'dm.read_own'
+  | 'dm.oversee'

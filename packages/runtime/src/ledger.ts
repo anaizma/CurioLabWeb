@@ -85,6 +85,16 @@ export type AccessLedgerEvent =
   // server-derived senderRole — never the message body / any PII.
   | 'message.sent'
   | 'message.replied'
+  // Mentor-student direct messaging (Phase 1, built DARK behind MENTOR_DM_ENABLED).
+  // Access-provenance events for the highest-risk surface: a director named a
+  // chapter's safety officer, recorded an insurance attestation, or flipped the
+  // chapter DM switch on; and a participant sent a DM. actor is the director (or the
+  // sending participant); subject is the target account / the student; the chapter
+  // is the DM chapter. detail carries ids only — NEVER the message body / any PII.
+  | 'safety_officer.assigned'
+  | 'dm.insurance_attested'
+  | 'dm.chapter_enabled'
+  | 'dm.message_sent'
 
 export interface AccessLedgerInput {
   event: AccessLedgerEvent

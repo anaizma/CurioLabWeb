@@ -1337,6 +1337,82 @@ export class MessagingValidationError extends Error {
   }
 }
 
+// -------------------------------------------------------------------------
+// Mentor-student direct messaging (Phase 1, built DARK behind MENTOR_DM_ENABLED).
+// -------------------------------------------------------------------------
+
+/**
+ * A `mentor_dm` consent capture was attempted with a weak method (a click) or
+ * without an evidence artifact. The signed form is deliberate friction that tests
+ * guardian engagement (design C.3), so mentor_dm REQUIRES a `signed_form` method
+ * AND a non-null evidence artifact reference. The database trigger enforces the
+ * same; this is the service-layer pre-check that fails cleanly with the reason.
+ */
+export class GrantSignedFormRequiredError extends Error {
+  readonly subjectAccountId: string
+  readonly reason: 'weak_method' | 'artifact_missing'
+  constructor(subjectAccountId: string, reason: 'weak_method' | 'artifact_missing') {
+    super(`mentor_dm consent requires a signed_form method with an evidence artifact (${reason})`)
+    this.name = 'GrantSignedFormRequiredError'
+    this.subjectAccountId = subjectAccountId
+    this.reason = reason
+  }
+}
+
+/**
+ * A `safety_officer` assignment was refused because the target account already
+ * holds a mentor/teaching or student membership in that chapter (or vice versa) —
+ * the not-a-peer rule (design C.1): independence is the point, peer review does
+ * not escalate. Deliberately OPAQUE (it names no roles): the assignment simply
+ * refuses. The database trigger is the floor; this is the service-layer refusal.
+ */
+export class SafetyOfficerPeerConflictError extends Error {
+  constructor() {
+    super('the account cannot be assigned as safety officer in this chapter')
+    this.name = 'SafetyOfficerPeerConflictError'
+  }
+}
+
+/**
+ * `dm.enable` was refused because a system-checkable enable-precondition (design
+ * Part D) is not satisfied: no `safety_officer` is assigned to the chapter, no
+ * insurance attestation is on record, or the chapter has no current-term pod.
+ * Distinct from a Forbidden (an authorization failure); mappable to a 409.
+ */
+export class DmEnablePreconditionError extends Error {
+  readonly reason: 'no_safety_officer' | 'no_insurance_attestation' | 'no_current_term_pod'
+  constructor(reason: 'no_safety_officer' | 'no_insurance_attestation' | 'no_current_term_pod') {
+    super(`mentor-student DM cannot be enabled for this chapter: ${reason}`)
+    this.name = 'DmEnablePreconditionError'
+    this.reason = reason
+  }
+}
+
+/**
+ * A DM send/read path was reached while the feature is DARK — the global
+ * MENTOR_DM_ENABLED flag is off, the chapter switch is off, or `canDirectMessage`
+ * does not hold for this pair (no assignment, no current mentor_dm grant, mentor
+ * ineligible). NOTHING flows while the feature is dark; this is the refusal that
+ * guarantees no real minor can be a party with the flag off. Not a Forbidden (it
+ * is a feature-state refusal, not an authorization leak); a route maps it to 409.
+ */
+export class DmNotAuthorizedForPairError extends Error {
+  constructor(message = 'direct messaging is not available for this mentor-student pair') {
+    super(message)
+    this.name = 'DmNotAuthorizedForPairError'
+  }
+}
+
+/** The referenced DM thread does not exist. */
+export class DmThreadNotFoundError extends Error {
+  readonly threadId: string
+  constructor(threadId: string) {
+    super(`dm thread not found: ${threadId}`)
+    this.name = 'DmThreadNotFoundError'
+    this.threadId = threadId
+  }
+}
+
 /**
  * A calendar event write failed validation before any authorization decision:
  * `time_range` (endsAt is not strictly after startsAt), `audiences` (empty or an

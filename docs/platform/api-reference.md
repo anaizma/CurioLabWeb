@@ -1093,6 +1093,49 @@ Provider webhooks. **No actor / no `authorize`.** Each verifies the provider sig
 
 ---
 
+## 10. Mentor-student direct messaging (Phase 1 — REVIEW-GATED, built DARK)
+
+The highest-risk surface in the platform (adult-to-minor messaging). Built fully against **synthetic data**, **OFF by default** behind the global build flag `MENTOR_DM_ENABLED` (default `false`, `=== 'true'`) and **COUNSEL-GATED** (the design doc Part A/B legal sign-off). With the flag off, `canDirectMessage` returns false and **no DM send is accepted — no real minor can be a party**. See `docs/platform/plans/mentor-student-dm-design.md`. Phase 1 ships the **setup + provisioning** endpoints only; the participant **send/read** endpoints are Phase 4.
+
+The runtime pair gate is the pure predicate **`canDirectMessage(mentor, student, now)`** (`@curiolab/core`), re-evaluated at every send/read, true only when ALL hold: the student is in a pod the mentor is assigned to in the current term; a current (non-expired, non-revoked) `mentor_dm` consent grant is on file; `evaluateMentorEligibility` passes; the chapter DM switch is on; and `MENTOR_DM_ENABLED` is on.
+
+### `POST /api/ops/safety-officers` — assign a chapter's safety officer
+
+- **Auth:** session; capability `safety_officer.assign` (chapter-scoped, `chapter_director`; `platform_admin` via override).
+- **Request:** `{ chapterId, accountId }`.
+- **Behavior:** records the target account as the chapter's **independent** safety officer (design C.1). Refuses the **not-a-peer** case — the target may not already be a mentor/teaching or student in that chapter — at the service **and** a DB trigger backstop.
+- **Response `201`:** `{ membershipId, chapterId, accountId }`.
+- **Errors:** `403` opaque (not a director); `409` `SafetyOfficerPeerConflictError` (the target is a peer in that chapter).
+
+### `POST /api/ops/dm/attestations` — record the insurance attestation
+
+- **Auth:** session; capability `dm.enable` (chapter-scoped, `chapter_director`; `platform_admin` via override).
+- **Request:** `{ chapterId, carrier?, policyRef? }`.
+- **Behavior:** records that abuse-and-molestation insurance is confirmed for the chapter (a Part D enable precondition). Append-only.
+- **Response `201`:** `{ attestationId, chapterId }`.
+- **Errors:** `403` opaque.
+
+### `POST /api/ops/dm/enable` — flip the chapter DM switch on
+
+- **Auth:** session; capability `dm.enable`.
+- **Request:** `{ chapterId }`.
+- **Behavior:** turns DM on for the chapter (design Part D). **Refuses** unless, in the system: a `safety_officer` is assigned to the chapter; an insurance attestation is on record; and the chapter has ≥1 current-term pod. Idempotent. Even after enabling, the global `MENTOR_DM_ENABLED` flag must also be on for any DM to flow.
+- **Response `201`:** `{ chapterId, alreadyEnabled }`.
+- **Errors:** `403` opaque; `409` `DmEnablePreconditionError` with `reason` ∈ `no_safety_officer | no_insurance_attestation | no_current_term_pod`.
+
+### `POST /api/guardian/children/{id}/dm-consent` — capture the mentor_dm signed-form consent
+
+- **Auth:** session; capability `consent.grant` (guardian-scoped over the named verified child). Reuses `ConsentGrantService` — no forked write authority.
+- **Path param:** `id` (the child account id).
+- **Request:** `{ evidenceArtifactRef, scope? }`. Method is fixed to `signed_form`.
+- **Behavior:** captures the `mentor_dm` consent grant (design C.3/C.10) — a **signed form** with a non-null evidence artifact. A click / missing artifact is **refused** at the service **and** a DB trigger backstop. Expires at term end; independently revocable via the existing per-grant revoke (`POST /api/guardian/children/{id}/grants/mentor_dm/revoke`).
+- **Response `201`:** `{ grantId, subjectStudentAccountId, grantType: "mentor_dm", method, expiresAt, renewal }`.
+- **Errors:** `403` opaque; `400` `GrantSignedFormRequiredError` (weak method / no artifact).
+
+> **Phase 4 (not built):** the participant `dm.message` (send) / `dm.read_own` (read) endpoints and the safety-officer `dm.oversee` reading queue. The capabilities and the append-only encrypted `dm_thread`/`dm_message` store exist and are tested; the participant HTTP surface is deferred.
+
+---
+
 ## Deferred / placeholder notes
 
 - **Ops list/GET endpoints (P1).** The director-portal reads in §6a now exist (`GET /api/ops/{applications,applications/[id],invites,memberships,guardianships,media/review-queue,deletion-requests,export-requests,enrollments,pods,terms,dashboard}`), backed by the framework-agnostic `OpsReadService` (`packages/app/src/ops-read.ts`) and gated on the new chapter-scoped read capabilities. The moderation queue read (`GET /api/lab/moderation/queue`) and the audit readers read directly (no dedicated service read method). Guardian and profile reads are the composed-record endpoints above.

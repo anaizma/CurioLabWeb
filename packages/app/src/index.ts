@@ -606,4 +606,27 @@ export {
   AttendanceMakeupNotApplicableError,
   MessageThreadNotFoundError,
   MessagingValidationError,
+  GrantSignedFormRequiredError,
+  SafetyOfficerPeerConflictError,
+  DmEnablePreconditionError,
+  DmNotAuthorizedForPairError,
+  DmThreadNotFoundError,
 } from './errors.js'
+export { MENTOR_DM_ENABLED } from './config.js'
+export {
+  SafetyOfficerService,
+  DmEnableService,
+  DmThreadService,
+  DM_VISIBILITY_HEADER_VERSION,
+  DM_VISIBILITY_HEADER_TEXT,
+} from './mentor-dm.js'
+export type {
+  SafetyOfficerServiceDeps,
+  SafetyOfficerAuthorizeFn,
+  SafetyOfficerAssignResult,
+  DmEnableServiceDeps,
+  DmEnableAuthorizeFn,
+  InsuranceAttestationInput,
+  DmThreadServiceDeps,
+  DmDecryptedMessage,
+} from './mentor-dm.js'

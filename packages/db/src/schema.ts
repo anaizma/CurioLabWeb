@@ -703,6 +703,94 @@ export const message = pgTable(
   (t) => [index('message_thread_seq_idx').on(t.threadId, t.seq)],
 )
 
+// --- Mentor-student direct messaging (Phase 1, migration 0030; built DARK) ---
+// The append-only, ENCRYPTED four-party thread store. dm_message.body is an
+// AES-256-GCM {v,iv,ct,tag} envelope (packages/runtime field-crypto.ts), NEVER
+// plaintext (a DB CHECK enforces the envelope keys). Both tables are append-only
+// (the shared reject_append_only_mutation trigger + SELECT/INSERT-only grants).
+// last_message_at is DERIVED by the dm_thread_current view (not a stored column).
+export const dmThread = pgTable(
+  'dm_thread',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chapterId: uuid('chapter_id')
+      .notNull()
+      .references(() => chapter.id),
+    mentorMembershipId: uuid('mentor_membership_id')
+      .notNull()
+      .references(() => membership.id),
+    studentAccountId: uuid('student_account_id')
+      .notNull()
+      .references(() => account.id),
+    visibilityHeaderVersion: text('visibility_header_version').notNull(),
+    visibilityHeaderText: text('visibility_header_text').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('dm_thread_chapter_idx').on(t.chapterId),
+    index('dm_thread_mentor_idx').on(t.mentorMembershipId),
+    index('dm_thread_student_idx').on(t.studentAccountId),
+    uniqueIndex('dm_thread_pair_unique').on(t.mentorMembershipId, t.studentAccountId),
+  ],
+)
+
+export const dmMessage = pgTable(
+  'dm_message',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'bigint' }).notNull().unique(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => dmThread.id),
+    senderAccountId: uuid('sender_account_id')
+      .notNull()
+      .references(() => account.id),
+    // The AES-256-GCM {v, iv, ct, tag} envelope — never plaintext at rest.
+    body: jsonb('body').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('dm_message_thread_seq_idx').on(t.threadId, t.seq),
+    check('dm_message_body_encrypted', sql`${t.body} ?& array['v','iv','ct','tag']`),
+  ],
+)
+
+// Part D enable-precondition records (append-only). An insurance attestation for a
+// chapter, and the chapter DM switch (one row per chapter = "on").
+export const dmInsuranceAttestation = pgTable(
+  'dm_insurance_attestation',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chapterId: uuid('chapter_id')
+      .notNull()
+      .references(() => chapter.id),
+    carrier: text('carrier'),
+    policyRef: text('policy_ref'),
+    attestedBy: uuid('attested_by')
+      .notNull()
+      .references(() => account.id),
+    attestedAt: timestamp('attested_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('dm_insurance_attestation_chapter_idx').on(t.chapterId)],
+)
+
+export const dmChapterSwitch = pgTable(
+  'dm_chapter_switch',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chapterId: uuid('chapter_id')
+      .notNull()
+      .references(() => chapter.id),
+    enabledBy: uuid('enabled_by')
+      .notNull()
+      .references(() => account.id),
+    enabledAt: timestamp('enabled_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('dm_chapter_switch_chapter_unique').on(t.chapterId)],
+)
+
 // --- Audit -----------------------------------------------------------------
 
 export const auditEntry = pgTable(

@@ -43,6 +43,8 @@ const ID = {
   jmAdult: 'acct-jm-adult',
   jmMinor: 'acct-jm-minor',
   comms1: 'acct-comms-c1',
+  safety1: 'acct-safety-officer-c1',
+  safety2: 'acct-safety-officer-c2',
   sMinorConsented: 'acct-student-minor-consented',
   sMinorNoPart: 'acct-student-minor-no-part',
   s16: 'acct-student-16',
@@ -172,6 +174,16 @@ export const actors = {
   comms_associate_c1: ctx({
     id: ID.comms1,
     memberships: [mem('comms_associate', C1)],
+  }),
+  // Mentor-student DM (design C.1): the chapter-scoped INDEPENDENT safety officer.
+  // Not a teaching or student role; an adult. Holds dm.oversee in its chapter.
+  safety_officer_c1: ctx({
+    id: ID.safety1,
+    memberships: [mem('safety_officer', C1)],
+  }),
+  safety_officer_c2: ctx({
+    id: ID.safety2,
+    memberships: [mem('safety_officer', C2)],
   }),
   student_minor_consented: ctx({
     id: ID.sMinorConsented,
@@ -537,6 +549,13 @@ export const messageViewC1: Resource = { chapter_id: C1 }
 // out_of_scope; a student denies role_not_permitted; a read-only platform_staff
 // denies out_of_scope (writes:true).
 export const messageReplyC1: Resource = { id: 'message-thread-1', chapter_id: C1 }
+
+// mentor-student direct messaging (design C.1, C.14; Phase 1). All five caps are
+// chapter-scoped, so the resource is the chapter. safety_officer.assign / dm.enable
+// (chapter_director write), dm.oversee (safety_officer write), dm.message /
+// dm.read_own (the participant floor {student} ∪ TEACHING). The specific pair + the
+// five DM legs are enforced by canDirectMessage + the DM services, not `can`.
+export const dmChapterC1: Resource = { chapter_id: C1 }
 
 export const narrativeOwnedBy = (owner: string): Resource => ({
   id: 'narrative-1',
