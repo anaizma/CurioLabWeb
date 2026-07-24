@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Nunito_Sans, JetBrains_Mono, Work_Sans } from "next/font/google";
 import "./globals.css";
-import Nav from "@/components/Nav";
-import Footer from "@/components/Footer";
+import SiteChrome from "@/components/SiteChrome";
 
 const sans = Nunito_Sans({
   subsets: ["latin"],
@@ -30,9 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} ${editorial.variable}`}>
       <body className="font-sans antialiased">
-        <Nav />
-        <main>{children}</main>
-        <Footer />
+        <SiteChrome>{children}</SiteChrome>
       </body>
     </html>
   );
