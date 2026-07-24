@@ -131,6 +131,23 @@ export type {
   SafeguardSuspendResult,
 } from './controllers/ops.js'
 
+// Ops back office — director-portal READ surfaces (P1)
+export {
+  listApplications,
+  getApplication,
+  listInvites,
+  listMemberships,
+  listGuardianships,
+  listMediaReviewQueue,
+  listDeletionRequests,
+  listExportRequests,
+  listEnrollments,
+  listPods,
+  listTerms,
+  opsDashboard,
+} from './controllers/ops-read.js'
+export type { ReadQueryInput, ReadDetailInput } from './controllers/ops-read.js'
+
 // Organization structure (Platform administration: chapters / terms / pods)
 export {
   createChapter,

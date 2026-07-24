@@ -532,6 +532,15 @@ export const termInC1: Resource = { chapter_id: C1 }
 // the resource is the pod's chapter. Same director-scoping as term.manage.
 export const podInC1: Resource = { chapter_id: C1 }
 
+// director-portal READ surfaces (admin/director work order P1): the chapter-scoped
+// read capabilities (application.read / invite.read / membership.read /
+// guardianship.read / enrollment.read / pod.read / deletion.read / export.read).
+// All scope 'chapter', roles [chapter_director], writes:false — the resource is
+// the chapter whose rows are read. A director reads their OWN chapter; another
+// chapter denies out_of_scope; a non-director role denies role_not_permitted; and
+// because writes:false, BOTH platform overrides (admin and read-only staff) reach it.
+export const directorReadC1: Resource = { chapter_id: C1 }
+
 // consent.revoke_safeguarding (the one sanctioned STAFF write to consent;
 // chapter-scoped, chapter_director, admin via override). The resource is the
 // student, scoped to their enrolling chapter — it does NOT ride guardian/self

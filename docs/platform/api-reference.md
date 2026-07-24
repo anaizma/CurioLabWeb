@@ -674,6 +674,45 @@ All `session`, chapter-scoped to the Chapter Director (platform_admin via overri
 
 ---
 
+## 6a. Ops director-portal reads (P1)
+
+The chapter-scoped list/detail GETs the director portal reads (`docs/platform/director-portal-read-endpoints.md`). All `session`, chapter-scoped to the Chapter Director; a `platform_admin`/`platform_staff` sees all chapters via the read override, or one via `?chapterId`. **A null session and a non-director are both an opaque `403`** (these use `runAuthed`, so no session is `403`, not `401` — treat both as "not signed in"). A cross-chapter `?chapterId` is a `403`. Lists return `200 { items: [...] }` (bare envelope). Each surface gates on a new chapter-scoped read capability (`writes:false`, roles `[chapter_director]`, admin via `platformGrant`); the media queue reuses `media.review`. No minor last-name/school leaks — display names are the first-name + last-initial `account.display_name` (the application surface derives the same form from the raw applicant name), except the guardianship name-match fields. **GET routes carry no route-manifest entry** (only mutating methods are manifested).
+
+### `GET /api/ops/applications` — list (`application.read`)
+- **Query:** `?status=` (repeatable or CSV; DB enum values `submitted|screening|interview_scheduled|accepted|enrolled|declined|withdrawn` — `interview` is accepted as an alias of `interview_scheduled`); `?chapterId=`.
+- **`200`:** `{ items: [{ applicationId, status, studentDisplayName: string|null, guardianDisplayName: string|null, submittedAt (ISO), chapterId, term: null }] }`. `term` is always `null` (an application captures no term).
+
+### `GET /api/ops/applications/{id}` — detail (`application.read`)
+- **`200`:** `{ applicationId, status, submittedAt (ISO), chapterId, student: { displayName: string|null }, guardian: { displayName: string|null, email: string|null }, answers: { stage2a: {…}, stage2b: {…}, stage2c: null }, history: [{ from: string|null, to, at (ISO), note: string|null }] }`. `stage2a`/`stage2b` are the funnel draft's parent/student answer blobs (read-only, the review content); there is no separate `stage2c` blob (always `null`). `history` is the `application_event` trail, oldest first. `404` if unknown; `403` cross-chapter.
+
+### `GET /api/ops/invites` — list (`invite.read`)
+- **`200`:** `{ items: [{ inviteId, kind, targetEmail: string|null, status: "pending"|"accepted"|"expired"|"superseded", issuedAt (ISO), expiresAt (ISO), acceptedAccountId: string|null }] }`. **The raw token / token_hash is never returned.** `status` maps the DB `invite_status` (`issued`→`pending`, or `expired` when past `expires_at`; `revoked`→`superseded`). `acceptedAccountId` is the invite's `intended_account_id` (there is no `accepted_account_id` column). Chapter = the bound enrollment's chapter, else the issuer's chapter membership.
+
+### `GET /api/ops/memberships` — roster (`membership.read`)
+- **Query:** `?status=`, `?role=` (repeatable/CSV), `?chapterId=`.
+- **`200`:** `{ items: [{ membershipId, accountId, displayName, role, status, tier: string|null, podId: string|null, joinedAt (ISO) }] }`. `status`/`role` are the DB enum values (`status` ∈ `pending|active|inactive|offboarded|suspended`); `joinedAt` is `created_at`.
+
+### `GET /api/ops/guardianships` — list (`guardianship.read`)
+- **`200`:** `{ items: [{ guardianshipId, status, guardianDisplayName, guardianNameOnAccount, studentDisplayName, nameOnForm, createdAt (ISO) }] }`. The one surface that returns a legal name: `guardianNameOnAccount` (the guardian account's `legal_name`) vs `nameOnForm` (the enrollment's `guardian_name_on_form`) is the verify match. Chapter = the student's most recent enrollment chapter.
+
+### `GET /api/ops/media/review-queue` — list (`media.review`)
+- **`200`:** `{ items: [{ mediaId, projectId: string|null, projectTitle: string|null, reviewStatus, storageRef, depictions: [{ accountId, displayName, confirmed: boolean }], submittedAt (ISO) }] }`. Only `pending_review` media. No `flaggedReason` field (no such column). Gated on the existing `media.review` (teaching roles reach it).
+
+### `GET /api/ops/deletion-requests` — list (`deletion.read`) · `GET /api/ops/export-requests` — list (`export.read`)
+- **`200`:** `{ items: [{ deletionRequestId | exportRequestId, subjectAccountId, subjectDisplayName, status, requestedAt (ISO) }] }`. Chapter = the subject's most recent enrollment chapter.
+
+### `GET /api/ops/enrollments` — list (`enrollment.read`)
+- **`200`:** `{ items: [{ enrollmentRecordId, applicationId, studentDisplayName: string|null, termId, termName: string|null, guardianNameOnForm, signatureDate: string|null, hasAccount: boolean }] }`. `studentDisplayName` is the linked account's display name, else derived from the application applicant name; `signatureDate` is `form_signed_at`; `hasAccount` = `student_account_id` present.
+
+### `GET /api/ops/pods` — list (`pod.read`) · `GET /api/ops/terms` — list (`pod.read`)
+- **Pods `200`:** `{ items: [{ podId, name, termId, mentorMembershipId: string|null, mentorDisplayName: string|null, memberCount: number }] }` (`memberCount` = `pod_assignment` rows).
+- **Terms `200`:** `{ items: [{ termId, name, startsOn, endsOn }] }`. (Terms are gated with pods on `pod.read`.)
+
+### `GET /api/ops/dashboard` — count summary (`application.read`)
+- **`200`:** `{ newApplications, pendingInvites, guardianshipsToVerify, mediaToReview, openRequests, activeMembers }` — chapter-scoped counts (`newApplications` = `submitted`; `pendingInvites` = live `issued`; `guardianshipsToVerify` = `pending`; `mediaToReview` = `pending_review`; `openRequests` = open deletion + export; `activeMembers` = `active` memberships).
+
+---
+
 ## 7. Platform admin
 
 ### `POST /api/admin/chapters`
@@ -770,7 +809,7 @@ Provider webhooks. **No actor / no `authorize`.** Each verifies the provider sig
 
 ## Deferred / placeholder notes
 
-- **No ops list/GET endpoints.** There is no ops "list applications", "list deletion/export requests", "list invites", or "get one X" read endpoint — only the mutations above. The moderation queue read (`GET /api/lab/moderation/queue`) and the audit readers exist, but they read directly (no dedicated service read method). Guardian and profile reads are the composed-record endpoints above.
+- **Ops list/GET endpoints (P1).** The director-portal reads in §6a now exist (`GET /api/ops/{applications,applications/[id],invites,memberships,guardianships,media/review-queue,deletion-requests,export-requests,enrollments,pods,terms,dashboard}`), backed by the framework-agnostic `OpsReadService` (`packages/app/src/ops-read.ts`) and gated on the new chapter-scoped read capabilities. The moderation queue read (`GET /api/lab/moderation/queue`) and the audit readers read directly (no dedicated service read method). Guardian and profile reads are the composed-record endpoints above.
 - **Placeholder response fields:** `ChildRecord.mentorHours`/`.timeline`, `ProfileView.mentorHours`/`.timeline`, `ChapterDigest.items`, and `ExportBundle.timeline` are honest zero-state placeholders pending later milestones.
 - **Mailer seams:** tokens returned "once" (`IssueInviteResult.token`, `ReissueSetupResult.token`, `CreateStudentLinkResult.studentToken`, `RegenerateVerificationResult.token`) and the password-reset / subscriber confirm/unsubscribe tokens are the seams a future mailer consumes; delivery itself is deferred.
 - **`GET /api/auth/session`** returns `401 {"error":"unauthorized"}` on no session (it is a public controller), unlike the opaque `403` used by `runAuthed` routes — front-end code should treat both as "not signed in".

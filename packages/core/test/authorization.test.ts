@@ -54,6 +54,7 @@ import {
   chapterManageTarget,
   termInC1,
   podInC1,
+  directorReadC1,
   CHILD_S,
   OWNER_S18,
   type Role,
@@ -593,6 +594,32 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectAllow(actors.platform_admin, 'pod.manage', podInC1)
     expectDeny(actors.chapter_director_c2, 'pod.manage', podInC1, 'out_of_scope')
     expectDeny(actors.lead_instructor_c1, 'pod.manage', podInC1, 'role_not_permitted')
+  })
+
+  // director-portal READ surfaces (admin/director work order P1). Each is a
+  // chapter-scoped read floored at chapter_director, writes:false — so a director
+  // reads their OWN chapter, another chapter denies out_of_scope, a non-director
+  // role denies role_not_permitted, and BOTH platform overrides (admin and the
+  // read-only staff) reach it because it is a read.
+  test('director-portal read capabilities (director own chapter; admin + staff via override; cross-chapter out_of_scope; non-director role_not_permitted)', () => {
+    const reads = [
+      'application.read',
+      'invite.read',
+      'membership.read',
+      'guardianship.read',
+      'enrollment.read',
+      'pod.read',
+      'deletion.read',
+      'export.read',
+    ] as const
+    for (const cap of reads) {
+      expectAllow(actors.chapter_director_c1, cap, directorReadC1)
+      expectAllow(actors.platform_admin, cap, directorReadC1)
+      // writes:false, so the read-only platform_staff override also grants it.
+      expectAllow(actors.platform_staff, cap, directorReadC1)
+      expectDeny(actors.chapter_director_c2, cap, directorReadC1, 'out_of_scope')
+      expectDeny(actors.lead_instructor_c1, cap, directorReadC1, 'role_not_permitted')
+    }
   })
 
   test('senior_instructor resolves independently across its two pods', () => {

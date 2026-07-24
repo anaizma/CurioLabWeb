@@ -1,6 +1,14 @@
+// GET  /api/ops/terms — the chapter term list (pod.read).
 // POST /api/ops/terms — create a term in a chapter (term.manage, chapter_director).
 import { cookies } from 'next/headers'
-import { getSql, createTerm, SESSION_COOKIE } from '@curiolab/http'
+import { getSql, createTerm, listTerms, SESSION_COOKIE } from '@curiolab/http'
+
+export async function GET(req: Request) {
+  const sessionToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null
+  const query = Object.fromEntries(new URL(req.url).searchParams)
+  const { status, body } = await listTerms({ sql: getSql(), sessionToken, query })
+  return Response.json(body, { status })
+}
 
 export async function POST(req: Request) {
   const sessionToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null

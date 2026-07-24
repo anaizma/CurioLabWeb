@@ -548,4 +548,55 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+
+  // ---- director-portal READ surfaces (admin/director work order P1) ---------
+  // docs/platform/director-portal-read-endpoints.md: the chapter-scoped list/detail
+  // GETs the director portal reads. Each is scope 'chapter', roles
+  // [chapter_director], writes:false — a director reads their OWN chapter's rows
+  // (another chapter denies out_of_scope), and both platform overrides reach them
+  // (writes:false, so platform_staff's read-only override grants scope+role too).
+  // These mirror the write capabilities the surfaces act through
+  // (application.transition, member.invite, member.activate, guardianship.verify,
+  // enrollment.create, pod.manage, deletion.*/export.*); the media review queue
+  // reuses the existing media.review, so there is no media.read here.
+  'application.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  'invite.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  'membership.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  'guardianship.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  'enrollment.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  'pod.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  'deletion.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  'export.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
 }

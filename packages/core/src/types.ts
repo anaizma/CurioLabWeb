@@ -256,3 +256,19 @@ export type Capability =
   | 'chapter.manage'
   | 'term.manage'
   | 'pod.manage'
+  // director-portal READ surfaces (admin/director work order P1;
+  // docs/platform/director-portal-read-endpoints.md). Each is a chapter-scoped,
+  // read-only capability floored at chapter_director (platform_admin/-staff via
+  // the read override): the director reads their own chapter's applications,
+  // invites, roster, guardianships, enrollments, pods/terms, and the deletion /
+  // export request queues. The media review queue reuses the existing
+  // media.review. All writes:false, so platform_staff's read-only override reaches
+  // them.
+  | 'application.read'
+  | 'invite.read'
+  | 'membership.read'
+  | 'guardianship.read'
+  | 'enrollment.read'
+  | 'pod.read'
+  | 'deletion.read'
+  | 'export.read'

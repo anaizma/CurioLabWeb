@@ -271,6 +271,29 @@ export type {
   PodAssignmentResult,
   UnassignResult,
 } from './pod.js'
+export { OpsReadService, displayFromFullName } from './ops-read.js'
+export type {
+  OpsReadServiceDeps,
+  OpsReadAuthorizeFn,
+  OpsReadCapability,
+  ApplicationListItem,
+  ApplicationDetail,
+  InviteListItem,
+  MembershipListItem,
+  GuardianshipListItem,
+  MediaDepictionView,
+  MediaReviewItem,
+  SubjectRequestItem,
+  DeletionRequestItem,
+  ExportRequestItem,
+  EnrollmentListItem,
+  PodListItem,
+  TermListItem,
+  DashboardSummary,
+  ApplicationListQuery,
+  MembershipListQuery,
+  ChapterScopedQuery,
+} from './ops-read.js'
 export { ProjectService, projectExternalPublicationRevokeCascade } from './project.js'
 export type {
   ProjectServiceDeps,
