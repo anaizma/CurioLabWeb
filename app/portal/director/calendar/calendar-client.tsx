@@ -13,13 +13,14 @@ const AUD: { key: CalendarAudience; label: string }[] = [
   { key: "mentor", label: "Mentors" },
   { key: "director", label: "Directors" },
 ];
-const KINDS: CalendarKind[] = ["session", "orientation", "meeting", "other"];
 const CAT_LABEL: Record<CalendarAudience, string> = { parent: "Parents", mentor: "Mentors", director: "Directors" };
 const MENTOR_ROLES = ["junior_mentor", "senior_instructor", "lead_instructor"];
+const KINDS: CalendarKind[] = ["session", "orientation", "meeting", "other"];
 type Unit = "day" | "week" | "month" | "year";
 type Ends = "never" | "on" | "after";
 type Freq = "none" | "daily" | "weekly" | "monthly" | "custom";
 interface RecCfg { interval: number; unit: Unit; weekdays: number[]; ends: Ends; endDate: string; count: number; }
+type GuestEntry = { kind: "all"; cat: CalendarAudience } | { kind: "person"; cat: CalendarAudience; name: string };
 const UNIT_ADV: Record<Unit, string> = { day: "Daily", week: "Weekly", month: "Monthly", year: "Yearly" };
 const inputCls = "w-full rounded-lg border border-ink/15 px-3 py-2 text-sm bg-white";
 
@@ -112,11 +113,9 @@ function CustomRecurrenceModal({ initial, startWeekday, onCancel, onDone }: { in
   const [ends, setEnds] = useState<Ends>(initial.ends);
   const [endDate, setEndDate] = useState(initial.endDate);
   const [count, setCount] = useState(initial.count);
-
   function toggleWd(w: number) {
     setWeekdays((prev) => (prev.includes(w) ? prev.filter((x) => x !== w) : [...prev, w]));
   }
-
   return (
     <Overlay onClose={onCancel}>
       <div className="flex flex-col gap-4">
@@ -173,39 +172,27 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
   const [date, setDate] = useState(dateKey);
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("12:00");
-  const [aud, setAud] = useState<Record<CalendarAudience, boolean>>({ parent: true, mentor: true, director: false });
   const [freq, setFreq] = useState<Freq>("none");
   const [custom, setCustom] = useState<RecCfg | null>(null);
   const [showCustom, setShowCustom] = useState(false);
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
-  const [guests, setGuests] = useState<string[]>([]);
-  const [guestInput, setGuestInput] = useState("");
-  const [activeCat, setActiveCat] = useState<CalendarAudience | null>(null);
-  const [members, setMembers] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<GuestEntry[]>([]);
+  const [open, setOpen] = useState(false);
+  const [menuCat, setMenuCat] = useState<CalendarAudience | null>(null);
+  const [members, setMembers] = useState<Record<string, string[]>>({});
 
-  const audiences = AUD.map((a) => a.key).filter((k) => aud[k]);
   const startWeekday = (() => { const p = date.split("-").map(Number); return isNaN(p[0]) ? new Date().getDay() : new Date(p[0], (p[1] || 1) - 1, p[2] || 1).getDay(); })();
-  const valid = title.trim().length > 0 && date.length > 0 && start.length > 0 && end.length > 0 && audiences.length > 0;
+  const valid = title.trim().length > 0 && date.length > 0 && start.length > 0 && end.length > 0 && selected.length > 0;
 
   function onRepeatChange(v: string) {
-    if (v === "custom") {
-      setShowCustom(true);
-      return;
-    }
+    if (v === "custom") { setShowCustom(true); return; }
     setFreq(v as Freq);
     setCustom(null);
   }
-
-  function addGuest(name: string) {
-    const n = name.trim();
-    if (n && !guests.includes(n)) setGuests((g) => [...g, n]);
-  }
   async function loadCat(cat: CalendarAudience) {
-    if (activeCat === cat) { setActiveCat(null); return; }
-    setActiveCat(cat);
     if (members[cat]) return;
     try {
       if (cat === "parent") {
@@ -230,6 +217,16 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
       /* ignore */
     }
   }
+  function selectCat(cat: CalendarAudience) {
+    setMenuCat(cat);
+    void loadCat(cat);
+  }
+  function addAll(cat: CalendarAudience) {
+    setSelected((p) => (p.some((s) => s.kind === "all" && s.cat === cat) ? p : [...p, { kind: "all", cat }]));
+  }
+  function addPerson(cat: CalendarAudience, name: string) {
+    setSelected((p) => (p.some((s) => s.kind === "person" && s.name === name) ? p : [...p, { kind: "person", cat, name }]));
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -241,6 +238,8 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
       const startDate = new Date(sy, (sm || 1) - 1, sd || 1);
       const [sh, smin] = start.split(":").map(Number);
       const [eh, emin] = end.split(":").map(Number);
+      const audiences = Array.from(new Set(selected.filter((s) => s.kind === "all").map((s) => s.cat)));
+      const guests = selected.filter((s): s is Extract<GuestEntry, { kind: "person" }> => s.kind === "person").map((s) => s.name);
       let dates: Date[];
       if (freq === "none") dates = [startDate];
       else if (freq === "custom" && custom) dates = expand(startDate, custom);
@@ -253,10 +252,10 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
         const res = await fetch("/api/ops/calendar", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ chapterId, title: title.trim(), kind, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), audiences, location: location.trim() || undefined, notes: notes.trim() || undefined, guests: guests.length ? guests : undefined }),
+          body: JSON.stringify({ chapterId, title: title.trim(), kind, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), audiences, guests: guests.length ? guests : undefined, location: location.trim() || undefined, notes: notes.trim() || undefined }),
         });
         if (!res.ok) {
-          setError(res.status === 400 ? "Check the times — end must be after start." : res.status === 403 ? "You don't have permission." : "Could not create the event.");
+          setError(res.status === 400 ? "Check the fields — pick at least one guest and make sure end is after start." : res.status === 403 ? "You don't have permission." : "Could not create the event.");
           setBusy(false);
           return;
         }
@@ -307,63 +306,57 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
               <button type="button" onClick={() => setShowCustom(true)} className="font-semibold" style={{ color: "var(--pt-accent)" }}>Edit</button>
             </div>
           )}
-          <div className="flex flex-col gap-1.5 text-xs text-ink/60">
-            Who can see it
-            <div className="flex gap-2 flex-wrap">
-              {AUD.map((a) => {
-                const on = aud[a.key];
-                return (
-                  <button key={a.key} type="button" onClick={() => setAud((s) => ({ ...s, [a.key]: !s[a.key] }))} className="rounded-full px-3 py-1 text-xs font-medium border" style={on ? { background: "var(--pt-accent)", color: "var(--pt-on-accent)", borderColor: "transparent" } : { background: "#f7f4f0", color: "#6B6058", borderColor: "rgba(3,35,68,.12)" }}>
-                    {a.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+
           <div className="flex flex-col gap-1.5 text-xs text-ink/60">
             Add guests
-            <input
-              value={guestInput}
-              onChange={(e) => setGuestInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGuest(guestInput); setGuestInput(""); } }}
-              placeholder="Type a name and press Enter…"
-              className={inputCls}
-            />
-            <div className="flex gap-2 flex-wrap mt-1">
-              {AUD.map((a) => (
-                <button key={a.key} type="button" onClick={() => loadCat(a.key)} className="rounded-full px-3 py-1 text-xs font-medium border" style={activeCat === a.key ? { background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)", borderColor: "var(--pt-accent-border)" } : { background: "#f7f4f0", color: "#6B6058", borderColor: "rgba(3,35,68,.12)" }}>
-                  {a.label}
-                </button>
-              ))}
-            </div>
-            {activeCat && (
-              <div className="rounded-lg border border-ink/10 p-1.5 max-h-40 overflow-y-auto">
-                <div className="text-[10px] uppercase tracking-wide text-ink/40 px-1.5 py-1">{CAT_LABEL[activeCat]} in this chapter</div>
-                {(members[activeCat] ?? []).length === 0 ? (
-                  <div className="text-xs text-ink/40 px-1.5 py-1">No one to show (or sign in as a director).</div>
-                ) : (
-                  (members[activeCat] ?? []).map((n) => {
-                    const added = guests.includes(n);
-                    return (
-                      <button key={n} type="button" disabled={added} onClick={() => addGuest(n)} className="block w-full text-left text-sm px-2 py-1.5 rounded hover:bg-cream disabled:text-ink/40">
-                        {n}{added ? " ✓" : ""}
+            <div className="relative">
+              <button type="button" onClick={() => { setOpen((o) => !o); setMenuCat(null); }} className={inputCls + " text-left flex items-center justify-between"}>
+                <span className={selected.length ? "text-ink" : "text-ink/40"}>{selected.length ? `${selected.length} added` : "Add mentors, parents, or directors…"}</span>
+                <span className="text-ink/40">▾</span>
+              </button>
+              {open && (
+                <div className="absolute z-10 mt-1 w-full rounded-lg border border-ink/15 bg-white shadow-lg max-h-56 overflow-y-auto">
+                  {menuCat === null ? (
+                    AUD.map((a) => (
+                      <button key={a.key} type="button" onClick={() => selectCat(a.key)} className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-cream">
+                        {a.label}<span className="text-ink/30">›</span>
                       </button>
-                    );
-                  })
-                )}
-              </div>
-            )}
-            {guests.length > 0 && (
+                    ))
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => setMenuCat(null)} className="flex w-full items-center gap-2 px-3 py-2 text-xs text-ink/50 border-b border-ink/5">‹ Back</button>
+                      <button type="button" onClick={() => addAll(menuCat)} className="flex w-full items-center px-3 py-2 text-sm font-semibold hover:bg-cream" style={{ color: "var(--pt-accent-fg)" }}>
+                        All {CAT_LABEL[menuCat].toLowerCase()}
+                      </button>
+                      {(members[menuCat] ?? []).length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-ink/40">No members to show (sign in as a director).</div>
+                      ) : (
+                        (members[menuCat] ?? []).map((n) => {
+                          const on = selected.some((s) => s.kind === "person" && s.name === n);
+                          return (
+                            <button key={n} type="button" disabled={on} onClick={() => addPerson(menuCat, n)} className="block w-full text-left px-3 py-2 text-sm hover:bg-cream disabled:text-ink/40">
+                              {n}{on ? " ✓" : ""}
+                            </button>
+                          );
+                        })
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            {selected.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-1">
-                {guests.map((g, i) => (
-                  <span key={g} className="inline-flex items-center gap-1.5 text-xs rounded-full pl-3 pr-1.5 py-1" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
-                    {g}
-                    <button type="button" onClick={() => setGuests((prev) => prev.filter((_, idx) => idx !== i))} className="text-sm leading-none">×</button>
+                {selected.map((s, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 text-xs rounded-full pl-3 pr-1.5 py-1" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
+                    {s.kind === "all" ? `All ${CAT_LABEL[s.cat].toLowerCase()}` : s.name}
+                    <button type="button" onClick={() => setSelected((p) => p.filter((_, idx) => idx !== i))} className="text-sm leading-none">×</button>
                   </span>
                 ))}
               </div>
             )}
           </div>
+
           <input className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location (optional)" />
           <textarea className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes (optional)" />
           {error && <p className="text-xs" style={{ color: "var(--pt-accent-fg)" }}>{error}</p>}
