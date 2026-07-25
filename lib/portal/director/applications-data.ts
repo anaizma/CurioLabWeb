@@ -5,24 +5,42 @@ export type ApplicationStatus = "submitted" | "screening" | "interview" | "accep
 export interface ApplicationRow {
   applicationId: string;
   status: ApplicationStatus;
-  studentDisplayName: string;
-  guardianDisplayName: string;
+  studentName: string;
+  gradeLevel: string | null;
+  termName: string | null;
   submittedLabel: string;
 }
 
-export interface ApplicationDetail extends ApplicationRow {
+export interface ApplicationDetail {
+  applicationId: string;
+  status: ApplicationStatus;
+  studentName: string;
+  gradeLevel: string | null;
+  school: string | null;
+  contactEmail: string | null;
+  guardianName: string;
+  guardianEmail: string | null;
+  termName: string | null;
+  submittedLabel: string;
   answers: { question: string; answer: string }[];
   history: { at: string; note: string }[];
 }
 
 export interface ApplicationsView {
   applications: ApplicationRow[];
+  /** The term the backend filtered to (most-recent by default, or the one requested); null when showing all terms. */
+  activeTermName: string | null;
+  allTerms: boolean;
   isSample: boolean;
 }
 
+// Sample records mirror the live shape (full name, grade, school, contact, guardian) so the
+// representative view exercises the same fields the connected endpoint now returns.
 const SAMPLE: ApplicationDetail[] = [
   {
-    applicationId: "app_sample_1", status: "submitted", studentDisplayName: "Ari (Grade 8)", guardianDisplayName: "J. Okafor", submittedLabel: "Jul 22",
+    applicationId: "app_sample_1", status: "submitted",
+    studentName: "Ari Okafor", gradeLevel: "8", school: "Lincoln Middle School", contactEmail: "j.okafor@example.com",
+    guardianName: "Jordan Okafor", guardianEmail: "j.okafor@example.com", termName: "Fall 2026", submittedLabel: "Jul 22",
     answers: [
       { question: "What does the student want to build or explore?", answer: "A weather station that logs data to a small dashboard." },
       { question: "Prior experience", answer: "Some Scratch; a little Python from a summer camp." },
@@ -31,7 +49,9 @@ const SAMPLE: ApplicationDetail[] = [
     history: [{ at: "Jul 22", note: "Submitted by guardian" }],
   },
   {
-    applicationId: "app_sample_2", status: "screening", studentDisplayName: "Priya (Grade 10)", guardianDisplayName: "R. Nair", submittedLabel: "Jul 21",
+    applicationId: "app_sample_2", status: "screening",
+    studentName: "Priya Nair", gradeLevel: "10", school: "Westfield High School", contactEmail: "r.nair@example.com",
+    guardianName: "Rohan Nair", guardianEmail: "r.nair@example.com", termName: "Fall 2026", submittedLabel: "Jul 21",
     answers: [
       { question: "What does the student want to build or explore?", answer: "A game that teaches younger kids fractions." },
       { question: "Prior experience", answer: "Unity tutorials; comfortable with C#." },
@@ -40,7 +60,9 @@ const SAMPLE: ApplicationDetail[] = [
     history: [{ at: "Jul 21", note: "Submitted" }, { at: "Jul 22", note: "Moved to screening" }],
   },
   {
-    applicationId: "app_sample_3", status: "interview", studentDisplayName: "Diego (Grade 7)", guardianDisplayName: "M. Santos", submittedLabel: "Jul 20",
+    applicationId: "app_sample_3", status: "interview",
+    studentName: "Diego Santos", gradeLevel: "7", school: "Oakridge Middle School", contactEmail: "m.santos@example.com",
+    guardianName: "Maria Santos", guardianEmail: "m.santos@example.com", termName: "Fall 2026", submittedLabel: "Jul 20",
     answers: [
       { question: "What does the student want to build or explore?", answer: "A robot that sorts recycling." },
       { question: "Prior experience", answer: "None yet — very curious." },
@@ -50,7 +72,17 @@ const SAMPLE: ApplicationDetail[] = [
   },
 ];
 
+const SAMPLE_ACTIVE_TERM = "Fall 2026";
+
 function fmt(d: string | undefined | null): string { if (!d) return "—"; const t = new Date(d); return isNaN(t.getTime()) ? "—" : t.toLocaleDateString(); }
+
+/** Grade values arrive as the raw funnel answer ("8", "9th", "Grade 6"…). Prefix bare numbers. */
+export function gradeLabel(g: string | null | undefined): string | null {
+  if (g == null) return null;
+  const t = String(g).trim();
+  if (!t) return null;
+  return /^\d+$/.test(t) ? `Grade ${t}` : t;
+}
 
 function mapAppStatus(s: string | undefined): ApplicationStatus {
   if (s === "screening") return "screening";
@@ -68,22 +100,61 @@ function toRow(a: ApplicationDetail): ApplicationRow {
   return {
     applicationId: a.applicationId,
     status: a.status,
-    studentDisplayName: a.studentDisplayName,
-    guardianDisplayName: a.guardianDisplayName,
+    studentName: a.studentName,
+    gradeLevel: a.gradeLevel,
+    termName: a.termName,
     submittedLabel: a.submittedLabel,
   };
 }
 
-export async function getApplicationsView(): Promise<ApplicationsView> {
+interface LiveListItem {
+  applicationId?: string;
+  status?: string;
+  studentName?: string | null;
+  gradeLevel?: string | null;
+  submittedAt?: string;
+  termName?: string | null;
+}
+interface LiveListEnvelope {
+  items?: LiveListItem[];
+  activeTermName?: string | null;
+}
+
+export async function getApplicationsView(opts?: { allTerms?: boolean }): Promise<ApplicationsView> {
+  const allTerms = opts?.allTerms ?? false;
   const ctx = await getDirectorContext();
-  if (!ctx) return { applications: SAMPLE.map(toRow), isSample: true };
+  if (!ctx) {
+    return { applications: SAMPLE.map(toRow), activeTermName: SAMPLE_ACTIVE_TERM, allTerms, isSample: true };
+  }
   try {
-    const res = await fetch(`${ctx.origin}/api/ops/applications`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
-    if (!res.ok) return { applications: SAMPLE.map(toRow), isSample: true };
-    const data = (await res.json()) as { items?: { applicationId?: string; status?: string; studentDisplayName?: string | null; guardianDisplayName?: string | null; submittedAt?: string }[] };
-    const applications: ApplicationRow[] = (data.items ?? []).map((a, i) => ({ applicationId: a.applicationId ?? `app${i}`, status: mapAppStatus(a.status), studentDisplayName: a.studentDisplayName ?? "—", guardianDisplayName: a.guardianDisplayName ?? "—", submittedLabel: fmt(a.submittedAt) }));
-    return { applications, isSample: false };
-  } catch { return { applications: SAMPLE.map(toRow), isSample: true }; }
+    // Backend defaults to the most-recent term; ?termId=all opts into every term.
+    const qs = allTerms ? "?termId=all" : "";
+    const res = await fetch(`${ctx.origin}/api/ops/applications${qs}`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
+    if (!res.ok) return { applications: SAMPLE.map(toRow), activeTermName: SAMPLE_ACTIVE_TERM, allTerms, isSample: true };
+    const data = (await res.json()) as LiveListEnvelope;
+    const applications: ApplicationRow[] = (data.items ?? []).map((a, i) => ({
+      applicationId: a.applicationId ?? `app${i}`,
+      status: mapAppStatus(a.status),
+      studentName: a.studentName ?? "—",
+      gradeLevel: a.gradeLevel ?? null,
+      termName: a.termName ?? null,
+      submittedLabel: fmt(a.submittedAt),
+    }));
+    return { applications, activeTermName: allTerms ? null : (data.activeTermName ?? null), allTerms, isSample: false };
+  } catch {
+    return { applications: SAMPLE.map(toRow), activeTermName: SAMPLE_ACTIVE_TERM, allTerms, isSample: true };
+  }
+}
+
+interface LiveDetail {
+  applicationId?: string;
+  status?: string;
+  submittedAt?: string;
+  termName?: string | null;
+  student?: { fullName?: string | null; gradeLevel?: string | null; school?: string | null; contactEmail?: string | null };
+  guardian?: { fullName?: string | null; email?: string | null };
+  answers?: { stage2a?: unknown; stage2b?: unknown; stage2c?: unknown };
+  history?: { from?: string | null; to?: string; at?: string; note?: string | null }[];
 }
 
 export async function getApplicationDetail(id: string): Promise<{ detail: ApplicationDetail | null; isSample: boolean }> {
@@ -92,12 +163,17 @@ export async function getApplicationDetail(id: string): Promise<{ detail: Applic
     try {
       const res = await fetch(`${ctx.origin}/api/ops/applications/${id}`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
       if (res.ok) {
-        const d = (await res.json()) as { applicationId?: string; status?: string; submittedAt?: string; student?: { displayName?: string | null }; guardian?: { displayName?: string | null }; answers?: { stage2a?: unknown; stage2b?: unknown }; history?: { from?: string | null; to?: string; at?: string; note?: string | null }[] };
+        const d = (await res.json()) as LiveDetail;
         const detail: ApplicationDetail = {
           applicationId: d.applicationId ?? id,
           status: mapAppStatus(d.status),
-          studentDisplayName: d.student?.displayName ?? "—",
-          guardianDisplayName: d.guardian?.displayName ?? "—",
+          studentName: d.student?.fullName ?? "—",
+          gradeLevel: d.student?.gradeLevel ?? null,
+          school: d.student?.school ?? null,
+          contactEmail: d.student?.contactEmail ?? null,
+          guardianName: d.guardian?.fullName ?? "—",
+          guardianEmail: d.guardian?.email ?? null,
+          termName: d.termName ?? null,
           submittedLabel: fmt(d.submittedAt),
           answers: [...flatten(d.answers?.stage2a), ...flatten(d.answers?.stage2b)],
           history: (d.history ?? []).map((h) => ({ at: fmt(h.at), note: h.note ?? `${h.from ?? "—"} → ${h.to ?? "—"}` })),
