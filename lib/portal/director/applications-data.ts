@@ -28,6 +28,7 @@ export interface ApplicationDetail {
   termName: string | null;
   submittedLabel: string;
   answers: { question: string; answer: string }[];
+  interview?: { at: string; location: string | null } | null;
   history: { at: string; note: string }[];
 }
 
@@ -128,6 +129,41 @@ function flatten(blob: unknown): { question: string; answer: string }[] {
     question: humanizeKey(k),
     answer: typeof v === "string" ? v : JSON.stringify(v),
   }));
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function formatAnswerValue(raw: unknown): string {
+  if (Array.isArray(raw)) return raw.map((x) => String(x)).join(", ");
+  if (typeof raw === "boolean") return raw ? "Yes" : "No";
+  return String(raw);
+}
+
+/**
+ * Render the submitted answers against the STAMPED form definition (the exact
+ * questions/labels the applicant saw), in form order, instead of prettifying raw
+ * keys. Parent answers come from stage2a, student answers from stage2b. Returns
+ * null when the definition is absent/malformed so the caller can fall back.
+ */
+function renderAgainstDefinition(definition: unknown, stage2a: unknown, stage2b: unknown): { question: string; answer: string }[] | null {
+  if (!isRecord(definition) || !Array.isArray(definition.sections)) return null;
+  const parent = isRecord(stage2a) ? stage2a : {};
+  const student = isRecord(stage2b) ? stage2b : {};
+  const out: { question: string; answer: string }[] = [];
+  for (const section of definition.sections) {
+    if (!isRecord(section) || !Array.isArray(section.questions)) continue;
+    const blob = section.id === "student" ? student : parent;
+    for (const q of section.questions) {
+      if (!isRecord(q) || typeof q.key !== "string") continue;
+      const raw = blob[q.key];
+      if (raw === undefined || raw === null || raw === "" || (Array.isArray(raw) && raw.length === 0)) continue;
+      const label = typeof q.label === "string" && q.label.trim() ? q.label : humanizeKey(q.key);
+      out.push({ question: label, answer: formatAnswerValue(raw) });
+    }
+  }
+  return out;
 }
 
 function toRow(a: ApplicationDetail): ApplicationRow {
@@ -237,6 +273,9 @@ interface LiveDetail {
   student?: { fullName?: string | null; gradeLevel?: string | null; school?: string | null; contactEmail?: string | null };
   guardian?: { fullName?: string | null; email?: string | null };
   answers?: { stage2a?: unknown; stage2b?: unknown; stage2c?: unknown };
+  /** The stamped form version the applicant saw; answers render against this. Null for legacy apps. */
+  form?: { formId?: string; version?: number; definition?: unknown } | null;
+  interview?: { at?: string | null; location?: string | null } | null;
   history?: { from?: string | null; to?: string; at?: string; note?: string | null }[];
 }
 
@@ -259,7 +298,11 @@ export async function getApplicationDetail(id: string): Promise<{ detail: Applic
           termId: d.termId ?? null,
           termName: d.termName ?? null,
           submittedLabel: fmt(d.submittedAt),
-          answers: [...flatten(d.answers?.stage2a), ...flatten(d.answers?.stage2b)],
+          // Render against the stamped form definition; fall back to raw-key humanizing for legacy apps.
+          answers:
+            renderAgainstDefinition(d.form?.definition, d.answers?.stage2a, d.answers?.stage2b) ??
+            [...flatten(d.answers?.stage2a), ...flatten(d.answers?.stage2b)],
+          interview: d.interview?.at ? { at: fmt(d.interview.at), location: d.interview.location ?? null } : null,
           history: (d.history ?? []).map((h) => ({ at: fmt(h.at), note: h.note ?? `${h.from ?? "—"} → ${h.to ?? "—"}` })),
         };
         return { detail, isSample: false };

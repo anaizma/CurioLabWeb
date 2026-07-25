@@ -48,11 +48,11 @@ export const STUDENT_QUESTIONS: ReadonlyArray<{
   { key: 'interests', label: "What do you like doing when you're not in school?" },
   { key: 'motivation', label: 'Why do you want to join CurioLab?' },
   {
-    key: 'favorite_subject',
+    key: 'curiosity',
     label: "What's something you're curious about right now - in school or outside it?",
   },
   {
-    key: 'project_idea',
+    key: 'problem_to_fix',
     label:
       "Is there a problem you've noticed at school, in your neighborhood, or in your community that you wish someone would fix?",
   },

@@ -38,6 +38,12 @@ export default async function ApplicationDetailPage({ params }: { params: Promis
         </p>
       </div>
       {isSample && <SampleBanner />}
+      {detail.interview?.at && (
+        <div className="rounded-sm px-4 py-2.5 text-[13px]" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
+          <span className="font-semibold">Interview scheduled</span> · {detail.interview.at}
+          {detail.interview.location ? ` · ${detail.interview.location}` : ""}
+        </div>
+      )}
       {/* Applicant info the director needs to process the application (full PII, own chapter only). */}
       <div className="rounded-sm border border-ink/10 bg-white p-5 grid grid-cols-2 gap-x-6 gap-y-4">
         <InfoField label="Guardian" value={detail.guardianName} />
