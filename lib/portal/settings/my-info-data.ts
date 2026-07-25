@@ -3,14 +3,10 @@ import { cookies, headers } from "next/headers";
 // ---------------------------------------------------------------------------
 // "My Information" data seam.
 //
-// There is no self-PII read/update endpoint yet (only GET /api/auth/session,
-// which exposes the computed `age`). So this returns a representative view for
-// now — same pattern as lib/portal/guardian/guardian-data.ts — structured to
-// swap onto GET /api/account (read) + PATCH (update) once they land.
-//
-// The age-13 rule is honored client-side to mirror the COPPA backend: an
-// under-13 student has no direct email (they take the guardian's), so the
-// primary-email field is frozen to the guardian's address until they turn 13.
+// The student email pair (primary/secondary) is now LIVE via
+// GET/PUT /api/portal/student/notification-email. Everything else (name, DOB,
+// school, guardian info, plus parent/director fields) has no self-read endpoint
+// yet, so it stays representative — same pattern as guardian-data.ts.
 // ---------------------------------------------------------------------------
 
 export type PortalRole = "student" | "parent" | "director";
@@ -19,10 +15,9 @@ export interface InfoField {
   key: string;
   label: string;
   value: string;
-  /** Editable in the UI. Only email (per role) and student school are ever editable. */
+  /** Editable in the UI. Only email (parent/director) and student school are editable here. */
   editable: boolean;
   kind?: "email" | "text";
-  /** Frozen editable field (e.g. under-13 primary email); shown locked with a reason. */
   frozen?: boolean;
   note?: string;
 }
@@ -32,28 +27,61 @@ export interface InfoSection {
   fields: InfoField[];
 }
 
+/** The live read model from GET /api/portal/student/notification-email. */
+export interface NotificationEmailModel {
+  primary: { email: string | null; isOwn: boolean; editable: boolean };
+  secondary: { email: string | null; editable: boolean };
+}
+
 export interface MyInfoView {
   role: PortalRole;
   displayName: string;
   age: number | null;
   sections: InfoSection[];
-  /** Values are representative until the account endpoint connects. */
+  /** Student only: the live (or representative) notification-email pair. */
+  notificationEmail?: NotificationEmailModel;
+  /** True when notificationEmail came from the real endpoint (not representative). */
+  emailLive: boolean;
+  /** True when the non-email fields are representative (no self-read endpoint yet). */
   isSample: boolean;
+}
+
+async function originAndCookie(): Promise<{ origin: string; cookie: string } | null> {
+  const session = (await cookies()).get("cl_session");
+  if (!session) return null;
+  const h = await headers();
+  const host = h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? (host ? `${proto}://${host}` : "");
+  if (!origin) return null;
+  return { origin, cookie: `cl_session=${session.value}` };
 }
 
 async function getSessionAge(): Promise<number | null> {
   try {
-    const session = (await cookies()).get("cl_session");
-    if (!session) return null;
-    const h = await headers();
-    const host = h.get("host");
-    const proto = h.get("x-forwarded-proto") ?? "http";
-    const origin = process.env.NEXT_PUBLIC_SITE_URL ?? (host ? `${proto}://${host}` : "");
-    if (!origin) return null;
-    const res = await fetch(`${origin}/api/auth/session`, { headers: { cookie: `cl_session=${session.value}` }, cache: "no-store" });
+    const ctx = await originAndCookie();
+    if (!ctx) return null;
+    const res = await fetch(`${ctx.origin}/api/auth/session`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
     if (!res.ok) return null;
     const s = (await res.json()) as { age?: number };
     return typeof s.age === "number" ? s.age : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchNotificationEmail(): Promise<NotificationEmailModel | null> {
+  try {
+    const ctx = await originAndCookie();
+    if (!ctx) return null;
+    const res = await fetch(`${ctx.origin}/api/portal/student/notification-email`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
+    if (!res.ok) return null;
+    const d = (await res.json()) as { primary?: { email?: string | null; isOwn?: boolean; editable?: boolean }; secondary?: { email?: string | null } };
+    if (!d.primary) return null;
+    return {
+      primary: { email: d.primary.email ?? null, isOwn: !!d.primary.isOwn, editable: !!d.primary.editable },
+      secondary: { email: d.secondary?.email ?? null, editable: false },
+    };
   } catch {
     return null;
   }
@@ -63,13 +91,22 @@ async function getSessionAge(): Promise<number | null> {
 
 const GUARDIAN_EMAIL = "jordan.okafor@example.com";
 
-function studentView(age: number): MyInfoView {
-  const under13 = age < 13;
+/** Representative email model that mirrors the endpoint's rules by age. */
+function representativeEmail(age: number): NotificationEmailModel {
+  if (age < 13) {
+    return { primary: { email: GUARDIAN_EMAIL, isOwn: false, editable: false }, secondary: { email: null, editable: false } };
+  }
+  return { primary: { email: "ari.okafor@example.com", isOwn: true, editable: true }, secondary: { email: GUARDIAN_EMAIL, editable: false } };
+}
+
+function studentView(age: number, email: NotificationEmailModel, emailLive: boolean): MyInfoView {
   return {
     role: "student",
     displayName: "Ari Okafor",
     age,
+    emailLive,
     isSample: true,
+    notificationEmail: email,
     sections: [
       {
         title: "Identity",
@@ -80,12 +117,8 @@ function studentView(age: number): MyInfoView {
         ],
       },
       {
-        title: "Contact",
+        title: "Guardian",
         fields: [
-          under13
-            ? { key: "email", label: "Primary email", value: GUARDIAN_EMAIL, editable: false, frozen: true, kind: "email", note: "Frozen to your guardian's email until you turn 13. CurioLab reaches you through your guardian." }
-            : { key: "email", label: "Primary email", value: "ari.okafor@example.com", editable: true, kind: "email" },
-          { key: "secondaryEmail", label: "Secondary email", value: under13 ? "—" : "ari.builds@example.com", editable: false, note: under13 ? "Available once you turn 13." : undefined },
           { key: "guardianName", label: "Guardian", value: "Jordan Okafor", editable: false },
           { key: "guardianEmail", label: "Guardian email", value: GUARDIAN_EMAIL, editable: false },
         ],
@@ -106,6 +139,7 @@ function guardianView(): MyInfoView {
     role: "parent",
     displayName: "Jordan Okafor",
     age: null,
+    emailLive: false,
     isSample: true,
     sections: [
       { title: "Identity", fields: [{ key: "fullName", label: "Full name", value: "Jordan Okafor", editable: false }] },
@@ -132,6 +166,7 @@ function directorView(): MyInfoView {
     role: "director",
     displayName: "Amara Okoro",
     age: null,
+    emailLive: false,
     isSample: true,
     sections: [
       { title: "Identity", fields: [{ key: "fullName", label: "Full name", value: "Amara Okoro", editable: false }] },
@@ -150,8 +185,10 @@ function directorView(): MyInfoView {
 export async function getMyInformation(role: PortalRole): Promise<MyInfoView> {
   if (role === "parent") return guardianView();
   if (role === "director") return directorView();
-  // Student: honor the real age from the session when present so the under-13
-  // email freeze is accurate; otherwise a representative under-13 age to show it.
+  // Student: wire the email pair to the live endpoint; fall back to a
+  // representative model (by real session age, else under-13) when unauthenticated.
   const age = (await getSessionAge()) ?? 12;
-  return studentView(age);
+  const live = await fetchNotificationEmail();
+  if (live) return studentView(age, live, true);
+  return studentView(age, representativeEmail(age), false);
 }

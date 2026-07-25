@@ -1,8 +1,10 @@
 # My Information (account self-service) — backend spec / build prompt
 
 **Status:** frontend shipped — Settings → *My Information* in all three portals (student, parent, director).
-It currently renders representative data (there is no self-PII read/update endpoint yet). This specs the
-two endpoints that make it real. Hand this file to the backend agent.
+**Done:** the student email pair is now LIVE via `GET`/`PUT /api/portal/student/notification-email`
+(the frontend `EmailSection` reads/writes it, honoring `primary.editable`/`isOwn` and the under-13 freeze).
+**Still representative (this spec):** name, DOB, school/grade, guardian info, and the parent/director email —
+they need the `GET`/`PUT /api/account` endpoints below.
 
 ## Goal
 
