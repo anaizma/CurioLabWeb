@@ -117,6 +117,13 @@ export interface ApplicationDetail {
     /** No separate 2C answer blob exists (2C is the review of 2A+2B); always null. */
     stage2c: Record<string, unknown> | null
   }
+  /**
+   * Override 2: the application-form VERSION the applicant actually saw, stamped
+   * at submit. The director portal renders the answers against THIS definition,
+   * even after the director later edits and republishes the form. Null for a
+   * legacy application submitted before form stamping existed.
+   */
+  form: { formId: string; version: number; definition: unknown } | null
   history: { from: string | null; to: string; at: string; note: string | null }[]
 }
 
@@ -450,7 +457,8 @@ export class OpsReadService {
     const sql = this.sql
     const [app] = await sql`
       select id, status, chapter_id, applicant_name, applicant_contact_email,
-             guardian_name, guardian_email, created_at, student_section
+             guardian_name, guardian_email, created_at, student_section,
+             form_id, form_version
       from application where id = ${applicationId}
     `
     if (app === undefined) throw new ApplicationNotFoundError(applicationId)
@@ -483,6 +491,24 @@ export class OpsReadService {
       (draft?.student_answers as Record<string, unknown> | null) ??
       (app.student_section as Record<string, unknown> | null) ??
       {}
+
+    // Override 2: return the stamped form version's definition, so the answers
+    // render against the exact questions the applicant saw. Read the row by its
+    // stamped id; fall back to null for a legacy (unstamped) application.
+    let form: ApplicationDetail['form'] = null
+    const stampedFormId = app.form_id as string | null
+    if (stampedFormId !== null) {
+      const [formRow] = await sql`
+        select id, version, definition from application_form where id = ${stampedFormId}
+      `
+      if (formRow !== undefined) {
+        form = {
+          formId: formRow.id as string,
+          version: formRow.version as number,
+          definition: formRow.definition,
+        }
+      }
+    }
     return {
       applicationId: app.id as string,
       status: app.status as string,
@@ -508,6 +534,7 @@ export class OpsReadService {
         stage2b,
         stage2c: null,
       },
+      form,
       history: events.map((e) => ({
         from: (e.from_status as string | null) ?? null,
         to: e.to_status as string,

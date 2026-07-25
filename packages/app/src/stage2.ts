@@ -38,6 +38,7 @@ import type { Sql, JSONValue } from 'postgres'
 import { generateSessionToken, hashToken } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
 import { type Mailer, defaultMailer } from './mail.js'
+import { resolvePublishedForm, type ResolvedForm } from './application-form.js'
 import {
   InvalidStage2TokenError,
   Stage2AlreadyStartedError,
@@ -68,6 +69,13 @@ export type Answers = Record<string, unknown>
 export interface StartStage2Result {
   draftId: string
   leadId: string
+  /**
+   * The RESOLVED PUBLISHED application-form definition for the applicant's chapter
+   * (falls back to the platform default), so the apply pages render the questions
+   * WITHOUT an ops session. Null only if no platform default is seeded. A draft
+   * edit is never shown here — only the published definition (override 2 / spec §5).
+   */
+  form: ResolvedForm | null
 }
 
 export interface CreateStudentLinkResult {
@@ -97,12 +105,16 @@ export interface GetParentDraftResult {
   phase: string
   /** The draft's saved 2A parent answers; empty object if none saved yet. */
   parentAnswers: Answers
+  /** The resolved PUBLISHED form definition for the chapter (funnel render). */
+  form: ResolvedForm | null
 }
 
 export interface GetStudentDraftResult {
   phase: string
   /** The draft's saved 2B student answers; empty object if none saved yet. */
   studentAnswers: Answers
+  /** The resolved PUBLISHED form definition for the chapter (funnel render). */
+  form: ResolvedForm | null
 }
 
 /** The columns a token lookup needs; the draft joined to its lead. */
@@ -116,6 +128,8 @@ interface DraftRow {
   status: string
   parent_answers: Answers | null
   student_answers: Answers | null
+  form_id: string | null
+  form_version: number | null
   lead_chapter_id: string | null
   lead_status: string
   lead_expires_at: Date
@@ -150,7 +164,8 @@ export class Stage2Service {
   async startStage2(parentToken: string): Promise<StartStage2Result> {
     const parentHash = hashToken(parentToken)
     const [lead] = await this.sql`
-      select id, status, token_hash, expires_at from application_lead where token_hash = ${parentHash}
+      select id, status, token_hash, expires_at, chapter_id
+      from application_lead where token_hash = ${parentHash}
     `
     // Reveal nothing: an unknown token and a hash mismatch look identical.
     if (lead === undefined || !hashesEqual(lead.token_hash as string, parentHash)) {
@@ -162,6 +177,11 @@ export class Stage2Service {
     if (leadExpired(lead.expires_at as Date, new Date())) throw new Stage2LeadExpiredError(leadId)
     if (lead.status !== 'new') throw new Stage2AlreadyStartedError(leadId)
 
+    // Override 2: capture the chapter's currently-PUBLISHED form (or the platform
+    // default) so the draft — and the application it becomes — is stamped with the
+    // exact version the applicant will fill, even if the director republishes later.
+    const form = await resolvePublishedForm(this.sql, (lead.chapter_id as string | null) ?? null)
+
     const draftId = await this.sql.begin(async (tx) => {
       // Advance the lead only if still `new` (guards a concurrent double-start).
       const advanced = await tx`
@@ -171,14 +191,15 @@ export class Stage2Service {
       `
       if (advanced.length === 0) throw new Stage2AlreadyStartedError(leadId)
       const [row] = await tx`
-        insert into application_draft (lead_id, parent_token_hash, phase, status)
-        values (${leadId}, ${parentHash}, '2a', 'in_progress')
+        insert into application_draft (lead_id, parent_token_hash, phase, status, form_id, form_version)
+        values (${leadId}, ${parentHash}, '2a', 'in_progress',
+                ${form?.formId ?? null}, ${form?.version ?? null})
         returning id
       `
       return row!.id as string
     })
 
-    return { draftId, leadId }
+    return { draftId, leadId, form }
   }
 
   // ---- 2A save (parent token, UNAUTHENTICATED) -----------------------------
@@ -315,7 +336,8 @@ export class Stage2Service {
    */
   async getParentDraft(parentToken: string): Promise<GetParentDraftResult> {
     const draft = await this.loadDraftByParentToken(parentToken)
-    return { phase: draft.phase, parentAnswers: draft.parent_answers ?? {} }
+    const form = await resolvePublishedForm(this.sql, draft.lead_chapter_id)
+    return { phase: draft.phase, parentAnswers: draft.parent_answers ?? {}, form }
   }
 
   /**
@@ -327,7 +349,8 @@ export class Stage2Service {
    */
   async getStudentDraft(studentToken: string): Promise<GetStudentDraftResult> {
     const draft = await this.loadDraftByStudentToken(studentToken)
-    return { phase: draft.phase, studentAnswers: draft.student_answers ?? {} }
+    const form = await resolvePublishedForm(this.sql, draft.lead_chapter_id)
+    return { phase: draft.phase, studentAnswers: draft.student_answers ?? {}, form }
   }
 
   // ---- 2C submit (parent OR review token, UNAUTHENTICATED) -----------------
@@ -364,10 +387,11 @@ export class Stage2Service {
       const [app] = await tx`
         insert into application (
           kind, chapter_id, status, applicant_name, applicant_contact_email,
-          guardian_name, guardian_email, student_section
+          guardian_name, guardian_email, student_section, form_id, form_version
         ) values (
           'student', ${chapterId}, 'submitted', ${childName}, ${guardianEmail},
-          ${guardianName}, ${guardianEmail}, ${tx.json(studentSection as unknown as JSONValue)}
+          ${guardianName}, ${guardianEmail}, ${tx.json(studentSection as unknown as JSONValue)},
+          ${draft.form_id}, ${draft.form_version}
         ) returning id
       `
       const appId = app!.id as string
@@ -434,6 +458,7 @@ export class Stage2Service {
     const [row] = await this.sql`
       select d.id, d.lead_id, d.parent_token_hash, d.student_token_hash, d.review_token_hash,
              d.phase, d.status, d.parent_answers, d.student_answers,
+             d.form_id, d.form_version,
              l.chapter_id as lead_chapter_id, l.status as lead_status,
              l.expires_at as lead_expires_at
       from application_draft d
@@ -463,6 +488,7 @@ export class Stage2Service {
     const [row] = await this.sql`
       select d.id, d.lead_id, d.parent_token_hash, d.student_token_hash, d.review_token_hash,
              d.phase, d.status, d.parent_answers, d.student_answers,
+             d.form_id, d.form_version,
              l.chapter_id as lead_chapter_id, l.status as lead_status,
              l.expires_at as lead_expires_at
       from application_draft d

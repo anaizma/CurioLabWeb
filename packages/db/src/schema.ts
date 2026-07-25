@@ -275,8 +275,35 @@ export const application = pgTable('application', {
   track: text('track'),
   githubUrl: text('github_url'),
   reopenedFromId: uuid('reopened_from_id').references((): AnyPgColumn => application.id),
+  // Override 2 (0034): the application-form version the applicant saw, stamped
+  // from the draft at submit so the director view renders against that version.
+  formId: uuid('form_id').references((): AnyPgColumn => applicationForm.id),
+  formVersion: integer('form_version'),
   createdAt: createdAt(),
 })
+
+// --- The editable application-form definition (0034) -----------------------
+// One versioned form per chapter (chapter_id NULL = the platform default). A new
+// version is a NEW row; a published row is never mutated (SELECT+INSERT grant).
+export const applicationForm = pgTable(
+  'application_form',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Nullable: chapter_id NULL is the platform default form.
+    chapterId: uuid('chapter_id').references(() => chapter.id),
+    version: integer('version').notNull(),
+    // 'draft' | 'published' (a CHECK constraint bounds it in the migration).
+    status: text('status').notNull(),
+    definition: jsonb('definition').notNull(),
+    createdBy: uuid('created_by').references(() => account.id),
+    createdAt: createdAt(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('application_form_chapter_version_uq').on(t.chapterId, t.version),
+    index('application_form_chapter_version_idx').on(t.chapterId, t.version),
+  ],
+)
 
 export const applicationEvent = pgTable('application_event', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -346,6 +373,10 @@ export const applicationDraft = pgTable(
     studentAnswers: jsonb('student_answers'),
     status: applicationDraftStatusEnum('status').notNull(),
     convertedApplicationId: uuid('converted_application_id').references(() => application.id),
+    // Override 2 (0034): the published form the applicant is filling, captured at
+    // startStage2 and carried to the application at submit.
+    formId: uuid('form_id').references(() => applicationForm.id),
+    formVersion: integer('form_version'),
     createdAt: createdAt(),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
   },

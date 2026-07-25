@@ -152,6 +152,10 @@ const INVALID_TOKEN = new Set([
 /** Known input / precondition violations -> 400. */
 const BAD_REQUEST = new Set([
   'ValidationError',
+  // The editable application-form definition failed server-side validation
+  // (student key off the allowlist, identifying key, fixed field restructured,
+  // duplicate/empty/non-slug key, choice with no options).
+  'ApplicationFormValidationError',
   'EnrollmentDobRequiredError',
   'StudentSectionIdentifyingFieldError',
   'StudentSectionFieldNotAllowedError',

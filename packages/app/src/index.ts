@@ -437,6 +437,29 @@ export type {
   MembershipListQuery,
   ChapterScopedQuery,
 } from './ops-read.js'
+export {
+  ApplicationFormService,
+  validateDefinition,
+  fixedFieldsOf,
+  resolvePublishedForm,
+  formById,
+  CHOICE_TYPES,
+} from './application-form.js'
+export type {
+  ApplicationFormServiceDeps,
+  ApplicationFormAuthorizeFn,
+  ApplicationFormCapability,
+  SaveFormInput,
+  StoredForm,
+  ResolvedForm,
+  FormDefinition,
+  FormSection,
+  FormQuestion,
+  QuestionType,
+  SectionId,
+  FixedFieldSpec,
+  ValidateDeps,
+} from './application-form.js'
 export { ProjectService, projectExternalPublicationRevokeCascade } from './project.js'
 export type {
   ProjectServiceDeps,
@@ -528,6 +551,7 @@ export type {
 export {
   IllegalTransitionError,
   ApplicationNotFoundError,
+  ApplicationFormValidationError,
   EnrollmentDobRequiredError,
   LeadNotFoundError,
   Stage2AlreadyStartedError,

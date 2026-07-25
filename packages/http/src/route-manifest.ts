@@ -376,6 +376,11 @@ export const ROUTE_MANIFEST: RouteManifest = [
 
   // ---- Operations back office (05 §Operations back office) ----
   { method: 'PATCH', path: '/api/ops/applications/[id]', capability: 'application.transition' },
+  // The editable application-form definition (application-form-definition-spec.md).
+  // PUT saves a new version, gated by application.form.manage (chapter_director;
+  // platform_admin via override). The GET read reuses application.read and is
+  // GET-exempt from the manifest.
+  { method: 'PUT', path: '/api/ops/application-form', capability: 'application.form.manage' },
   { method: 'POST', path: '/api/ops/enrollments', capability: 'enrollment.create' },
   // Per-kind issuing authority (P2 §1): the handler authorizes member.invite for
   // guardian/mentor/staff, and member.invite_admin for admin + a direct director

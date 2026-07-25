@@ -175,6 +175,13 @@ export {
 } from './controllers/ops-read.js'
 export type { ReadQueryInput, ReadDetailInput } from './controllers/ops-read.js'
 
+// Ops back office — the editable application-form definition (GET/PUT)
+export { getApplicationForm, putApplicationForm } from './controllers/application-form.js'
+export type {
+  ApplicationFormGetInput,
+  ApplicationFormPutInput,
+} from './controllers/application-form.js'
+
 // Organization structure (Platform administration: chapters / terms / pods)
 export {
   createChapter,

@@ -74,6 +74,7 @@ import {
   termInC1,
   podInC1,
   directorReadC1,
+  applicationFormManageC1,
   CHILD_S,
   OWNER_S18,
   type Role,
@@ -688,6 +689,20 @@ describe('capability coverage: allow and deny for every registry key', () => {
       expectDeny(actors.chapter_director_c2, cap, directorReadC1, 'out_of_scope')
       expectDeny(actors.lead_instructor_c1, cap, directorReadC1, 'role_not_permitted')
     }
+  })
+
+  // application.form.manage (the editable application-form definition write; PUT
+  // /api/ops/application-form). Chapter-scoped write, chapter_director; a director
+  // edits only THEIR chapter's form (another chapter denies out_of_scope); a
+  // platform_admin edits any via the override; the read-only platform_staff
+  // override does NOT reach a write (out_of_scope); a non-director role denies
+  // role_not_permitted.
+  test('application.form.manage (director own chapter; admin via override; staff + cross-chapter out_of_scope; non-director role_not_permitted)', () => {
+    expectAllow(actors.chapter_director_c1, 'application.form.manage', applicationFormManageC1)
+    expectAllow(actors.platform_admin, 'application.form.manage', applicationFormManageC1)
+    expectDeny(actors.platform_staff, 'application.form.manage', applicationFormManageC1, 'out_of_scope')
+    expectDeny(actors.chapter_director_c2, 'application.form.manage', applicationFormManageC1, 'out_of_scope')
+    expectDeny(actors.lead_instructor_c1, 'application.form.manage', applicationFormManageC1, 'role_not_permitted')
   })
 
   test('senior_instructor resolves independently across its two pods', () => {

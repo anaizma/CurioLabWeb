@@ -317,6 +317,12 @@ export type Capability =
   // media.review. All writes:false, so platform_staff's read-only override reaches
   // them.
   | 'application.read'
+  // the editable application-form definition write (application-form-definition
+  // -spec.md): a chapter director edits the questions applicants answer. Chapter-
+  // scoped WRITE floored at chapter_director (platform_admin via the override);
+  // distinct from the read-only application.read so a read-only platform_staff
+  // cannot save a form. The GET read reuses application.read.
+  | 'application.form.manage'
   | 'invite.read'
   | 'membership.read'
   | 'guardianship.read'

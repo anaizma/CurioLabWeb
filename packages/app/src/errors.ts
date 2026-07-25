@@ -30,6 +30,24 @@ export class ApplicationNotFoundError extends Error {
 }
 
 /**
+ * The submitted application-form definition failed server-side validation
+ * (application-form-definition-spec.md; PUT /api/ops/application-form). Maps to a
+ * 400. `code` names the rule that bit (student_key_not_allowed / identifying_key /
+ * fixed_field_changed / duplicate_key / empty_key / non_slug_key / choice_no_options
+ * / malformed); `detail` carries the offending keys/fields (references, not PII).
+ */
+export class ApplicationFormValidationError extends Error {
+  readonly code: string
+  readonly detail: Record<string, unknown>
+  constructor(code: string, message: string, detail: Record<string, unknown> = {}) {
+    super(message)
+    this.name = 'ApplicationFormValidationError'
+    this.code = code
+    this.detail = detail
+  }
+}
+
+/**
  * A SEEDING enrollment (a brand-new student with no account yet) was created
  * without the form's date of birth. The DOB must live on the seeding enrollment
  * record until the account is created at accept-student (02-data-model.md

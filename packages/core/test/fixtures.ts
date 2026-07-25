@@ -685,6 +685,13 @@ export const podInC1: Resource = { chapter_id: C1 }
 // because writes:false, BOTH platform overrides (admin and read-only staff) reach it.
 export const directorReadC1: Resource = { chapter_id: C1 }
 
+// application.form.manage (the editable application-form definition write; PUT
+// /api/ops/application-form): scope 'chapter', roles [chapter_director],
+// writes:true — a director edits their OWN chapter's form (another chapter denies
+// out_of_scope; a non-director role denies role_not_permitted); platform_admin via
+// the override; the read-only platform_staff override does NOT reach a write.
+export const applicationFormManageC1: Resource = { chapter_id: C1 }
+
 // consent.revoke_safeguarding (the one sanctioned STAFF write to consent;
 // chapter-scoped, chapter_director, admin via override). The resource is the
 // student, scoped to their enrolling chapter — it does NOT ride guardian/self

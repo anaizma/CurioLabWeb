@@ -604,6 +604,19 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: false,
   },
+  // the editable application-form definition WRITE (application-form-definition-
+  // spec.md; PUT /api/ops/application-form). A chapter_director edits the funnel
+  // questions for THEIR chapter (another chapter denies out_of_scope); a
+  // platform_admin edits any via the override. writes:true, so a read-only
+  // platform_staff does NOT reach it — distinct from the read-only application.read
+  // the GET reuses. The server-side validation (student keys on the allowlist, no
+  // identifying keys, fixed fields structurally immutable) is an app-service
+  // concern layered on this floor, mirroring how term.manage gates the floor.
+  'application.form.manage': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
   'invite.read': {
     scope: 'chapter',
     roles: ['chapter_director'],
