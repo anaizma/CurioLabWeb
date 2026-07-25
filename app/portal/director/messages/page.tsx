@@ -14,7 +14,7 @@ export default async function DirectorMessagesPage() {
       {threads.length === 0 ? (
         <p className="text-sm text-ink/50">No messages yet.</p>
       ) : (
-        <ul className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
+        <ul className="rounded-sm border border-ink/10 bg-white divide-y divide-ink/5">
           {threads.map((t) => (
             <li key={t.id}>
               <Link href={`/portal/director/messages/${t.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-cream transition-colors">

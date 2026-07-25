@@ -39,13 +39,13 @@ export default async function ApplicationDetailPage({ params }: { params: Promis
       </div>
       {isSample && <SampleBanner />}
       {/* Applicant info the director needs to process the application (full PII, own chapter only). */}
-      <div className="rounded-xl border border-ink/10 bg-white p-5 grid grid-cols-2 gap-x-6 gap-y-4">
+      <div className="rounded-sm border border-ink/10 bg-white p-5 grid grid-cols-2 gap-x-6 gap-y-4">
         <InfoField label="Guardian" value={detail.guardianName} />
         <InfoField label="Guardian email" value={detail.guardianEmail} />
         <InfoField label="School" value={detail.school} />
         <InfoField label="Contact email" value={detail.contactEmail} />
       </div>
-      <div className="rounded-xl border border-ink/10 bg-white p-5 flex flex-col gap-4">
+      <div className="rounded-sm border border-ink/10 bg-white p-5 flex flex-col gap-4">
         {detail.answers.map((qa, i) => (
           <div key={i}>
             <div className="label text-[11px] text-ink/40">{qa.question}</div>

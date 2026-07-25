@@ -99,7 +99,7 @@ function summarize(cfg: RecCfg): string {
 function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4" style={{ background: "rgba(3,35,68,.4)" }} onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl max-h-[86vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md rounded-sm bg-white p-5 shadow-xl max-h-[86vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
@@ -327,7 +327,7 @@ function NewEventModal({ chapterId, dateKey, onClose, onDone }: { chapterId: str
                 <span className="text-ink/40">▾</span>
               </button>
               {open && (
-                <div className="absolute z-10 mt-1 w-full rounded-lg border border-ink/15 bg-white shadow-lg max-h-56 overflow-y-auto">
+                <div className="absolute z-10 mt-1 w-full rounded-sm border border-ink/15 bg-white shadow-lg max-h-56 overflow-y-auto">
                   {menuCat === null ? (
                     AUD.map((a) => (
                       <button key={a.key} type="button" onClick={() => selectCat(a.key)} className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-cream">
@@ -503,7 +503,7 @@ export default function CalendarClient({ chapterId, events }: { chapterId: strin
       {!canWrite && <p className="text-xs text-ink/50">Sign in as a Chapter Director to create events.</p>}
 
       {view === "month" ? (
-        <div className="rounded-xl border border-ink/10 bg-white overflow-hidden">
+        <div className="rounded-sm border border-ink/10 bg-white overflow-hidden">
           <div className="grid grid-cols-7 border-b border-ink/10">
             {DOW.map((w) => <div key={w} className="text-center text-[10px] font-mono uppercase tracking-wide text-ink/40 py-2">{w}</div>)}
           </div>
@@ -524,7 +524,7 @@ export default function CalendarClient({ chapterId, events }: { chapterId: strin
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-ink/10 bg-white overflow-hidden">
+        <div className="rounded-sm border border-ink/10 bg-white overflow-hidden">
           <div className="grid grid-cols-7 border-b border-ink/10">
             {weekDays.map((d) => {
               const isToday = keyOf(d) === todayKey;

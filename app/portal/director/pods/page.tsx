@@ -16,7 +16,7 @@ export default async function PodsPage() {
           <h2 className="text-sm font-bold text-ink/70">Terms</h2>
           <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">New term</button>
         </div>
-        <div className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
+        <div className="rounded-sm border border-ink/10 bg-white divide-y divide-ink/5">
           {terms.map((t) => (
             <div key={t.termId} className="px-4 py-3 flex items-center justify-between gap-4 text-sm">
               <span className="font-medium">{t.name}</span>
@@ -31,7 +31,7 @@ export default async function PodsPage() {
           <h2 className="text-sm font-bold text-ink/70">Pods</h2>
           <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">New pod</button>
         </div>
-        <div className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
+        <div className="rounded-sm border border-ink/10 bg-white divide-y divide-ink/5">
           {pods.map((p) => (
             <div key={p.podId} className="px-4 py-3 flex items-center justify-between gap-4 text-sm">
               <div>

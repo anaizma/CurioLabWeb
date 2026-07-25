@@ -10,7 +10,7 @@ export default async function EnrollmentsPage() {
         <p className="text-ink/60 text-sm mt-1">Signed enrollment records for accepted applicants.</p>
       </div>
       {isSample && <SampleBanner />}
-      <div className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
+      <div className="rounded-sm border border-ink/10 bg-white divide-y divide-ink/5">
         {enrollments.map((e) => (
           <div key={e.enrollmentRecordId} className="px-4 py-3 flex items-center justify-between gap-4">
             <div>

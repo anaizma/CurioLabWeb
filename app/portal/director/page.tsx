@@ -24,7 +24,7 @@ export default async function DirectorDashboardPage() {
           <Link
             key={c.href}
             href={c.href}
-            className="rounded-xl border border-ink/10 bg-white p-5 hover:border-ink/20 transition-colors"
+            className="rounded-sm border border-ink/10 bg-white p-5 hover:border-ink/20 transition-colors"
           >
             <div className="text-3xl font-bold" style={{ color: "var(--pt-accent)" }}>
               {c.value}

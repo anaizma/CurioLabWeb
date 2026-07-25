@@ -10,7 +10,7 @@ export default async function AuditPage() {
         <p className="text-ink/60 text-sm mt-1">Recent recorded actions in this chapter.</p>
       </div>
       {isSample && <SampleBanner />}
-      <div className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
+      <div className="rounded-sm border border-ink/10 bg-white divide-y divide-ink/5">
         {entries.map((e) => (
           <div key={e.id} className="px-4 py-3 flex items-center justify-between gap-4 text-sm">
             <div>

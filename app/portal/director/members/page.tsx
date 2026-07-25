@@ -18,7 +18,7 @@ export default async function MembersPage() {
         <p className="text-ink/60 text-sm mt-1">Chapter roster — activate pending memberships and review tiers and pods.</p>
       </div>
       {isSample && <SampleBanner />}
-      <div className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
+      <div className="rounded-sm border border-ink/10 bg-white divide-y divide-ink/5">
         {members.map((m) => (
           <div key={m.membershipId} className="px-4 py-3 flex items-center justify-between gap-4">
             <div>

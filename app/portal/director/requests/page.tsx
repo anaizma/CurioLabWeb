@@ -18,7 +18,7 @@ export default async function RequestsPage() {
           <p className="text-sm text-ink/50">None open.</p>
         ) : (
           deletions.map((d) => (
-            <div key={d.deletionRequestId} className="rounded-xl border border-ink/10 bg-white p-4 flex items-center justify-between gap-4">
+            <div key={d.deletionRequestId} className="rounded-sm border border-ink/10 bg-white p-4 flex items-center justify-between gap-4">
               <div>
                 <div className="text-sm font-medium">{d.subjectName}</div>
                 <div className="text-xs text-ink/50">{d.status} · requested {d.requestedLabel}</div>
@@ -46,7 +46,7 @@ export default async function RequestsPage() {
           <p className="text-sm text-ink/50">None open.</p>
         ) : (
           exportRequests.map((x) => (
-            <div key={x.exportRequestId} className="rounded-xl border border-ink/10 bg-white p-4 flex items-center justify-between gap-4">
+            <div key={x.exportRequestId} className="rounded-sm border border-ink/10 bg-white p-4 flex items-center justify-between gap-4">
               <div>
                 <div className="text-sm font-medium">{x.subjectName}</div>
                 <div className="text-xs text-ink/50">{x.status} · requested {x.requestedLabel}</div>

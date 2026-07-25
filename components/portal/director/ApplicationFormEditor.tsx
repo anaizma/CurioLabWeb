@@ -165,16 +165,16 @@ export default function ApplicationFormEditor() {
       </div>
 
       {/* Canvas — click empty space to deselect */}
-      <div className="rounded-2xl bg-black/[.025] p-4 sm:p-6 flex flex-col gap-4" onClick={() => setActiveId(null)}>
+      <div className="rounded-sm bg-black/[.025] p-4 sm:p-6 flex flex-col gap-4" onClick={() => setActiveId(null)}>
         {/* Form header card with top accent bar */}
-        <div className="rounded-xl bg-white border border-ink/10 overflow-hidden">
+        <div className="rounded-sm bg-white border border-ink/10 overflow-hidden">
           <div className="h-2" style={{ background: "var(--pt-accent)" }} />
           <div className="p-5">
             <h2 className="text-xl font-bold">CurioLab application</h2>
             <p className="text-sm text-ink/60 mt-1">
               The questions applicants answer. Click any question to edit it; it looks like the live form until you do.
             </p>
-            <div className="mt-3 inline-flex items-start gap-2 rounded-lg px-3 py-2 text-[12px]" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
+            <div className="mt-3 inline-flex items-start gap-2 rounded-sm px-3 py-2 text-[12px]" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
               <span aria-hidden className="mt-px">ⓘ</span>
               <span>Saved to this browser for now — edits don&apos;t yet drive the live apply funnel (backend endpoint pending).</span>
             </div>
@@ -243,7 +243,7 @@ function QuestionCard({
     <div className="relative">
       <div
         onClick={(e) => { e.stopPropagation(); if (!active) onActivate(); }}
-        className={`rounded-lg bg-white border transition-shadow cursor-pointer ${active ? "border-ink/10 shadow-lg" : "border-ink/10 hover:shadow-md"}`}
+        className={`rounded-sm bg-white border transition-shadow cursor-pointer ${active ? "border-ink/10 shadow-lg" : "border-ink/10 hover:shadow-md"}`}
         style={active ? { boxShadow: "inset 5px 0 0 0 var(--pt-accent), 0 10px 30px -12px rgba(0,0,0,.25)" } : undefined}
       >
         {/* drag dots (active only) */}
@@ -277,7 +277,7 @@ function QuestionCard({
                   {typeMenu && !q.fixed && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setTypeMenu(false)} />
-                      <div className="absolute right-0 mt-1 z-50 w-60 rounded-lg border border-ink/10 bg-white shadow-xl py-1">
+                      <div className="absolute right-0 mt-1 z-50 w-60 rounded-sm border border-ink/10 bg-white shadow-xl py-1">
                         {TYPE_GROUPS.map((group, gi) => (
                           <div key={gi} className={gi > 0 ? "border-t border-ink/[.06] mt-1 pt-1" : ""}>
                             {group.map((t) => (

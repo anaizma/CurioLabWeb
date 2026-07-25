@@ -112,7 +112,7 @@ export default function InvitesClient({ chapterId, invites, isSample }: { chapte
   return (
     <div className="flex flex-col gap-8">
       <div className="grid md:grid-cols-2 gap-8">
-        <form onSubmit={issue} className="rounded-2xl border border-ink/10 bg-white p-6 flex flex-col gap-4">
+        <form onSubmit={issue} className="rounded-sm border border-ink/10 bg-white p-6 flex flex-col gap-4">
           <h2 className="font-bold">Issue an invite</h2>
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-ink/60">Role</span>
@@ -135,14 +135,14 @@ export default function InvitesClient({ chapterId, invites, isSample }: { chapte
           {!canIssue && <p className="text-xs text-ink/50">Sign in as a Chapter Director to issue live invites.</p>}
           {error && <p className="text-xs" style={{ color: "var(--pt-accent-fg)" }}>{error}</p>}
           {pending && (
-            <div className="rounded-lg border border-ink/10 bg-cream p-3 text-sm flex flex-col gap-1">
+            <div className="rounded-sm border border-ink/10 bg-cream p-3 text-sm flex flex-col gap-1">
               <span className="text-ink/60 text-xs">Director request created · expires {new Date(pending.expiresAt).toLocaleDateString()}</span>
               <span className="text-xs">Give this request id to a second director to approve:</span>
               <code className="text-xs break-all font-semibold">{pending.requestId}</code>
             </div>
           )}
           {issued && (
-            <div className="rounded-lg border border-ink/10 bg-cream p-3 text-sm flex flex-col gap-2">
+            <div className="rounded-sm border border-ink/10 bg-cream p-3 text-sm flex flex-col gap-2">
               <span className="text-ink/60 text-xs">Shareable link (shown once) · expires {new Date(issued.expiresAt).toLocaleDateString()}</span>
               {issued.emailed && <span className="text-xs font-medium" style={{ color: "var(--pt-accent-fg)" }}>Emailed to {issued.sentTo}</span>}
               <code className="text-xs break-all">{linkFor(issued.token)}</code>
@@ -151,7 +151,7 @@ export default function InvitesClient({ chapterId, invites, isSample }: { chapte
           )}
         </form>
 
-        <div className="rounded-2xl border border-ink/10 bg-white p-6">
+        <div className="rounded-sm border border-ink/10 bg-white p-6">
           <h2 className="font-bold mb-3">Recent invites</h2>
           <ul className="flex flex-col divide-y divide-ink/5">
             {invites.map((inv) => {
@@ -180,7 +180,7 @@ export default function InvitesClient({ chapterId, invites, isSample }: { chapte
         </div>
       </div>
 
-      <form onSubmit={approve} className="rounded-2xl border border-ink/10 bg-white p-6 flex flex-col gap-3 max-w-md">
+      <form onSubmit={approve} className="rounded-sm border border-ink/10 bg-white p-6 flex flex-col gap-3 max-w-md">
         <h2 className="font-bold">Approve a director invite</h2>
         <p className="text-xs text-ink/50">A second director finishes a pending director request. You can&apos;t approve your own.</p>
         <div className="flex gap-2">

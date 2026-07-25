@@ -18,7 +18,7 @@ export default async function MediaPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {media.map((m) => (
-            <div key={m.mediaId} className="rounded-xl border border-ink/10 bg-white p-4 flex flex-col gap-3">
+            <div key={m.mediaId} className="rounded-sm border border-ink/10 bg-white p-4 flex flex-col gap-3">
               <div>
                 <div className="text-sm font-medium">{m.projectTitle}</div>
                 <div className="text-xs text-ink/50 mt-0.5">

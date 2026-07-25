@@ -15,7 +15,7 @@ export default async function GuardianshipsPage() {
         {guardianships.map((g) => {
           const match = g.guardianName.trim().toLowerCase() === g.nameOnForm.trim().toLowerCase();
           return (
-            <div key={g.guardianshipId} className="rounded-xl border border-ink/10 bg-white p-4 flex items-start justify-between gap-4">
+            <div key={g.guardianshipId} className="rounded-sm border border-ink/10 bg-white p-4 flex items-start justify-between gap-4">
               <div>
                 <div className="text-sm font-medium">Guardian of {g.studentName}</div>
                 <div className="text-xs text-ink/50 mt-1">On account: {g.guardianName}</div>

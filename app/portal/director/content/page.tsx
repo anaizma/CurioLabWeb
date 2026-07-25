@@ -16,7 +16,7 @@ export default async function ContentPage() {
           <h2 className="text-sm font-bold text-ink/70">Newsletters</h2>
           <button type="button" disabled className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">New draft</button>
         </div>
-        <div className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
+        <div className="rounded-sm border border-ink/10 bg-white divide-y divide-ink/5">
           {newsletters.map((n) => (
             <div key={n.id} className="px-4 py-3 flex items-center justify-between gap-4 text-sm">
               <span className="font-medium">{n.title}</span>
@@ -28,7 +28,7 @@ export default async function ContentPage() {
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-bold text-ink/70">Awaiting review</h2>
-        <div className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
+        <div className="rounded-sm border border-ink/10 bg-white divide-y divide-ink/5">
           {reviews.map((r) => (
             <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-4">
               <div>

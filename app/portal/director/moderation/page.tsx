@@ -17,7 +17,7 @@ export default async function ModerationPage() {
       ) : (
         <ul className="flex flex-col gap-3">
           {reports.map((r) => (
-            <li key={r.reportId} className="rounded-xl border border-ink/10 bg-white p-4 flex items-start justify-between gap-4">
+            <li key={r.reportId} className="rounded-sm border border-ink/10 bg-white p-4 flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
                   <span

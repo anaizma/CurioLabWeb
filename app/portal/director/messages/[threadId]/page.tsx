@@ -17,7 +17,7 @@ export default async function DirectorThreadPage({ params }: { params: Promise<{
         {detail.subject && <p className="text-ink/60 text-sm mt-1">{detail.subject}</p>}
       </div>
       {isSample && <SampleBanner />}
-      <div className="rounded-2xl border border-ink/10 bg-white p-5 flex flex-col gap-3">
+      <div className="rounded-sm border border-ink/10 bg-white p-5 flex flex-col gap-3">
         {detail.messages.map((m) => (
           <div key={m.id} className={m.who === "staff" ? "self-end max-w-[80%] flex flex-col items-end" : "self-start max-w-[80%] flex flex-col items-start"}>
             <span className="text-[11px] text-ink/50 mb-0.5 px-1">{m.name}</span>
