@@ -60,7 +60,7 @@ export interface ApplicationTransitionBody {
 
 export interface TransitionApplicationInput extends AuthedInputBase {
   params: { id?: unknown }
-  body: { action?: unknown; note?: unknown }
+  body: { action?: unknown; note?: unknown; interviewAt?: unknown; interviewLocation?: unknown }
 }
 
 /** PATCH /api/ops/applications/:id — a lifecycle transition (incl. reopen). */
@@ -88,9 +88,18 @@ export function transitionApplication(
         outcome = await svc.screen(ctx, tinput)
         break
       case 'schedule-interview':
-      case 'scheduleInterview':
-        outcome = await svc.scheduleInterview(ctx, tinput)
+      case 'scheduleInterview': {
+        // The interview slot (both optional): interviewAt (ISO string, validated as
+        // a real timestamp by the service) + interviewLocation (free text).
+        const interviewAt = optStr(input.body?.interviewAt)
+        const interviewLocation = optStr(input.body?.interviewLocation)
+        outcome = await svc.scheduleInterview(ctx, {
+          ...tinput,
+          ...(interviewAt !== null ? { interviewAt } : {}),
+          interviewLocation,
+        })
         break
+      }
       case 'accept':
         outcome = await svc.accept(ctx, tinput)
         break

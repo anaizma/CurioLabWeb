@@ -550,6 +550,7 @@ export type {
 } from './moderation.js'
 export {
   IllegalTransitionError,
+  InvalidInterviewDateError,
   ApplicationNotFoundError,
   ApplicationFormValidationError,
   EnrollmentDobRequiredError,

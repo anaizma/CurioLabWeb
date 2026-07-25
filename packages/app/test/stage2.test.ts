@@ -17,16 +17,20 @@
 
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { generateSessionToken, hashToken } from '@curiolab/runtime'
+import { authorize, generateSessionToken, hashToken, withRequest } from '@curiolab/runtime'
 import { startHarness, type Harness } from './helpers/pg.js'
-import { makeChapter } from './helpers/fixtures.js'
+import { makeAdult, makeChapter } from './helpers/fixtures.js'
+import { baseCtx, mem } from './helpers/ctx.js'
 import {
+  ApplicationService,
+  OpsReadService,
   Stage2Service,
   FakeMailer,
   InvalidStage2TokenError,
   Stage2AlreadyStartedError,
   Stage2LeadExpiredError,
   Stage2NotInPhaseError,
+  Stage2ParentFactsIncompleteError,
   StudentSectionIdentifyingFieldError,
   StudentSectionFieldNotAllowedError,
 } from '../src/index.js'
@@ -872,5 +876,149 @@ describe('review token (the emailed 2C "Review and submit" button)', () => {
     } finally {
       if (prev !== undefined) process.env.RESEND_API_KEY = prev
     }
+  })
+})
+
+// ===========================================================================
+// FIX A — submit writes a `null -> submitted` application_event (director
+// timeline). The application row minted at 2C submit must carry a "Submitted"
+// history entry immediately, so the director portal shows a populated timeline
+// rather than an empty one, atomically with the insert / lead conversion.
+describe('FIX A — submitStage2 writes a null -> submitted application_event', () => {
+  async function toReview(f: Setup) {
+    const s = await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parentAnswers)
+    const { studentToken } = await svc().createStudentLink(f.parentToken)
+    await svc().saveStudentSection(studentToken, studentAnswers)
+    return { s, studentToken }
+  }
+
+  test('submit records exactly one { from: null, to: submitted } event (actor null)', async () => {
+    const f = await setup()
+    await toReview(f)
+    const submit = await svc().submitStage2(f.parentToken)
+
+    const events = await h.sql`
+      select from_status, to_status, actor_id, note
+      from application_event where application_id = ${submit.applicationId}
+      order by at asc
+    `
+    expect(events).toHaveLength(1)
+    expect(events[0]!.from_status).toBeNull()
+    expect(events[0]!.to_status).toBe('submitted')
+    // The applicant is not an authenticated actor.
+    expect(events[0]!.actor_id).toBeNull()
+  })
+
+  test('getApplication history shows one entry, then two in order after a screen transition', async () => {
+    const f = await setup()
+    await toReview(f)
+    const submit = await svc().submitStage2(f.parentToken)
+
+    const directorId = await makeAdult(h.sql)
+    const director = baseCtx(directorId, new Date(), [mem('chapter_director', f.chapter)])
+    const reader = new OpsReadService({ sql: h.sql, authorize })
+
+    const before = await withRequest(() => reader.getApplication(director, submit.applicationId))
+    expect(before.history).toHaveLength(1)
+    expect(before.history[0]).toMatchObject({ from: null, to: 'submitted' })
+
+    await withRequest(() =>
+      new ApplicationService({ sql: h.sql, authorize }).screen(director, {
+        applicationId: submit.applicationId,
+      }),
+    )
+
+    const after = await withRequest(() => reader.getApplication(director, submit.applicationId))
+    expect(after.history.map((e) => e.to)).toEqual(['submitted', 'screening'])
+    expect(after.history[0]!.from).toBeNull()
+    expect(after.history[1]!.from).toBe('submitted')
+  })
+})
+
+// ===========================================================================
+// FIX B — submit derives the applicant/guardian names from the definition SPLIT
+// keys (childFirstName/childLastName, guardianFirstName/guardianLastName),
+// falling back to the combined keys (childName/guardianName). It must not depend
+// on the combined keys, which exist in no form definition. It still throws when
+// neither form is present.
+describe('FIX B — submitStage2 name derivation prefers split keys, falls back to combined', () => {
+  async function toReviewWith(f: Setup, parent: Record<string, unknown>) {
+    const s = await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parent)
+    const { studentToken } = await svc().createStudentLink(f.parentToken)
+    await svc().saveStudentSection(studentToken, studentAnswers)
+    return s
+  }
+
+  test('SPLIT keys only (no combined) yield applicant_name / guardian_name = "First Last"', async () => {
+    const f = await setup()
+    await toReviewWith(f, {
+      childFirstName: 'Minor',
+      childLastName: 'Testchild',
+      guardianFirstName: 'Parent',
+      guardianLastName: 'Testperson',
+      guardianEmail: 'parent-guardian@example.test',
+    })
+    const submit = await svc().submitStage2(f.parentToken)
+    const [app] = await h.sql`select applicant_name, guardian_name, guardian_email from application where id = ${submit.applicationId}`
+    expect(app!.applicant_name).toBe('Minor Testchild')
+    expect(app!.guardian_name).toBe('Parent Testperson')
+    expect(app!.guardian_email).toBe('parent-guardian@example.test')
+  })
+
+  test('a single split part still joins cleanly (no stray whitespace)', async () => {
+    const f = await setup()
+    await toReviewWith(f, {
+      childFirstName: 'Minor',
+      guardianLastName: 'Testperson',
+      guardianEmail: 'parent-guardian@example.test',
+    })
+    const submit = await svc().submitStage2(f.parentToken)
+    const [app] = await h.sql`select applicant_name, guardian_name from application where id = ${submit.applicationId}`
+    expect(app!.applicant_name).toBe('Minor')
+    expect(app!.guardian_name).toBe('Testperson')
+  })
+
+  test('the COMBINED keys still work (backwards compatible)', async () => {
+    const f = await setup()
+    await toReviewWith(f, {
+      childName: 'Minor Testchild',
+      guardianName: 'Parent Testperson',
+      guardianEmail: 'parent-guardian@example.test',
+    })
+    const submit = await svc().submitStage2(f.parentToken)
+    const [app] = await h.sql`select applicant_name, guardian_name from application where id = ${submit.applicationId}`
+    expect(app!.applicant_name).toBe('Minor Testchild')
+    expect(app!.guardian_name).toBe('Parent Testperson')
+  })
+
+  test('the combined key WINS when both are present', async () => {
+    const f = await setup()
+    await toReviewWith(f, {
+      childName: 'Combined Name',
+      childFirstName: 'Split',
+      childLastName: 'Ignored',
+      guardianName: 'Combined Guardian',
+      guardianEmail: 'parent-guardian@example.test',
+    })
+    const submit = await svc().submitStage2(f.parentToken)
+    const [app] = await h.sql`select applicant_name, guardian_name from application where id = ${submit.applicationId}`
+    expect(app!.applicant_name).toBe('Combined Name')
+    expect(app!.guardian_name).toBe('Combined Guardian')
+  })
+
+  test('NEITHER combined nor split names present -> Stage2ParentFactsIncompleteError, no application', async () => {
+    const f = await setup()
+    await toReviewWith(f, { guardianEmail: 'parent-guardian@example.test' })
+    const before = await countApps()
+    let caught: unknown
+    try {
+      await svc().submitStage2(f.parentToken)
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(Stage2ParentFactsIncompleteError)
+    expect(await countApps()).toBe(before)
   })
 })

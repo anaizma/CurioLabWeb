@@ -6,7 +6,7 @@ import { makeAdult, makeChapter } from './helpers/fixtures.js'
 import { baseCtx, mem } from './helpers/ctx.js'
 import { ApplicationService } from '../src/index.js'
 import { writeApplicationEvent } from '../src/events.js'
-import { IllegalTransitionError } from '../src/errors.js'
+import { IllegalTransitionError, InvalidInterviewDateError } from '../src/errors.js'
 
 let h: Harness
 
@@ -147,6 +147,73 @@ describe('ops transitions — illegal edges are rejected before any write', () =
     expect((caught as IllegalTransitionError).reason).toBe('terminal_state')
     // Only the withdraw event exists; the rejected screen wrote nothing.
     expect(await eventCount(applicationId)).toBe(1)
+  })
+})
+
+// FIX C — scheduleInterview captures a real interview date/time + location on
+// the application (nullable columns), in the same transaction as the status flip
+// and the event. The fields are optional (a director may schedule the slot
+// later); when interviewAt is provided it is validated as a real timestamp.
+describe('FIX C — scheduleInterview captures interview_at + interview_location', () => {
+  test('stores the provided interviewAt (Date) + interviewLocation and still writes the event', async () => {
+    const { director, applicationId } = await seed()
+    await withRequest(async () => {
+      const svc = service()
+      await svc.screen(director, { applicationId })
+      const out = await svc.scheduleInterview(director, {
+        applicationId,
+        interviewAt: new Date('2099-11-15T18:30:00Z'),
+        interviewLocation: 'CWRU Sears think[box], Room 3',
+      })
+      expect(out).toMatchObject({ from: 'screening', to: 'interview_scheduled' })
+    })
+    const [app] = await h.sql`select status, interview_at, interview_location from application where id = ${applicationId}`
+    expect(app!.status).toBe('interview_scheduled')
+    expect(new Date(app!.interview_at as string).toISOString()).toBe('2099-11-15T18:30:00.000Z')
+    expect(app!.interview_location).toBe('CWRU Sears think[box], Room 3')
+    expect(await eventCount(applicationId)).toBe(2) // screen + scheduleInterview
+  })
+
+  test('accepts an ISO string for interviewAt', async () => {
+    const { director, applicationId } = await seed()
+    await withRequest(async () => {
+      const svc = service()
+      await svc.screen(director, { applicationId })
+      await svc.scheduleInterview(director, { applicationId, interviewAt: '2099-12-01T14:00:00Z' })
+    })
+    const [app] = await h.sql`select interview_at from application where id = ${applicationId}`
+    expect(new Date(app!.interview_at as string).toISOString()).toBe('2099-12-01T14:00:00.000Z')
+  })
+
+  test('without interview fields the transition still succeeds (columns stay null)', async () => {
+    const { director, applicationId } = await seed()
+    await withRequest(async () => {
+      const svc = service()
+      await svc.screen(director, { applicationId })
+      await svc.scheduleInterview(director, { applicationId })
+    })
+    const [app] = await h.sql`select status, interview_at, interview_location from application where id = ${applicationId}`
+    expect(app!.status).toBe('interview_scheduled')
+    expect(app!.interview_at).toBeNull()
+    expect(app!.interview_location).toBeNull()
+  })
+
+  test('an invalid interviewAt is rejected before any write (status stays screening)', async () => {
+    const { director, applicationId } = await seed()
+    let caught: unknown
+    await withRequest(async () => {
+      const svc = service()
+      await svc.screen(director, { applicationId })
+      try {
+        await svc.scheduleInterview(director, { applicationId, interviewAt: 'not-a-date' })
+      } catch (e) {
+        caught = e
+      }
+    })
+    expect(caught).toBeInstanceOf(InvalidInterviewDateError)
+    const [app] = await h.sql`select status, interview_at from application where id = ${applicationId}`
+    expect(app!.status).toBe('screening')
+    expect(app!.interview_at).toBeNull()
   })
 })
 

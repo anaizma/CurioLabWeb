@@ -2,7 +2,11 @@ import type { Sql } from 'postgres'
 import { canTransition, type AuthContext, type Resource } from '@curiolab/core'
 import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
 import { writeApplicationEvent, type EventWriter } from './events.js'
-import { ApplicationNotFoundError, IllegalTransitionError } from './errors.js'
+import {
+  ApplicationNotFoundError,
+  IllegalTransitionError,
+  InvalidInterviewDateError,
+} from './errors.js'
 
 /**
  * The injected `authorize` dependency. Structurally the runtime `authorize`
@@ -29,6 +33,14 @@ export type ApplicationKind = 'student' | 'university_role'
 export interface TransitionInput {
   applicationId: string
   note?: string | null
+  /**
+   * scheduleInterview only: the scheduled slot (a Date or an ISO string) and its
+   * location. Both optional — a director may flip to interview_scheduled and fill
+   * the slot in later; when `interviewAt` is provided it is validated as a real
+   * timestamp. Ignored by the other transitions.
+   */
+  interviewAt?: Date | string
+  interviewLocation?: string | null
 }
 
 export interface TransitionOutcome {
@@ -77,9 +89,18 @@ export class ApplicationService {
     return this.applyTransition(ctx, input, 'screening')
   }
 
-  /** screening -> interview_scheduled. */
+  /**
+   * screening -> interview_scheduled, capturing the interview slot. `interviewAt`
+   * (Date or ISO string) and `interviewLocation` are optional; when `interviewAt`
+   * is given it is validated as a real timestamp BEFORE any write (an unparseable
+   * value throws InvalidInterviewDateError, leaving status unchanged). A reschedule
+   * is this same action setting a new time. The slot is written in the same
+   * transaction as the status flip and the event.
+   */
   scheduleInterview(ctx: AuthContext, input: TransitionInput): Promise<TransitionOutcome> {
-    return this.applyTransition(ctx, input, 'interview_scheduled')
+    const interviewAt = normalizeInterviewAt(input.interviewAt)
+    const interviewLocation = input.interviewLocation ?? null
+    return this.applyTransition(ctx, input, 'interview_scheduled', { interviewAt, interviewLocation })
   }
 
   /** interview_scheduled -> accepted. */
@@ -146,6 +167,7 @@ export class ApplicationService {
     ctx: AuthContext,
     input: TransitionInput,
     to: string,
+    interview?: { interviewAt: Date | null; interviewLocation: string | null },
   ): Promise<TransitionOutcome> {
     const app = await this.load(input.applicationId)
 
@@ -160,10 +182,21 @@ export class ApplicationService {
     const resource: Resource = { id: app.id, chapter_id: app.chapterId }
     await this.authorize(ctx, 'application.transition', resource, { sql: this.sql })
 
-    // 3. Atomic: the status change and the event insert commit together.
+    // 3. Atomic: the status change (and, for scheduleInterview, the interview
+    // slot) and the event insert commit together.
     await this.sql.begin(async (tx) => {
       assertAuthorized() // runtime backstop: no mutation without a recorded decision
-      await tx`update application set status = ${to} where id = ${app.id}`
+      if (interview !== undefined) {
+        await tx`
+          update application
+          set status = ${to},
+              interview_at = ${interview.interviewAt},
+              interview_location = ${interview.interviewLocation}
+          where id = ${app.id}
+        `
+      } else {
+        await tx`update application set status = ${to} where id = ${app.id}`
+      }
       await this.eventWriter(tx, {
         applicationId: app.id,
         fromStatus: app.status,
@@ -183,4 +216,16 @@ export class ApplicationService {
     if (row === undefined) throw new ApplicationNotFoundError(applicationId)
     return { id: row.id as string, status: row.status as string, chapterId: row.chapter_id as string }
   }
+}
+
+/**
+ * Normalize an optional `interviewAt` (Date or ISO string) to a Date, or null
+ * when absent. A provided-but-unparseable value throws InvalidInterviewDateError
+ * (validated as a real timestamp before any write).
+ */
+function normalizeInterviewAt(value: Date | string | undefined): Date | null {
+  if (value === undefined || value === null) return null
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) throw new InvalidInterviewDateError(value)
+  return d
 }

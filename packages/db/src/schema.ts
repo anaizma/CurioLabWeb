@@ -279,6 +279,10 @@ export const application = pgTable('application', {
   // from the draft at submit so the director view renders against that version.
   formId: uuid('form_id').references((): AnyPgColumn => applicationForm.id),
   formVersion: integer('form_version'),
+  // 0035: the scheduled interview slot, set on the screening -> interview_scheduled
+  // transition. Both nullable — interviewAt is optional (the slot may be filled later).
+  interviewAt: timestamp('interview_at', { withTimezone: true }),
+  interviewLocation: text('interview_location'),
   createdAt: createdAt(),
 })
 

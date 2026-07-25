@@ -39,6 +39,7 @@ import { generateSessionToken, hashToken } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
 import { type Mailer, defaultMailer } from './mail.js'
 import { resolvePublishedForm, type ResolvedForm } from './application-form.js'
+import { writeApplicationEvent } from './events.js'
 import {
   InvalidStage2TokenError,
   Stage2AlreadyStartedError,
@@ -372,8 +373,15 @@ export class Stage2Service {
     if (chapterId === null) throw new Stage2LeadChapterRequiredError(draft.lead_id)
 
     const parent = draft.parent_answers ?? {}
-    const childName = strOrNull(parent.childName)
-    const guardianName = strOrNull(parent.guardianName)
+    // FIX B: prefer the definition/fixed SPLIT keys (childFirstName/childLastName,
+    // guardianFirstName/guardianLastName), falling back to the COMBINED keys
+    // (childName/guardianName). The combined keys exist in no form definition —
+    // they work today only because the current parent client dual-writes them —
+    // so the split forms are the robust source (a director-edited form, or a
+    // client that sends only split names). Throw only if BOTH forms are absent.
+    const childName = strOrNull(parent.childName) ?? joinName(parent.childFirstName, parent.childLastName)
+    const guardianName =
+      strOrNull(parent.guardianName) ?? joinName(parent.guardianFirstName, parent.guardianLastName)
     const guardianEmail = strOrNull(parent.guardianEmail)
     const missing: string[] = []
     if (childName === null) missing.push('childName')
@@ -395,6 +403,17 @@ export class Stage2Service {
         ) returning id
       `
       const appId = app!.id as string
+      // FIX A: append the opening `null -> submitted` application_event, in the
+      // same transaction as the insert / lead conversion, so getApplication.history
+      // shows a "Submitted" entry immediately instead of an empty timeline. The
+      // applicant is not an authenticated actor, so actorId is null.
+      await writeApplicationEvent(tx, {
+        applicationId: appId,
+        fromStatus: null,
+        toStatus: 'submitted',
+        actorId: null,
+        note: 'Application submitted',
+      })
       await tx`
         update application_lead
         set status = 'converted', converted_application_id = ${appId}, converted_at = now()
@@ -538,6 +557,16 @@ function strOrNull(v: unknown): string | null {
   if (typeof v !== 'string') return null
   const t = v.trim()
   return t.length > 0 ? t : null
+}
+
+/**
+ * Join two split name parts (e.g. first + last) into a single trimmed name,
+ * dropping any missing/blank part, or null if BOTH are absent. So
+ * ("Minor","Testchild") -> "Minor Testchild"; ("Minor",null) -> "Minor".
+ */
+function joinName(first: unknown, last: unknown): string | null {
+  const parts = [strOrNull(first), strOrNull(last)].filter((p): p is string => p !== null)
+  return parts.length > 0 ? parts.join(' ') : null
 }
 
 /** Constant-time equality for two equal-length hex digest strings. */

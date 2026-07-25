@@ -126,6 +126,32 @@ describe('transitionApplication — the representative authed ops controller', (
     expect(app!.status).toBe('submitted')
   })
 
+  test('schedule-interview captures interviewAt + interviewLocation through the controller (200)', async () => {
+    const d = await seedDirector(h.sql)
+    const appId = await submittedApplication(d.chapter)
+    await transitionApplication({
+      sql: h.sql,
+      sessionToken: d.directorToken,
+      params: { id: appId },
+      body: { action: 'screen' },
+    })
+    const res = await transitionApplication({
+      sql: h.sql,
+      sessionToken: d.directorToken,
+      params: { id: appId },
+      body: {
+        action: 'schedule-interview',
+        interviewAt: '2099-11-15T18:30:00Z',
+        interviewLocation: 'CWRU Sears think[box], Room 3',
+      },
+    })
+    expect(res.status).toBe(200)
+    expect(res.body.to).toBe('interview_scheduled')
+    const [app] = await h.sql`select interview_at, interview_location from application where id = ${appId}`
+    expect(new Date(app!.interview_at as string).toISOString()).toBe('2099-11-15T18:30:00.000Z')
+    expect(app!.interview_location).toBe('CWRU Sears think[box], Room 3')
+  })
+
   test('an unknown action is a 400, not a 500', async () => {
     const d = await seedDirector(h.sql)
     const appId = await submittedApplication(d.chapter)

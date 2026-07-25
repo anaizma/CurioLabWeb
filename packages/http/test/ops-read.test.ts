@@ -328,6 +328,25 @@ describe('getApplication — full record + complete 2A/2B answers + history', ()
     expect(res.body.history[1]!.from).toBe('submitted')
   })
 
+  test('returns interview { at, location } — null when unset, populated after schedule-interview', async () => {
+    const a = await seedDirector(h.sql)
+    const appId = await submittedApplication(a.chapter)
+
+    const before = await getApplication({ sql: h.sql, sessionToken: a.directorToken, params: { id: appId } })
+    expect(before.status).toBe(200)
+    expect(before.body.interview).toEqual({ at: null, location: null })
+
+    await h.sql`
+      update application
+      set status = 'interview_scheduled', interview_at = '2099-11-15T18:30:00Z',
+          interview_location = 'CWRU Sears think[box], Room 3'
+      where id = ${appId}
+    `
+    const after = await getApplication({ sql: h.sql, sessionToken: a.directorToken, params: { id: appId } })
+    expect(after.body.interview.at).toBe('2099-11-15T18:30:00.000Z')
+    expect(after.body.interview.location).toBe('CWRU Sears think[box], Room 3')
+  })
+
   test('a cross-chapter director gets an opaque 403 on the detail', async () => {
     const a = await seedDirector(h.sql)
     const b = await seedDirector(h.sql)

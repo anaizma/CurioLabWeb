@@ -161,6 +161,8 @@ const BAD_REQUEST = new Set([
   'StudentSectionFieldNotAllowedError',
   'Stage2ParentFactsIncompleteError',
   'Stage2LeadChapterRequiredError',
+  // scheduleInterview given an unparseable interviewAt (not a real timestamp).
+  'InvalidInterviewDateError',
   'InviteCredentialMismatchError',
   'GuardianInviteEmailMismatchError',
   // Student is not issuable through the ops invite endpoint (P2 §1).

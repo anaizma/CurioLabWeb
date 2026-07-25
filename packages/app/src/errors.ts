@@ -196,6 +196,18 @@ export class Stage2LeadChapterRequiredError extends Error {
   }
 }
 
+/**
+ * scheduleInterview was given an `interviewAt` that is not a real timestamp (an
+ * unparseable string or an Invalid Date). Maps to 400 — the director supplied a
+ * malformed slot; the transition is refused before any write.
+ */
+export class InvalidInterviewDateError extends Error {
+  constructor(value: unknown) {
+    super(`interviewAt is not a valid timestamp: ${String(value)}`)
+    this.name = 'InvalidInterviewDateError'
+  }
+}
+
 /** The referenced invite does not exist (ops resend of an unknown id). */
 export class InviteNotFoundError extends Error {
   readonly inviteId: string

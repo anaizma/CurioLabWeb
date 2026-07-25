@@ -111,6 +111,12 @@ export interface ApplicationDetail {
     contactEmail: string | null
   }
   guardian: { fullName: string | null; email: string | null }
+  /**
+   * The scheduled interview slot (0035), set on the screening -> interview_scheduled
+   * transition. `at` is the ISO timestamp (null until scheduled); `location` is
+   * free text (room / video link). Both null on an application not yet scheduled.
+   */
+  interview: { at: string | null; location: string | null }
   answers: {
     stage2a: Record<string, unknown>
     stage2b: Record<string, unknown>
@@ -458,7 +464,7 @@ export class OpsReadService {
     const [app] = await sql`
       select id, status, chapter_id, applicant_name, applicant_contact_email,
              guardian_name, guardian_email, created_at, student_section,
-             form_id, form_version
+             form_id, form_version, interview_at, interview_location
       from application where id = ${applicationId}
     `
     if (app === undefined) throw new ApplicationNotFoundError(applicationId)
@@ -528,6 +534,10 @@ export class OpsReadService {
       guardian: {
         fullName: (app.guardian_name as string | null) ?? null,
         email: (app.guardian_email as string | null) ?? null,
+      },
+      interview: {
+        at: app.interview_at != null ? iso(app.interview_at) : null,
+        location: (app.interview_location as string | null) ?? null,
       },
       answers: {
         stage2a: parentAnswers,
