@@ -11,6 +11,19 @@ const STATUS_LABEL: Record<ApplicationStatus, string> = {
   declined: "Declined",
 };
 
+// Shared column templates — the header row and every applicant row use the same
+// template so the columns line up. No gridlines; alignment does the work.
+const COLS_PARTIAL = "minmax(0,1fr) 6rem 5.5rem";
+const COLS_FULL = "minmax(0,1.5fr) 5.5rem minmax(0,1.5fr) minmax(0,2fr) minmax(0,1.3fr) 5.5rem";
+
+function StatusBadge({ status }: { status: ApplicationStatus }) {
+  return (
+    <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 whitespace-nowrap" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
+      {STATUS_LABEL[status]}
+    </span>
+  );
+}
+
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<{ term?: string; view?: string }> }) {
   const { term, view } = await searchParams;
   const full = view === "full";
@@ -20,6 +33,9 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   ]);
   const { applications, activeTermId, activeTermName, isSample } = appsView;
   const showingAll = term === "all";
+
+  const cols = full ? COLS_FULL : COLS_PARTIAL;
+  const minWidth = full ? "56rem" : "28rem";
 
   return (
     <div className="flex flex-col gap-6">
@@ -36,43 +52,51 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           No applications{showingAll ? "" : activeTermName ? ` for ${activeTermName}` : ""}.
         </p>
       ) : (
-        <ul className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
-          {applications.map((a) => {
-            const grade = gradeLabel(a.gradeLevel);
-            return (
-              <li key={a.applicationId}>
+        <div className="rounded-xl border border-ink/10 bg-white overflow-x-auto">
+          <div style={{ minWidth }}>
+            {/* Header row */}
+            <div className="grid items-center gap-3 px-4 py-2.5" style={{ gridTemplateColumns: cols }}>
+              <div className="label text-[10.5px]">Name</div>
+              <div className="label text-[10.5px]">Applied</div>
+              {full && <div className="label text-[10.5px]">School</div>}
+              {full && <div className="label text-[10.5px]">Email</div>}
+              {full && <div className="label text-[10.5px]">Parent</div>}
+              <div className="label text-[10.5px] justify-self-end">Status</div>
+            </div>
+
+            {/* Applicant rows */}
+            {applications.map((a) => {
+              const grade = gradeLabel(a.gradeLevel);
+              return (
                 <Link
+                  key={a.applicationId}
                   href={`/portal/director/applications/${a.applicationId}`}
-                  className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-cream transition-colors"
+                  className="grid items-center gap-3 px-4 py-3 hover:bg-cream transition-colors"
+                  style={{ gridTemplateColumns: cols }}
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">{a.studentName}</span>
-                      {grade && (
-                        <span className="text-[10.5px] font-mono rounded px-1.5 py-0.5 bg-ink/5 text-ink/60 shrink-0">{grade}</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-ink/50 mt-0.5">
-                      applied {a.submittedLabel}
-                      {showingAll && a.termName ? ` · ${a.termName}` : ""}
-                    </div>
-                    {/* Full view adds the applicant's non-answer info (parent, school, contact). */}
-                    {full && (
-                      <div className="text-xs text-ink/45 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                        {a.guardianName && <span>Parent: {a.guardianName}</span>}
-                        {a.school && <span>{a.school}</span>}
-                        {a.contactEmail && <span className="font-mono">{a.contactEmail}</span>}
-                      </div>
-                    )}
+                  {/* Name */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium truncate">{a.studentName}</span>
+                    {grade && <span className="text-[10.5px] font-mono rounded px-1.5 py-0.5 bg-ink/5 text-ink/60 shrink-0">{grade}</span>}
                   </div>
-                  <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 shrink-0" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
-                    {STATUS_LABEL[a.status]}
-                  </span>
+                  {/* Applied */}
+                  <div className="text-xs text-ink/55 whitespace-nowrap">
+                    {a.submittedLabel}
+                    {showingAll && a.termName ? <span className="block text-ink/40">{a.termName}</span> : null}
+                  </div>
+                  {/* Full-view columns: non-answer applicant info */}
+                  {full && <div className="text-xs text-ink/55 truncate">{a.school || "—"}</div>}
+                  {full && <div className="text-xs text-ink/55 font-mono truncate">{a.contactEmail || "—"}</div>}
+                  {full && <div className="text-xs text-ink/55 truncate">{a.guardianName || "—"}</div>}
+                  {/* Status */}
+                  <div className="justify-self-end">
+                    <StatusBadge status={a.status} />
+                  </div>
                 </Link>
-              </li>
-            );
-          })}
-        </ul>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
