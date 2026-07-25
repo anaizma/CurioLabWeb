@@ -2,10 +2,33 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import type { DirMailView, DirMsg, DirThread, OversightRole } from "@/lib/portal/director/mail-data";
+import type { BadgeRole, DirMailView, DirMsg, DirThread, OversightParticipant } from "@/lib/portal/director/mail-data";
 
 type Folder = "inbox" | "sent" | "drafts" | "oversight";
+type RoleFilter = BadgeRole | "all";
 interface Draft { id: string; to: string; subject: string; body: string; }
+
+const BADGE: Record<BadgeRole, { letter: string; cls: string; label: string }> = {
+  parent: { letter: "P", cls: "bg-amber-100 text-amber-700", label: "Parent" },
+  mentor: { letter: "M", cls: "bg-emerald-100 text-emerald-700", label: "Mentor" },
+  student: { letter: "S", cls: "bg-sky-100 text-sky-700", label: "Student" },
+  team: { letter: "T", cls: "bg-violet-100 text-violet-700", label: "Team" },
+};
+
+/** P/M/S/T identity chip; renders a blank same-width slot when role is unknown. */
+function RoleBadge({ role }: { role?: BadgeRole }) {
+  if (!role) return <span className="inline-block w-4 h-4" aria-hidden />;
+  const b = BADGE[role];
+  return <span className={`inline-grid place-items-center w-4 h-4 rounded-[3px] text-[9px] font-bold ${b.cls}`} title={b.label}>{b.letter}</span>;
+}
+
+/** Order oversight participants so a student sits in the far-left column. */
+function orderedParticipants(parts?: OversightParticipant[]): [OversightParticipant | undefined, OversightParticipant | undefined] {
+  const p = parts ?? [];
+  const student = p.find((x) => x.role === "student");
+  if (student) return [student, p.find((x) => x !== student)];
+  return [p[0], p[1]];
+}
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function nowStamp(): string {
@@ -25,14 +48,15 @@ function Avatar({ name, tone }: { name: string; tone: "me" | "them" }) {
   );
 }
 
-const ROLE_FILTERS: { key: OversightRole | "all"; label: string }[] = [
+const ROLE_FILTERS: { key: RoleFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "mentor", label: "Mentors" },
   { key: "student", label: "Students" },
   { key: "parent", label: "Parents" },
+  { key: "team", label: "Team" },
 ];
 
-function matchesOversight(t: DirThread, role: OversightRole | "all", q: string): boolean {
+function matchesOversight(t: DirThread, role: RoleFilter, q: string): boolean {
   const parts = t.participants ?? [];
   const ql = q.trim().toLowerCase();
   const roleOk = role === "all" ? true : parts.some((p) => p.role === role);
@@ -52,7 +76,7 @@ export default function DirectorMessagesClient({ view }: { view: DirMailView }) 
   const [busy, setBusy] = useState(false);
 
   // Oversight search
-  const [ovRole, setOvRole] = useState<OversightRole | "all">("all");
+  const [ovRole, setOvRole] = useState<RoleFilter>("all");
   const [ovQuery, setOvQuery] = useState("");
 
   const unread = view.inbox.filter((t) => t.unread).length;
@@ -237,29 +261,34 @@ export default function DirectorMessagesClient({ view }: { view: DirMailView }) 
             {oversightFiltered.length === 0 ? (
               <p className="p-6 text-[13px] text-muted">No conversations match.</p>
             ) : (
-              <div className="overflow-y-auto flex-1">
-                {oversightFiltered.map((t) => (
-                  <OversightRow key={t.id} t={t} onOpen={() => { setOpenId(t.id); setReply(""); }} />
-                ))}
+              <div className="overflow-auto flex-1">
+                <div className="min-w-[42rem]">
+                  {oversightFiltered.map((t) => (
+                    <OversightRow key={t.id} t={t} onOpen={() => { setOpenId(t.id); setReply(""); }} />
+                  ))}
+                </div>
               </div>
             )}
           </div>
         ) : (
           // inbox / sent list
-          <div className="flex-1">
+          <div className="flex-1 overflow-x-auto">
             {threads.length === 0 ? (
               <p className="p-6 text-[13px] text-muted">Nothing here yet.</p>
             ) : (
-              threads.map((t) => (
-                <button key={t.id} type="button" onClick={() => { setOpenId(t.id); setReply(""); }} className="w-full text-left px-4 py-2.5 border-b border-black/[.04] hover:bg-cream flex items-center gap-3">
-                  <span className={`text-[12.5px] w-40 shrink-0 truncate ${t.unread ? "font-bold" : "font-medium text-muted"}`}>{t.counterpart}</span>
-                  <span className="text-[13px] truncate flex-1 min-w-0">
-                    <span className={t.unread ? "font-bold" : "font-medium"}>{t.subject}</span>
-                    <span className="text-muted"> — {t.lastPreview}</span>
-                  </span>
-                  <span className="font-mono text-[10.5px] text-muted shrink-0">{t.lastLabel}</span>
-                </button>
-              ))
+              <div className="min-w-[30rem]">
+                {threads.map((t) => (
+                  <button key={t.id} type="button" onClick={() => { setOpenId(t.id); setReply(""); }} className="w-full text-left px-4 py-2.5 border-b border-black/[.04] hover:bg-cream grid items-center gap-3" style={{ gridTemplateColumns: "minmax(7rem,11rem) 1rem minmax(0,1fr) auto" }}>
+                    <span className={`text-[12.5px] truncate ${t.unread ? "font-bold" : "font-medium"}`}>{t.counterpart}</span>
+                    <RoleBadge role={t.counterpartRole} />
+                    <span className="min-w-0">
+                      <span className={`block text-[13px] truncate ${t.unread ? "font-bold" : "font-medium"}`}>{t.subject}</span>
+                      <span className="block text-[12px] text-muted truncate">{t.lastPreview}</span>
+                    </span>
+                    <span className="font-mono text-[10.5px] text-muted shrink-0">{t.lastLabel}</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -269,17 +298,16 @@ export default function DirectorMessagesClient({ view }: { view: DirMailView }) 
 }
 
 function OversightRow({ t, onOpen }: { t: DirThread; onOpen: () => void }) {
+  const [a, b] = orderedParticipants(t.participants);
   return (
-    <button type="button" onClick={onOpen} className="w-full text-left px-4 py-2.5 border-b border-black/[.04] hover:bg-cream flex items-center gap-3">
-      <span className="text-[12.5px] font-medium w-44 shrink-0 truncate">{t.counterpart}</span>
-      <span className="text-[13px] truncate flex-1 min-w-0">
-        <span className="font-medium">{t.subject}</span>
-        <span className="text-muted"> — {t.lastPreview}</span>
-      </span>
-      <span className="hidden sm:flex gap-1 shrink-0">
-        {(t.participants ?? []).map((p) => (
-          <span key={p.role + p.name} className="font-mono text-[9px] uppercase rounded px-1 py-0.5 bg-black/[.04] text-muted">{p.role}</span>
-        ))}
+    <button type="button" onClick={onOpen} className="w-full text-left px-4 py-2.5 border-b border-black/[.04] hover:bg-cream grid items-center gap-3" style={{ gridTemplateColumns: "minmax(6rem,9rem) 1rem minmax(6rem,9rem) 1rem minmax(0,1fr) auto" }}>
+      <span className="text-[12.5px] font-medium truncate">{a?.name ?? "—"}</span>
+      <RoleBadge role={a?.role} />
+      <span className="text-[12.5px] font-medium truncate">{b?.name ?? "—"}</span>
+      <RoleBadge role={b?.role} />
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium truncate">{t.subject}</span>
+        <span className="block text-[12px] text-muted truncate">{t.lastPreview}</span>
       </span>
       <span className="font-mono text-[10.5px] text-muted shrink-0">{t.lastLabel}</span>
     </button>
