@@ -390,6 +390,10 @@ export type {
   SetNotificationEmailInput,
 } from './controllers/student-notification.js'
 
+// Account self-service ("My Information": GET/PATCH /api/account).
+export { getAccount, updateAccount } from './controllers/account.js'
+export type { GetAccountInput, UpdateAccountInputHttp } from './controllers/account.js'
+
 // Project lifecycle (M3.7)
 export {
   createProject,

@@ -180,6 +180,12 @@ export const account = pgTable(
     // student_notification_email grant + 13+. Enabling makes a minor directly
     // contactable — COUNSEL-GATED.
     notificationEmail: citext('notification_email'),
+    // A first-class, nullable, student-editable `school` (migration 0038). Powers
+    // the "My Information" self-service field: GET /api/account returns this when
+    // set, else falls back to the funnel's application_draft.parent_answers
+    // .schoolName; PATCH /api/account (students only) writes it. Plain free text —
+    // not identity, not unique, never carried for a non-student.
+    school: text('school'),
     legalName: text('legal_name').notNull(),
     displayName: text('display_name').notNull(),
     dateOfBirth: date('date_of_birth').notNull(),

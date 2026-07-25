@@ -433,6 +433,46 @@ describe('capability coverage: allow and deny for every registry key', () => {
     )
   })
 
+  test('account.self.manage (own; self-ownership is the authority, NO membership required)', () => {
+    // A membership-LESS guardian may manage their OWN account (own scope, roles [] —
+    // the "My Information" self-service floor; guardianship is not a chapter role and
+    // is not required). This is the case the ordinary own scope cannot serve.
+    expectAllow(
+      actors.guardian_of_S,
+      'account.self.manage',
+      profileOwnedBy(actors.guardian_of_S.account.id),
+    )
+    // A member (a director) may manage their own account too — the empty role set
+    // skips the role gate, so no role_not_permitted despite a non-student role.
+    expectAllow(
+      actors.chapter_director_c1,
+      'account.self.manage',
+      profileOwnedBy(actors.chapter_director_c1.account.id),
+    )
+    // A 13+ student manages their own account (the email delegates to the gated
+    // notification write in the service; the school write is students-only there).
+    expectAllow(
+      actors.student_minor_consented,
+      'account.self.manage',
+      profileOwnedBy(actors.student_minor_consented.account.id),
+    )
+    // Strictly self-only: another member's account denies out_of_scope (the own
+    // scope binds to the actor's own id — there is no id param anywhere else).
+    expectDeny(
+      actors.guardian_of_S,
+      'account.self.manage',
+      profileOwnedBy('someone-else'),
+      'out_of_scope',
+    )
+    // A read-only impersonation override cannot write (writes:true).
+    expectDeny(
+      actors.impersonation_minor_readonly,
+      'account.self.manage',
+      profileOwnedBy(actors.impersonation_minor_readonly.account.id),
+      'impersonation_write_forbidden',
+    )
+  })
+
   test('student.view_record (emits a minor_record.read obligation out of pod)', () => {
     const inPod = expectAllow(actors.lead_instructor_c1, 'student.view_record', childRecordInPod)
     expect(inPod.obligations).toHaveLength(0)

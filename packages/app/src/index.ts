@@ -266,6 +266,14 @@ export type {
   NotificationEmailSecondary,
 } from './student-notification.js'
 export { STUDENT_NOTIFICATION_EMAIL_ENABLED } from './config.js'
+// Account self-service ("My Information": GET/PATCH /api/account).
+export { AccountService } from './account-info.js'
+export type {
+  AccountServiceDeps,
+  AccountSelfAuthorizeFn,
+  AccountInfo,
+  UpdateAccountInput,
+} from './account-info.js'
 export { GuardianPortalService } from './guardian-portal.js'
 export type {
   GuardianPortalServiceDeps,
@@ -666,6 +674,8 @@ export {
   DmSuspensionSecondAdultInvalidError,
   DmSuspensionNotAcknowledgeableError,
   DmFlagNotFoundError,
+  InvalidAccountEmailError,
+  AccountFieldNotEditableError,
 } from './errors.js'
 export {
   MENTOR_DM_ENABLED,

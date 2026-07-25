@@ -354,6 +354,15 @@ export const ROUTE_MANIFEST: RouteManifest = [
     path: '/api/portal/student/notification-email',
     capability: 'student.set_notification_email',
   },
+  // Account self-service ("My Information"). PATCH edits the caller's OWN editable
+  // fields (email — role-aware; school — students only), gated by account.self.manage
+  // (own scope; self-ownership is the authority, so it authorizes a membership-less
+  // guardian too). The role-aware per-field rules live in the AccountService: an
+  // adult email updates account.email, a student email DELEGATES to the gated
+  // student.set_notification_email write, and school is students-only. The GET read
+  // is a self-session read (no capability, like GET /api/auth/session) and is
+  // GET-exempt from the manifest.
+  { method: 'PATCH', path: '/api/account', capability: 'account.self.manage' },
   { method: 'POST', path: '/api/projects', capability: 'project.create' },
   { method: 'PATCH', path: '/api/projects/[id]/submit', capability: 'project.submit' },
   { method: 'POST', path: '/api/projects/[id]/verify', capability: 'project.verify' },

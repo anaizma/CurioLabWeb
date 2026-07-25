@@ -77,6 +77,12 @@ function consentSnapshotFor(
 type Match =
   | { via: 'platform' }
   | { via: 'guardian' }
+  // Self-ownership of one's OWN account, independent of any chapter membership —
+  // an `own`-scoped capability declared with an EMPTY role set (account.self.*).
+  // The account owner is the authority over their own row, so a membership-less
+  // self-actor (a guardian on their own account) matches. Mirrors the `guardian`
+  // shape: no membership, the role gate is skipped.
+  | { via: 'own_self' }
   | { via: Exclude<Scope, 'platform' | 'guardian'>; membership: Membership }
 
 /**
@@ -146,6 +152,17 @@ export function can(
       } else if (scope === 'own') {
         const owns = resource.ownerAccountId != null && resource.ownerAccountId === ctx.account.id
         if (owns && (def.ownCondition?.(ctx) ?? true)) {
+          // An empty role set means self-ownership itself is the authority (the
+          // account.self.* "My Information" surface): the owner may act on their own
+          // account with NO chapter membership required — so a membership-less
+          // guardian matches, and the role gate is skipped (like `guardian`). No
+          // existing capability declares own-scope with roles [], so this is inert
+          // for every prior capability (a non-empty role set still requires a
+          // membership whose role is permitted).
+          if (def.roles.length === 0) {
+            match = { via: 'own_self' }
+            break
+          }
           const m = pickMembership(ctx, def.roles, () => true)
           if (m) {
             match = { via: 'own', membership: m }
@@ -182,6 +199,8 @@ export function can(
     if (!pg?.role) return deny('role_not_permitted', {})
   } else if (match.via === 'guardian') {
     // Guardianship itself is the authority; guardian is not a chapter role.
+  } else if (match.via === 'own_self') {
+    // Self-ownership of one's own account IS the authority; no chapter role gate.
   } else if (!def.roles.includes(match.membership.role)) {
     return deny('role_not_permitted', { role: match.membership.role })
   }
@@ -212,7 +231,10 @@ export function can(
   // 7. Obligations
   const obligations: Obligation[] = []
   if (def.logsRead && resource.subjectIsMinor) {
-    const actorPod = match.via === 'guardian' || match.via === 'platform' ? null : match.membership.pod_id
+    const actorPod =
+      match.via === 'guardian' || match.via === 'platform' || match.via === 'own_self'
+        ? null
+        : match.membership.pod_id
     if (resource.subjectPodId !== actorPod) {
       obligations.push({ type: 'minor_record.read', detail: { subject: resource.subjectAccountId } })
     }

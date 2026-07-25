@@ -34,6 +34,10 @@ const FORBIDDEN = new Set([
   // (flag off / no active grant / under 13). Opaque across those causes — the
   // field simply stays null. COUNSEL-GATED feature.
   'StudentNotificationEmailNotAuthorizedError',
+  // Account self-service (PATCH /api/account): a NON-student tried to edit `school`
+  // (a students-only field). A policy refusal of the actor, opaque like the
+  // maturation self-op refusals — the field simply cannot be edited by this member.
+  'AccountFieldNotEditableError',
 ])
 
 /** Service errors whose meaning is "the named resource does not exist" -> 404. */
@@ -192,6 +196,9 @@ const BAD_REQUEST = new Set([
   // Student notification-email settings (dark): the PRIMARY email supplied to the
   // self-service write is not a well-formed address (checked after the gate).
   'InvalidNotificationEmailError',
+  // Account self-service (PATCH /api/account): an ADULT's account.email update
+  // supplied a malformed address (checked after the self-ownership authorization).
+  'InvalidAccountEmailError',
   // Mentor-student DM (Phase 3): a guardian-visibility suspension with no reason.
   'DmSuspensionReasonRequiredError',
   // Shared chapter calendar (Feature 1): a bad time range / audience set / kind.

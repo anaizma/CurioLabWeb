@@ -428,6 +428,68 @@ The `notification_email` PRIMARY remains **HIDDEN from every director/staff read
 
 ---
 
+## 3c. Account self-service — "My Information" (`GET`/`PATCH /api/account`)
+
+A logged-in member reads the info CurioLab holds about them and edits the few editable fields: **email** (role-aware) and **school** (students only). Everything else is **read-only**. Both endpoints act on **`ctx.account.id`** — there is **no id parameter anywhere** — so a caller can only ever read or write their **OWN** account (self-only). This is a self-read of the caller's own PII (their own data); it does **not** change any staff-facing minor-PII rule. `AccountService` (packages/app) assembles/enforces; the routes are backend adapters over `@curiolab/http`.
+
+> **Two reconciliations vs. the frontend spec (`my-information-endpoints-spec.md`).** The spec's literal `primaryEmail = account.email` / `secondaryEmail = account.notification_email` is correct **only for adults**; email is computed **per role** (Reconciliation 1 below). And `school` is a **first-class editable column** (migration 0038) with a funnel fallback, not a write into `parent_answers` (Reconciliation 2 below).
+
+### Reconciliation 1 — email is ROLE-AWARE (not a literal column map)
+
+Computed from the caller's role (an in-force `student` membership ⇒ *student*; otherwise *adult*):
+
+| Role | `primaryEmail` | `secondaryEmail` | `emailEditable` | `emailFrozenTo` | PATCH `email` target |
+|---|---|---|---|---|---|
+| **Adult** (guardian, chapter_director, mentor tiers, comms/staff, platform_admin) | `account.email` (login email) | `null` | `true` | `null` | updates `account.email` (format-validated) |
+| **Student, under 13** | the verified **guardian** email (frozen) | `null` | `false` | the guardian email | **REJECTED** (opaque `403`) |
+| **Student, 13+** | own `notification_email` if set-and-authorized, else the guardian email | the live guardian email **when** the student set their own primary, else `null` | flag on **+** 13+ **+** active `student_notification_email` grant | guardian email when not editable, else `null` | **DELEGATES** to the gated student-notification PRIMARY write (sets `notification_email`, **never** `account.email`) |
+
+- The student rows reuse the **PRIMARY/SECONDARY notification model** verbatim (§3b) — one read model (`StudentNotificationSettingsService.viewSettings`) and **one enforcement path** for the write (`setPrimaryEmail`, capability `student.set_notification_email`). A student email PATCH is **not** a second enforcement path: under-13 / flag-off / no-grant all reject with the same opaque `StudentNotificationEmailNotAuthorizedError`; with the flag **off** a student is **never** editable → `emailEditable = false`, frozen to the guardian.
+- The coming-of-age (`maturation`) email path (`POST /api/auth/email/add`, 18+ self) stays **DISTINCT** from this plain email change.
+
+### Reconciliation 2 — school as a first-class editable field (migration 0038)
+
+`account.school` is a nullable free-text column. **GET** returns `account.school` when set, else **FALLS BACK** to the student's `application_draft.parent_answers.schoolName` (so pre-existing students show their funnel value with **no data migration**). **PATCH** (students only) writes `account.school`; a non-student school edit is **rejected** (`AccountFieldNotEditableError`, opaque `403`). `grade` stays **READ-ONLY** from `parent_answers.gradeEntering`.
+
+### `GET /api/account` — read my own info
+
+- **Auth:** session (self-session read, like `GET /api/auth/session`) — **no capability**, and **GET-exempt** from the route manifest. Null session → `403`. Never returns another member's row.
+- **Response `200`:**
+
+```jsonc
+{
+  "role": "student",            // chapter Role | "guardian" | "member"
+  "roleLabel": "Student",        // human label
+  "fullName": "…",               // account.legal_name
+  "dateOfBirth": "2013-09-14",  // student only; else null (ISO YYYY-MM-DD)
+  "age": 12,                     // computed (same helper as the session)
+  "primaryEmail": "…|null",      // role-aware (Reconciliation 1)
+  "secondaryEmail": "…|null",    // role-aware (a student's live guardian when they set their own)
+  "school": "…|null",            // student: account.school ?? parent_answers.schoolName
+  "grade": "…|null",             // student: parent_answers.gradeEntering (READ-ONLY)
+  "phone": "…|null",             // guardian: a child's parent_answers.guardianPhone (READ-ONLY)
+  "guardian": { "name": "…", "email": "…|null" },  // student only; else null
+  "children": [{ "name": "…" }],                    // guardian only; else null
+  "chapter": "…|null",           // a member's chapter name (director/staff)
+  "emailEditable": true,         // false when role=student AND (under-13 OR flag-off OR no grant)
+  "emailFrozenTo": "guardian@…"  // the guardian email shown in the locked field when frozen; else null
+}
+```
+
+Fields not applicable to the caller's role are `null`.
+
+### `PATCH /api/account` — update the editable fields
+
+- **Auth:** session — **`account.self.manage`** (scope `own`, roles `[]`, writes). **Self-ownership itself is the authority** over one's own account: the empty role set means **no chapter membership is required**, so it authorizes a membership-less **guardian** on their own account as well as any member; `can` matches it **only** when `ownerAccountId === ctx.account.id`, so it is strictly self-only (another owner → `out_of_scope`). Manifested (`PATCH /api/account`).
+- **Request body:** `{ email?: string, school?: string }`. **Server-enforced — the client is never trusted.** Any other field is **ignored**.
+  - **email** — *adult*: updates `account.email` (format-validated). *student under-13*: rejected. *student 13+*: delegates to the gated notification PRIMARY write. (See Reconciliation 1.)
+  - **school** — *students only*: updates `account.school`. A non-student is rejected.
+- **Audit:** each accepted change writes one `audit_entry` (the field name — `account.email_changed` / `account.school_changed` — never the value).
+- **Response `200`:** the fresh `GET /api/account` self-view.
+- **Errors:** `400` (`InvalidAccountEmailError`) — an adult supplied a malformed email (checked **after** the self-ownership authorization). `403` — a null session; a student email PATCH that fails the flag/13+/grant gate (`StudentNotificationEmailNotAuthorizedError`, opaque — covers under-13 and flag-off); or a non-student school edit (`AccountFieldNotEditableError`, opaque).
+
+---
+
 ## 4. Student profile & projects
 
 ### `GET /api/profile/{id}`

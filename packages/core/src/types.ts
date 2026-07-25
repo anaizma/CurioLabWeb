@@ -455,3 +455,15 @@ export type Capability =
   // is resolved LIVE and is never student-editable.
   | 'student.set_notification_email'
   | 'student.view_notification_email'
+  // account self-service (the "My Information" surface). account.self.manage is the
+  // own-scoped WRITE a member uses to edit the few editable fields of their OWN
+  // account (email for all roles; school for students). Scope 'own', roles [] — the
+  // account OWNER is the authority over their own row, independent of any chapter
+  // role, so it authorizes a membership-LESS self-actor (a guardian on their own
+  // account) as well as any member; a caller can only ever act on their own account
+  // (ownerAccountId === ctx.account.id), never another member's. writes:true, so a
+  // read-only impersonation override cannot write. The per-field, role-aware rules
+  // (adult email vs the gated student notification-email delegation; students-only
+  // school) live in the AccountService, layered on this self-ownership floor. The
+  // self-READ reuses the self-session pattern (no capability), like GET /auth/session.
+  | 'account.self.manage'

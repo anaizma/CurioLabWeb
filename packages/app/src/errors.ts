@@ -1616,3 +1616,37 @@ export class CalendarValidationError extends Error {
     this.field = field
   }
 }
+
+// -------------------------------------------------------------------------
+// Account self-service ("My Information": GET/PATCH /api/account).
+// -------------------------------------------------------------------------
+
+/**
+ * An ADULT's `account.email` update supplied a malformed address. Distinct from
+ * the student notification-email's InvalidNotificationEmailError (a different
+ * field + gate): this is the adult login-email format check for PATCH
+ * /api/account. Raised only AFTER the self-ownership authorization, so it never
+ * leaks any authorization state. Maps to 400.
+ */
+export class InvalidAccountEmailError extends Error {
+  constructor() {
+    super('account email is not a valid email address')
+    this.name = 'InvalidAccountEmailError'
+  }
+}
+
+/**
+ * A PATCH /api/account tried to edit a field the caller's role may not edit —
+ * today, a NON-student editing `school` (school is a student-only field; grade is
+ * read-only for everyone). Deliberately OPAQUE (a policy refusal of the actor,
+ * like the maturation self-op refusals), so it maps to the same 403 as a
+ * capability deny — the field simply cannot be edited by this member.
+ */
+export class AccountFieldNotEditableError extends Error {
+  readonly field: string
+  constructor(field: string) {
+    super(`this account field is not editable by the caller: ${field}`)
+    this.name = 'AccountFieldNotEditableError'
+    this.field = field
+  }
+}

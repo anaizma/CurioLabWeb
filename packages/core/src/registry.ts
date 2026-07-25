@@ -997,4 +997,25 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['student'],
     writes: false,
   },
+
+  // ---- account self-service ("My Information") ------------------------------
+  // account.self.manage: the own-scoped WRITE a member uses to edit the editable
+  // fields of their OWN account (email for every role; school for students). Scope
+  // 'own' with roles [] — self-ownership of one's own account IS the authority, so
+  // it does NOT require a chapter membership and therefore authorizes a
+  // membership-LESS self-actor (a guardian editing their own account) as well as
+  // any member. `can` matches it ONLY when resource.ownerAccountId === ctx.account.id
+  // (a caller can never act on another member's account), so it is strictly
+  // self-only; another owner denies out_of_scope. writes:true, so a read-only
+  // impersonation override cannot write. The role-aware per-field rules (adult email
+  // updates account.email; a student email DELEGATES to the gated
+  // student.set_notification_email write; school is students-only) are enforced by
+  // the AccountService on top of this floor. The self-READ (GET /api/account) reuses
+  // the self-session pattern (no capability, like GET /api/auth/session) and is
+  // GET-exempt from the route manifest.
+  'account.self.manage': {
+    scope: 'own',
+    roles: [],
+    writes: true,
+  },
 }
