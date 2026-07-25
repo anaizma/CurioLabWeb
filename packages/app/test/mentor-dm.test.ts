@@ -30,9 +30,11 @@ import {
   DmEnablePreconditionError,
   DmNotAuthorizedForPairError,
   DmThreadService,
+  FakeMailer,
   GrantSignedFormRequiredError,
   SafetyOfficerPeerConflictError,
   SafetyOfficerService,
+  type Mailer,
 } from '../src/index.js'
 
 let h: Harness
@@ -87,8 +89,10 @@ interface World {
   safetyOfficer: string
 }
 
-/** A fully-provisioned, authorizable mentor-student pair (no switch/grant yet). */
-async function world(): Promise<World> {
+/** A fully-provisioned, authorizable mentor-student pair (no switch/grant yet).
+ *  `opts.studentDob` overrides the student's write-once date_of_birth at creation
+ *  (the default makeMinor DOB is age 11 at NOW). */
+async function world(opts: { studentDob?: string } = {}): Promise<World> {
   const chapter = await makeChapter(h.sql)
   const [t] = await h.sql`
     insert into term (chapter_id, name, starts_on, ends_on)
@@ -114,7 +118,7 @@ async function world(): Promise<World> {
     `
   }
 
-  const student = await makeMinor(h.sql)
+  const student = await makeMinor(h.sql, opts.studentDob ? { dateOfBirth: opts.studentDob } : {})
   await insertMembership({ accountId: student, chapterId: chapter, role: 'student', podId: pod, termId: term })
 
   const guardian = await makeAdult(h.sql)
@@ -359,5 +363,139 @@ describe('canDirectMessage composition + gated send/read', () => {
       ),
     )
     await expect(h.sql`delete from dm_message where id = ${messageId}`).rejects.toThrow(/append-only/i)
+  })
+})
+
+// ===========================================================================
+// Email notifications on send (system B is ENCRYPTED, so these are
+// NOTIFICATION-ONLY — they never carry the message body). A message TO a
+// student notifies the student AND their verified guardian(s); a message TO the
+// mentor notifies the mentor. Recipients with no account email are skipped
+// silently; delivery is best-effort and never rolls back the append-only write.
+describe('DmThreadService — notification-only email on send', () => {
+  function studentCtx(w: World): AuthContext {
+    return baseCtx(w.student, NOW, [mem('student', w.chapter)])
+  }
+  function bodyOf(msg: { html?: string; text?: string }): string {
+    return `${msg.html ?? ''}\n${msg.text ?? ''}`
+  }
+  async function emailOf(accountId: string): Promise<string | null> {
+    const [row] = await h.sql`select email from account where id = ${accountId}`
+    return (row!.email as string | null) ?? null
+  }
+  async function provisioned(opts: { studentDob?: string } = {}): Promise<World> {
+    const w = await world(opts)
+    await assignSafetyOfficer(w)
+    await recordInsurance(w)
+    await enableChapter(w)
+    await captureMentorDm(w)
+    return w
+  }
+  function svc(mailer: Mailer): DmThreadService {
+    return new DmThreadService({ sql: h.sql, config: { mentorDmEnabled: true }, authorize, mailer })
+  }
+
+  test('a mentor→student message notifies the student’s verified guardian, WITHOUT the message body', async () => {
+    const w = await provisioned()
+    const guardianEmail = (await emailOf(w.guardian))!
+    const mailer = new FakeMailer()
+    const secret = 'Meet me at the synthetic lab at 3 — do not tell'
+    await withRequest(() =>
+      svc(mailer).sendMessage(
+        { mentorMembershipId: w.mentorMembership, studentAccountId: w.student, chapterId: w.chapter, body: secret },
+        mentorCtx(w), NOW,
+      ),
+    )
+
+    const toGuardian = mailer.sent.filter((m) => m.to === guardianEmail)
+    expect(toGuardian).toHaveLength(1)
+    expect(toGuardian[0]!.subject.length).toBeGreaterThan(0)
+    // NOTIFICATION-ONLY: the encrypted body must never appear in the email.
+    expect(bodyOf(toGuardian[0]!)).not.toContain('synthetic lab')
+    // The student here is username-only (no email), so no student email is sent.
+    expect(mailer.sent.every((m) => m.to === guardianEmail)).toBe(true)
+  })
+
+  test('an UNDER-13 student is NEVER emailed directly, even with an email on file — only the guardian is', async () => {
+    const w = await provisioned()
+    const guardianEmail = (await emailOf(w.guardian))!
+    // The default student DOB (2015-06-01) is age 11 at NOW (2026-07-24) — under 13.
+    // Give them an email anyway; the age gate must still suppress the direct email.
+    const studentEmail = `under13-${Date.now()}@example.test`
+    await h.sql`update account set email = ${studentEmail}, username = null where id = ${w.student}`
+
+    const mailer = new FakeMailer()
+    await withRequest(() =>
+      svc(mailer).sendMessage(
+        { mentorMembershipId: w.mentorMembership, studentAccountId: w.student, chapterId: w.chapter, body: 'hello student' },
+        mentorCtx(w), NOW,
+      ),
+    )
+
+    expect(mailer.sent.filter((m) => m.to === studentEmail)).toHaveLength(0)
+    expect(mailer.sent.filter((m) => m.to === guardianEmail)).toHaveLength(1)
+  })
+
+  test('a 13+ student with an email is notified alongside the guardian (both addresses)', async () => {
+    // Seed the student at age 16 (date_of_birth is write-once, so it must be set at creation).
+    const w = await provisioned({ studentDob: '2010-01-01' })
+    const guardianEmail = (await emailOf(w.guardian))!
+    // Give the 16-year-old an email identity (username cleared).
+    const studentEmail = `teen-${Date.now()}@example.test`
+    await h.sql`update account set email = ${studentEmail}, username = null where id = ${w.student}`
+
+    const mailer = new FakeMailer()
+    await withRequest(() =>
+      svc(mailer).sendMessage(
+        { mentorMembershipId: w.mentorMembership, studentAccountId: w.student, chapterId: w.chapter, body: 'hello teen' },
+        mentorCtx(w), NOW,
+      ),
+    )
+
+    expect(mailer.sent.filter((m) => m.to === studentEmail)).toHaveLength(1)
+    expect(mailer.sent.filter((m) => m.to === guardianEmail)).toHaveLength(1)
+  })
+
+  test('a student→mentor message notifies the mentor', async () => {
+    const w = await provisioned()
+    const mentorEmail = (await emailOf(w.mentorAccount))!
+    const mailer = new FakeMailer()
+    await withRequest(() =>
+      svc(mailer).sendMessage(
+        { mentorMembershipId: w.mentorMembership, studentAccountId: w.student, chapterId: w.chapter, body: 'reply from student' },
+        studentCtx(w), NOW,
+      ),
+    )
+    expect(mailer.sent.filter((m) => m.to === mentorEmail)).toHaveLength(1)
+    // No body in the notification.
+    expect(bodyOf(mailer.sent.find((m) => m.to === mentorEmail)!)).not.toContain('reply from student')
+  })
+
+  test('recipients with no account email are skipped silently (no send, no crash)', async () => {
+    const w = await provisioned()
+    // Student is already username-only; make the guardian username-only too.
+    await h.sql`update account set email = null, username = ${`noemail-g-${Date.now()}`} where id = ${w.guardian}`
+
+    const mailer = new FakeMailer()
+    await withRequest(() =>
+      svc(mailer).sendMessage(
+        { mentorMembershipId: w.mentorMembership, studentAccountId: w.student, chapterId: w.chapter, body: 'to nobody reachable' },
+        mentorCtx(w), NOW,
+      ),
+    )
+    expect(mailer.sent).toHaveLength(0)
+  })
+
+  test('a mailer failure does NOT roll back the append-only DM message', async () => {
+    const w = await provisioned()
+    const throwing: Mailer = { send: async () => { throw new Error('mail transport down') } }
+    const { messageId, threadId } = await withRequest(() =>
+      svc(throwing).sendMessage(
+        { mentorMembershipId: w.mentorMembership, studentAccountId: w.student, chapterId: w.chapter, body: 'still recorded' },
+        mentorCtx(w), NOW,
+      ),
+    )
+    const rows = await h.sql`select id from dm_message where id = ${messageId} and thread_id = ${threadId}`
+    expect(rows).toHaveLength(1)
   })
 })

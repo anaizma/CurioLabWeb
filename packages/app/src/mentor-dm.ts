@@ -43,6 +43,7 @@ import {
   type EncryptedField,
 } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
+import { type Mailer, type MailMessage, defaultMailer } from './mail.js'
 import { loadMentorEligibility } from './mentor-eligibility.js'
 import {
   DmClosedHoursError,
@@ -54,6 +55,23 @@ import {
 } from './errors.js'
 
 type Db = Sql | TransactionSql
+
+/** Whole years from `dob` to `at` (birthday-aware, UTC). */
+function ageInYears(dob: Date, at: Date): number {
+  let age = at.getUTCFullYear() - dob.getUTCFullYear()
+  const m = at.getUTCMonth() - dob.getUTCMonth()
+  if (m < 0 || (m === 0 && at.getUTCDate() < dob.getUTCDate())) age -= 1
+  return age
+}
+
+/**
+ * The COPPA age floor for emailing a STUDENT's own address directly. A student
+ * under this age is never sent a direct notification — only their guardian(s) are
+ * (design: under-13 DM notifications are guardian-only; a 13+ student with a
+ * consented channel may also be emailed at their own address). A value, not a
+ * literal — the threshold is a policy constant.
+ */
+const DM_STUDENT_DIRECT_EMAIL_MIN_AGE = 13
 
 /**
  * The sender's LOCAL wall-clock hour (0-23) in a timezone, at `now`. Deterministic
@@ -322,6 +340,17 @@ export interface DmThreadServiceDeps {
   config?: Partial<AppConfig>
   /** Required only for the gated send path (authorizes dm.message). */
   authorize?: DmThreadAuthorizeFn
+  /**
+   * Delivers a NOTIFICATION-ONLY email on each send so a recipient learns a
+   * message arrived without polling the portal. The system-B body is encrypted
+   * and safety-officer-overseen, so the email NEVER carries the message content —
+   * only a "you have a new message, open the portal" nudge. A message to the
+   * student notifies the student and their verified guardian(s); a message to the
+   * mentor notifies the mentor. Defaults to `defaultMailer()`; tests inject a
+   * FakeMailer. Best-effort — a send failure never rolls back the append-only
+   * write, and recipients with no account email are skipped silently.
+   */
+  mailer?: Mailer
 }
 
 export interface DmDecryptedMessage {
@@ -360,11 +389,13 @@ export class DmThreadService {
   private readonly sql: Sql
   private readonly config: AppConfig
   private readonly authorize?: DmThreadAuthorizeFn
+  private readonly mailer: Mailer
 
   constructor(deps: DmThreadServiceDeps) {
     this.sql = deps.sql
     this.config = { ...defaultConfig, ...deps.config }
     this.authorize = deps.authorize
+    this.mailer = deps.mailer ?? defaultMailer()
   }
 
   /**
@@ -606,7 +637,7 @@ export class DmThreadService {
 
     const envelope: EncryptedField = encryptField(args.body)
 
-    return this.sql.begin(async (tx) => {
+    const result = (await this.sql.begin(async (tx) => {
       assertAuthorized()
       const existing = await tx`
         select id from dm_thread
@@ -664,7 +695,100 @@ export class DmThreadService {
         detail: { threadId, messageId, flagCount: contentFlags.length },
       })
       return { threadId, messageId }
-    }) as Promise<{ threadId: string; messageId: string }>
+    })) as { threadId: string; messageId: string }
+
+    // Notification-only email to the recipient's real inbox (best-effort — the
+    // message is committed above; a send failure is logged and swallowed). The
+    // encrypted body is NEVER included.
+    await this.notifyDmRecipients(args, senderAccountId, now)
+    return result
+  }
+
+  /**
+   * Best-effort, NOTIFICATION-ONLY email fan-out after a DM send. A message TO the
+   * student (the mentor sent it) notifies the student and every VERIFIED guardian;
+   * a message TO the mentor (the student sent it) notifies the mentor. Only
+   * accounts with an email are reached (username-only accounts are skipped
+   * silently). No message content is ever included (system B is encrypted). Any
+   * failure — resolving recipients or a single send — is logged and swallowed.
+   */
+  private async notifyDmRecipients(
+    args: { mentorMembershipId: string; studentAccountId: string },
+    senderAccountId: string,
+    now: Date,
+  ): Promise<void> {
+    try {
+      const recipientIsStudent = senderAccountId !== args.studentAccountId
+      if (recipientIsStudent) {
+        // The verified guardian(s) are ALWAYS notified. The student's OWN address
+        // is emailed only when the student is 13+ (COPPA floor): an under-13
+        // student is never emailed directly — even if an address is on file — so
+        // the direct email cannot leak to a protected minor. A missing DOB is
+        // treated as protected (no direct email).
+        const [srow] = await this.sql`
+          select date_of_birth, email from account where id = ${args.studentAccountId}
+        `
+        const studentEmail = (srow?.email as string | null) ?? null
+        const dob = srow?.date_of_birth as string | Date | null | undefined
+        const studentAge = dob != null ? ageInYears(new Date(dob), now) : null
+        if (
+          studentEmail !== null &&
+          studentAge !== null &&
+          studentAge >= DM_STUDENT_DIRECT_EMAIL_MIN_AGE
+        ) {
+          await this.sendBestEffort({
+            to: studentEmail,
+            subject: 'New message in CurioLab',
+            text: 'You have a new message from your CurioLab mentor. Open your CurioLab portal to read and reply.',
+            html: '<p>You have a new message from your CurioLab mentor.</p><p>Open your CurioLab portal to read and reply.</p>',
+          })
+        }
+        const guardianRows = await this.sql`
+          select a.email
+          from guardianship g
+          join account a on a.id = g.guardian_account_id
+          where g.student_account_id = ${args.studentAccountId}
+            and g.status = 'verified'
+            and a.email is not null
+        `
+        for (const r of guardianRows) {
+          await this.sendBestEffort({
+            to: r.email as string,
+            subject: 'A new CurioLab message for your child',
+            text: 'Your child has a new message from their CurioLab mentor. Open the CurioLab portal to view the conversation.',
+            html: '<p>Your child has a new message from their CurioLab mentor.</p><p>Open the CurioLab portal to view the conversation.</p>',
+          })
+        }
+      } else {
+        // The recipient is the mentor (the student sent the message).
+        const [row] = await this.sql`
+          select a.email
+          from membership m
+          join account a on a.id = m.account_id
+          where m.id = ${args.mentorMembershipId} and a.email is not null
+        `
+        const mentorEmail = (row?.email as string | null) ?? null
+        if (mentorEmail !== null) {
+          await this.sendBestEffort({
+            to: mentorEmail,
+            subject: 'New CurioLab message',
+            text: 'You have a new message from your student. Open your CurioLab portal to read and reply.',
+            html: '<p>You have a new message from your student.</p><p>Open your CurioLab portal to read and reply.</p>',
+          })
+        }
+      }
+    } catch (err) {
+      console.error(`[DmThreadService] DM notification failed for student ${args.studentAccountId}:`, err)
+    }
+  }
+
+  /** Send one notification, swallowing (logging) any transport failure. */
+  private async sendBestEffort(message: MailMessage): Promise<void> {
+    try {
+      await this.mailer.send(message)
+    } catch (err) {
+      console.error(`[DmThreadService] notification email to ${message.to} failed:`, err)
+    }
   }
 
   /**
