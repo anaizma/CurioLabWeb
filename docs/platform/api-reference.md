@@ -270,11 +270,12 @@ export async function POST(req: Request) {
 
 ### `POST /api/setup/student/{token}` — redeem the student setup credential
 
-- **Auth:** token (`minor_setup` credential token), public, inert — sets ONLY the password.
-- **Path param:** `token`. **Request body:** `password` (required string).
+- **Auth:** token (`minor_setup` credential token), public, inert — sets ONLY the password (and, DARK, an optional notification email; see below).
+- **Path param:** `token`. **Request body:** `password` (required string); `notificationEmail` (optional string — DARK, see §3b).
 - **Response `200`:** `{ accountId: string }`.
-- **Errors:** `401` invalid/expired/consumed/unknown token (`InvalidCredentialTokenError`) — one opaque signal, single-use.
+- **Errors:** `401` invalid/expired/consumed/unknown token (`InvalidCredentialTokenError`) — one opaque signal, single-use. `403` (`StudentNotificationEmailNotAuthorizedError`) if `notificationEmail` is supplied but its authorization chain does not hold (see §3b).
 - The child redeems the guardian-minted, one-time credential (see the guardian setup-credential mint under §3) — **with the guardian present**, delivered in person. It sets the account's argon2id password, **keeps** the system-assigned username, and the account **stays `pending`**: redemption confers no membership. Activation is the director's separate `member.activate` step.
+- **Optional notification email (DARK, COUNSEL-GATED — see §3b):** when `notificationEmail` is supplied it is set on the account **only if** `STUDENT_NOTIFICATION_EMAIL_ENABLED` is on **and** a current `student_notification_email` grant is active **and** the student is **13+**; otherwise the whole call is refused `403` and the field stays null. With the flag off (the default) any attempt is refused — the feature is dark. Setting it does **not** touch the login identity: `email` stays null, `username` stays set.
 
 ---
 
@@ -384,6 +385,18 @@ Every method is **guardian-scoped**: the resource names the child, and the scope
 **The notify-and-object window (job contract, backend).** When an item is nominated for a public surface, `nominatePublicationHold` records a `publication_hold` (item ref, subject, `nominated_at`, guardian notified, `releases_at = nominated_at + N days`, default `N = 5`) and a `publication.notified` ledger row. The job body `runPublicationHolds({ sql, publish? }, now)` — a deterministic, injected-`now` sweep, no live scheduler — **publishes** an un-objected hold once its window elapses (`released_at` stamped, `publication.released` logged, publish seam fired post-commit) and **withholds** an objected one. Idempotent. **18th-birthday transfer (Rule 4):** hooked into `maturation.confirm` — the guardian's active grants **lapse** (a new revoking row each; `grant.transferred` logged) and the now-adult re-confirms the persisting ones (publication, likeness, verification-link) via the self-grant path.
 
 **§8 ledger.** Every capture / renewal / revocation / notify / object / release / birthday-transfer is written to the append-only `access_ledger` with the method + artifact reference (events `grant.captured`, `grant.renewed`, `grant.revoked`, `grant.transferred`, `publication.notified`, `publication.objected`, `publication.released`).
+
+---
+
+## 3b. Student notification-email (DARK — COUNSEL-GATED, additive)
+
+**Status: built-but-DARK. Flag `STUDENT_NOTIFICATION_EMAIL_ENABLED` (default `false`).** ⚠️ **Enabling this REVERSES the platform's standing "a student is not directly contactable" posture and makes a MINOR DIRECTLY CONTACTABLE. It requires COUNSEL SIGN-OFF and must not be flipped without it.** The mechanism is fully built and tested against synthetic data; with the flag off it is entirely inert. Recommended restriction: **13+ only** in v1 (enforced at the grant, the setter, and the resolver), because COPPA bites hardest under 13.
+
+A minor may *optionally* have a **hidden, outbound-only** `notification_email` — DISTINCT from the login `email`. A minor still logs in by `username` with `email = null`; `notification_email` is an additional address to which notifications may ALSO be sent. It is a nullable `citext` on `account` (migration 0037), does **not** participate in the email-XOR-username identity constraint, and is **HIDDEN in the backend**: no director/staff/other-user read selects or returns it (readable only by the student themselves or a verified guardian).
+
+- **The consent grant `student_notification_email`** (P6a ledger; enum value migration 0036). Captured by the guardian, method **`signed_form`** (a click is refused — like `mentor_dm`), with a non-null evidence artifact. **REFUSED for a subject under 13** (`StudentNotificationEmailAgeError` at the service; DB trigger backstop in 0037). Annual renewal clock. Independently revocable via the existing per-grant revoke (`POST /api/guardian/children/{id}/grants/{type}/revoke`). Captured/revoked through the existing `consent.grant` / `consent.revoke` capabilities — no new capability. Grant capture/revoke always run (they only WRITE the ledger); the flag gates only *setting the email* and the *resolver's student-email emission*.
+- **Setting the `notification_email`** happens at student setup redemption (`POST /api/setup/student/{token}` with `notificationEmail` in the body): the child enters the address with the guardian present, the guardian's signed grant being the authorizer. It is set **only if** the flag is on **and** a current `student_notification_email` grant is active **and** the student is 13+, in the same transaction as the password set; otherwise `403` (`StudentNotificationEmailNotAuthorizedError`) and the field stays null. It never touches the login identity.
+- **Parent-CC RESOLVER SEAM (the core safety primitive):** `resolveStudentNotificationTargets(sql, studentAccountId, now, config?) → { studentEmail: string | null, guardianEmails: string[] }`. `guardianEmails` is **ALL verified guardians' login emails — ALWAYS returned** (the parent always gets the notification). `studentEmail` is the student's `notification_email` **only if** the flag is on AND a current `student_notification_email` grant is active AND the student is 13+ AND `notification_email` is set; in **every** other case (flag off, no/revoked/expired grant, under-13, or unset) it is `null` — only the guardian is notified. **Parent-CC is structural: you cannot get a student email out of this resolver without the guardian emails alongside.** A notification caller (e.g. the DM-notification code) sends to `studentEmail` (if non-null) **AND ALWAYS** to every `guardianEmails` address. This is the sole enforcement point for direct minor contactability.
 
 ---
 

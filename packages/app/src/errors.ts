@@ -1382,10 +1382,44 @@ export class GrantSignedFormRequiredError extends Error {
   readonly subjectAccountId: string
   readonly reason: 'weak_method' | 'artifact_missing'
   constructor(subjectAccountId: string, reason: 'weak_method' | 'artifact_missing') {
-    super(`mentor_dm consent requires a signed_form method with an evidence artifact (${reason})`)
+    super(`this consent requires a signed_form method with an evidence artifact (${reason})`)
     this.name = 'GrantSignedFormRequiredError'
     this.subjectAccountId = subjectAccountId
     this.reason = reason
+  }
+}
+
+/**
+ * A `student_notification_email` grant capture was REFUSED because the subject is
+ * UNDER 13 — v1 is 13+ only (COPPA bites hardest under 13). The under-13 age floor
+ * is also a DB trigger backstop (migration 0037), but this is the primary,
+ * friendlier service-layer refusal computed from the subject's DOB.
+ */
+export class StudentNotificationEmailAgeError extends Error {
+  readonly subjectAccountId: string
+  readonly age: number
+  constructor(subjectAccountId: string, age: number) {
+    super(`student_notification_email consent is refused for a subject under 13 (subject ${subjectAccountId}, age ${age})`)
+    this.name = 'StudentNotificationEmailAgeError'
+    this.subjectAccountId = subjectAccountId
+    this.age = age
+  }
+}
+
+/**
+ * Setting a student's `notification_email` was REFUSED because the authorization
+ * chain does not hold: the global STUDENT_NOTIFICATION_EMAIL_ENABLED flag is off,
+ * no active `student_notification_email` grant is on file, or the student is under
+ * 13. Deliberately single/opaque across those causes — the field simply stays
+ * null. The whole feature is DARK with the flag off; enabling makes a minor
+ * directly contactable and is COUNSEL-GATED.
+ */
+export class StudentNotificationEmailNotAuthorizedError extends Error {
+  readonly subjectAccountId: string
+  constructor(subjectAccountId: string) {
+    super(`setting a notification email is not authorized for this student (${subjectAccountId})`)
+    this.name = 'StudentNotificationEmailNotAuthorizedError'
+    this.subjectAccountId = subjectAccountId
   }
 }
 

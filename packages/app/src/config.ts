@@ -286,6 +286,27 @@ export const MENTOR_ELIGIBILITY_ENFORCED: boolean =
 export const MENTOR_DM_ENABLED: boolean = process.env.MENTOR_DM_ENABLED === 'true'
 
 /**
+ * Student notification-email (the hidden, outbound-only minor-contactability
+ * primitive) — the GLOBAL build flag. When FALSE (the default, and the production
+ * posture until COUNSEL signs off), the entire feature is DARK: a notification_email
+ * can NEVER be set (redemption refuses any attempt), and the parent-CC resolver
+ * (`resolveStudentNotificationTargets`) NEVER returns a student email — only the
+ * verified guardians are notifiable. When TRUE, a notification_email may be set for a
+ * 13+ student who holds an active `student_notification_email` grant, and the
+ * resolver returns that student email ALONGSIDE the guardian emails (parent-CC is
+ * structural). Mirrors MENTOR_DM_ENABLED: a value, not a literal — the flip is a
+ * config edit, never a code change.
+ *
+ * COUNSEL-GATED: enabling this REVERSES the platform's standing "a student is not
+ * directly contactable" posture and makes a MINOR DIRECTLY CONTACTABLE. It must not
+ * be flipped without counsel sign-off. Building the mechanism imposes no obligation
+ * to enable it. Recommended restriction: 13+ only in v1 (enforced by the grant age
+ * gate + the resolver), because COPPA bites hardest under 13.
+ */
+export const STUDENT_NOTIFICATION_EMAIL_ENABLED: boolean =
+  process.env.STUDENT_NOTIFICATION_EMAIL_ENABLED === 'true'
+
+/**
  * Mentor-student DM CLOSED HOURS (design C.4; Phase 2) — the DEFAULT allowed local
  * window for sends, `[open, close)` in the chapter's local wall-clock hour. Sends
  * are refused outside 07:00-21:00 local ("late-night one-on-one contact has no
@@ -376,6 +397,14 @@ export type ConsentGrantType =
   // engagement), with a non-null evidence_artifact_ref. Expires at term end,
   // independently revocable via the existing per-grant revoke.
   | 'mentor_dm'
+  // student notification-email consent (migration 0036; Phase 1). A guardian's
+  // signed-form consent that their minor child (13+) may have a hidden,
+  // outbound-only notification email — captured like mentor_dm (a click is
+  // refused, a non-null evidence_artifact_ref required), REFUSED under 13,
+  // annually re-affirmed, independently revocable. Built DARK behind
+  // STUDENT_NOTIFICATION_EMAIL_ENABLED; enabling makes a minor directly
+  // contactable, so it is COUNSEL-GATED.
+  | 'student_notification_email'
 
 export type ConsentGrantMethod =
   | 'click'
@@ -405,6 +434,12 @@ export const GRANT_RENEWAL_MS_BY_TYPE: Record<ConsentGrantType, number | null> =
   verification_link_sharing: null,
   // mentor_dm expires at term end (design C.3): re-confirmed per cohort.
   mentor_dm: TERM_MS,
+  // student_notification_email re-affirmed ANNUALLY: contactability of a minor is
+  // a standing preference the guardian should re-confirm at least once a year, but
+  // it must never be permanent (not standing/null), so a lapsed authorization
+  // silently drops the student email from the resolver and only the guardian is
+  // notified until it is renewed.
+  student_notification_email: ANNUAL_MS,
 }
 
 /**
@@ -415,7 +450,15 @@ export const GRANT_RENEWAL_MS_BY_TYPE: Record<ConsentGrantType, number | null> =
  * enabling the channel, not after. (This is distinct from the under-13
  * public_publication floor, which is age-conditioned; mentor_dm is unconditional.)
  */
-export const SIGNED_FORM_REQUIRED_GRANT_TYPES: readonly ConsentGrantType[] = ['mentor_dm'] as const
+export const SIGNED_FORM_REQUIRED_GRANT_TYPES: readonly ConsentGrantType[] = [
+  'mentor_dm',
+  // student_notification_email is captured by a signed parental form too (a click
+  // is refused at the service): authorizing direct contactability of a minor is a
+  // deliberate, high-friction guardian act, not a portal checkbox. (The DB
+  // backstop for this type is the under-13 AGE floor in 0037; the signed-form
+  // requirement is enforced here at the service.)
+  'student_notification_email',
+] as const
 
 /**
  * The two grant types that CANNOT be revoked alone — revoking them ends
@@ -502,6 +545,11 @@ export interface AppConfig {
   mentorEligibilityEnforced: boolean
   /** Part D GLOBAL flag: when true, mentor-student DM is live (default false = dark). */
   mentorDmEnabled: boolean
+  /**
+   * GLOBAL flag: when true, the student notification-email primitive is live
+   * (default false = dark). Enabling makes a MINOR DIRECTLY CONTACTABLE — COUNSEL-GATED.
+   */
+  studentNotificationEmailEnabled: boolean
   /** C.4: the DEFAULT allowed-hours window open hour (local), used when a chapter has no override. */
   dmOpenHourDefault: number
   /** C.4: the DEFAULT allowed-hours window close hour (local, exclusive). */
@@ -549,6 +597,7 @@ export const defaultConfig: AppConfig = {
   consentGrantLedgerEnforced: CONSENT_GRANT_LEDGER_ENFORCED,
   mentorEligibilityEnforced: MENTOR_ELIGIBILITY_ENFORCED,
   mentorDmEnabled: MENTOR_DM_ENABLED,
+  studentNotificationEmailEnabled: STUDENT_NOTIFICATION_EMAIL_ENABLED,
   dmOpenHourDefault: DM_OPEN_HOUR_DEFAULT,
   dmCloseHourDefault: DM_CLOSE_HOUR_DEFAULT,
   dmRetentionMs: DM_RETENTION_MS,

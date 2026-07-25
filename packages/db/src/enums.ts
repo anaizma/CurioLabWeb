@@ -176,6 +176,12 @@ export const consentGrantTypeEnum = pgEnum('consent_grant_type', [
   // for a supervised mentor-student messaging channel; expires at term end,
   // independently revocable. Built DARK behind MENTOR_DM_ENABLED (design C.3).
   'mentor_dm',
+  // student notification-email consent (migration 0036). A guardian's signed-form
+  // consent that their minor child may have a hidden, outbound-only notification
+  // email; REFUSED under 13 (0037 age floor), annually re-affirmed, independently
+  // revocable. Built DARK behind STUDENT_NOTIFICATION_EMAIL_ENABLED — enabling
+  // makes a minor directly contactable, so it is COUNSEL-GATED.
+  'student_notification_email',
 ])
 // The capture methods: the FTC strong methods for verifiable parental consent,
 // plus the portal `click` (email-plus).

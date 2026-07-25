@@ -249,7 +249,12 @@ export {
   GrantNotActiveError,
   PublicationHoldNotFoundError,
   PublicationGrantRequiredError,
+  StudentNotificationEmailAgeError,
+  StudentNotificationEmailNotAuthorizedError,
 } from './errors.js'
+export { resolveStudentNotificationTargets } from './student-notification.js'
+export type { StudentNotificationTargets } from './student-notification.js'
+export { STUDENT_NOTIFICATION_EMAIL_ENABLED } from './config.js'
 export { GuardianPortalService } from './guardian-portal.js'
 export type {
   GuardianPortalServiceDeps,

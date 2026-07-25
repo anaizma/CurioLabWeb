@@ -172,6 +172,14 @@ export const account = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     email: citext('email'),
     username: citext('username'),
+    // An optional, outbound-only notification address (migration 0037), DISTINCT
+    // from the login `email` and NOT part of the email-XOR-username identity
+    // constraint: a minor keeps `username` + `email` null and MAY carry a
+    // notification_email. HIDDEN in the backend (no staff read selects it); set
+    // only under STUDENT_NOTIFICATION_EMAIL_ENABLED + an active
+    // student_notification_email grant + 13+. Enabling makes a minor directly
+    // contactable — COUNSEL-GATED.
+    notificationEmail: citext('notification_email'),
     legalName: text('legal_name').notNull(),
     displayName: text('display_name').notNull(),
     dateOfBirth: date('date_of_birth').notNull(),

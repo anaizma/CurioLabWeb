@@ -1,0 +1,26 @@
+-- =========================================================================
+-- 0036_student_notification_email_enum.sql — the STUDENT NOTIFICATION-EMAIL
+-- consent grant type, the ENUM VALUE only. ADDITIVE. Built DARK behind
+-- STUDENT_NOTIFICATION_EMAIL_ENABLED (default false) and COUNSEL-GATED: adding
+-- this value authorizes nothing and makes no minor contactable while the flag is
+-- off. Enabling the feature REVERSES the platform's "a student is not directly
+-- contactable" posture, so it requires counsel sign-off.
+--
+-- Isolated in its OWN migration file (ahead of 0037, which builds the column +
+-- age-floor trigger that USE it) because `ALTER TYPE ... ADD VALUE` and a
+-- statement that USES the new value cannot share a transaction (PostgreSQL 55P04)
+-- — the same split the 0029 -> 0030 mentor_dm migrations use. Each migration file
+-- is applied as its own transaction, so the value is committed here before 0037
+-- references it. IF NOT EXISTS keeps it idempotent.
+--
+-- --- consent_grant_type: student_notification_email -----------------------
+-- A guardian's signed parental consent that their minor child may have a hidden,
+-- outbound-only notification email. Captured as a SIGNED FORM (a click is
+-- refused — a DB trigger backstop in 0030's family + the service check), REFUSED
+-- for a subject under 13 (0037's age floor), independently revocable via the
+-- existing per-grant revoke, and re-affirmed on the annual renewal clock. A new
+-- grant type in the P6a consent grant-ledger; the capture/current/revoke
+-- machinery is reused unchanged.
+-- =========================================================================
+
+ALTER TYPE consent_grant_type ADD VALUE IF NOT EXISTS 'student_notification_email';

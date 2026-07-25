@@ -46,6 +46,7 @@ import {
   GrantStrongMethodRequiredError,
   GrantSubjectNotFoundError,
   PublicationHoldNotFoundError,
+  StudentNotificationEmailAgeError,
 } from './errors.js'
 
 export type { ConsentGrantMethod, ConsentGrantType } from './config.js'
@@ -249,6 +250,15 @@ export class ConsentGrantService {
     const age = await this.loadSubjectAge(subjectStudentAccountId, now)
     const method = options.method
     const artifact = options.evidenceArtifactRef ?? null
+
+    // student_notification_email v1 is 13+ ONLY: authorizing a hidden, outbound-only
+    // address for a MINOR reverses the "not directly contactable" posture, and COPPA
+    // bites hardest under 13. Refused before any write (the 0037 DB trigger is the
+    // backstop). This is independent of the global flag — capture only WRITES the
+    // ledger; the flag gates SETTING the email + the resolver's student-email emission.
+    if (grantType === 'student_notification_email' && age < 13) {
+      throw new StudentNotificationEmailAgeError(subjectStudentAccountId, age)
+    }
 
     // Rule 2: strong verification for under-13 public_publication.
     if (grantType === 'public_publication' && age < 13) {

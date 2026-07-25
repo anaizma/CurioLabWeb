@@ -35,7 +35,20 @@ import {
 } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
 import { assertStudentGuardianGate } from './invite.js'
-import { GuardianChildNotFoundError, InvalidCredentialTokenError } from './errors.js'
+import { hasActiveGrant } from './consent-grant.js'
+import {
+  GuardianChildNotFoundError,
+  InvalidCredentialTokenError,
+  StudentNotificationEmailNotAuthorizedError,
+} from './errors.js'
+
+/** Whole years from `dob` to `at` (birthday-aware, UTC). */
+function ageInYears(dob: Date, at: Date): number {
+  let age = at.getUTCFullYear() - dob.getUTCFullYear()
+  const m = at.getUTCMonth() - dob.getUTCMonth()
+  if (m < 0 || (m === 0 && at.getUTCDate() < dob.getUTCDate())) age -= 1
+  return age
+}
 
 /**
  * The injected `authorize` dependency, narrowed to this service's one capability
@@ -173,13 +186,24 @@ export class StudentSetupService {
    * consumed, or unknown token is one opaque InvalidCredentialTokenError. Single-use:
    * the claim UPDATE re-checks validity under the row, so a token consumed between
    * the read and the write loses the race.
+   *
+   * OPTIONALLY sets the student's hidden, outbound-only `notification_email` (the
+   * child, with the guardian present at setup, entering the address the guardian's
+   * signed grant authorized). This is refused with
+   * StudentNotificationEmailNotAuthorizedError unless ALL hold: the global flag
+   * STUDENT_NOTIFICATION_EMAIL_ENABLED is on, a current `student_notification_email`
+   * grant is active, AND the student is 13+ — otherwise the field stays null. With
+   * the flag off it is always refused (the feature is DARK). When no
+   * `notificationEmail` is supplied the redemption is a password-only setup, exactly
+   * as before. COUNSEL-GATED: enabling makes a minor directly contactable.
    */
   async redeemSetupCredential(
     token: string,
     newPassword: string,
-    opts: { now?: Date } = {},
+    opts: { now?: Date; notificationEmail?: string | null } = {},
   ): Promise<RedeemSetupCredentialResult> {
     const now = opts.now ?? new Date()
+    const notificationEmail = opts.notificationEmail ?? null
     const tokenHash = hashToken(token)
     const [row] = await this.sql`
       select id, account_id from credential_token
@@ -189,6 +213,22 @@ export class StudentSetupService {
     if (row === undefined) throw new InvalidCredentialTokenError()
 
     const accountId = row.account_id as string
+
+    // If a notification_email is being set, its full authorization chain must hold
+    // BEFORE any write (the whole feature is dark with the flag off). Any missing
+    // condition is one opaque refusal — the field simply stays null.
+    if (notificationEmail !== null) {
+      if (!this.config.studentNotificationEmailEnabled) {
+        throw new StudentNotificationEmailNotAuthorizedError(accountId)
+      }
+      const [acct] = await this.sql`select date_of_birth as dob from account where id = ${accountId}`
+      const age = acct === undefined ? 0 : ageInYears(new Date(acct.dob as string), now)
+      const grantActive = await hasActiveGrant(this.sql, accountId, 'student_notification_email', now)
+      if (age < 13 || !grantActive) {
+        throw new StudentNotificationEmailNotAuthorizedError(accountId)
+      }
+    }
+
     // Hash after the validity pre-check (skip the cost for a clearly-invalid token).
     const passwordHash = await hashPassword(newPassword)
 
@@ -204,6 +244,12 @@ export class StudentSetupService {
       // Set the password; the account keeps its system username and stays pending
       // (no membership activation here). No sessions to revoke (the shell had none).
       await tx`update account set password_hash = ${passwordHash} where id = ${accountId}`
+
+      // Set the authorized notification_email in the SAME transaction. This does NOT
+      // touch the login identity: `email` stays null, `username` stays set.
+      if (notificationEmail !== null) {
+        await tx`update account set notification_email = ${notificationEmail} where id = ${accountId}`
+      }
 
       return { accountId }
     }) as Promise<RedeemSetupCredentialResult>

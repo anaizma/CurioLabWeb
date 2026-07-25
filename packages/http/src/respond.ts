@@ -30,6 +30,10 @@ export const FORBIDDEN_BODY = { error: 'forbidden' } as const
 const FORBIDDEN = new Set([
   'MaturationNotSelfError',
   'MaturationAgeError',
+  // Student notification-email (dark): setting a notification_email was refused
+  // (flag off / no active grant / under 13). Opaque across those causes — the
+  // field simply stays null. COUNSEL-GATED feature.
+  'StudentNotificationEmailNotAuthorizedError',
 ])
 
 /** Service errors whose meaning is "the named resource does not exist" -> 404. */
@@ -182,6 +186,9 @@ const BAD_REQUEST = new Set([
   'GrantStrongMethodRequiredError',
   // Mentor-student DM (Phase 1): mentor_dm captured without a signed_form + artifact.
   'GrantSignedFormRequiredError',
+  // Student notification-email (dark): a student_notification_email grant captured
+  // for a subject under 13 (v1 is 13+ only). COUNSEL-GATED feature.
+  'StudentNotificationEmailAgeError',
   // Mentor-student DM (Phase 3): a guardian-visibility suspension with no reason.
   'DmSuspensionReasonRequiredError',
   // Shared chapter calendar (Feature 1): a bad time range / audience set / kind.
