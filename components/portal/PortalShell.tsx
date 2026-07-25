@@ -1,5 +1,5 @@
 import Link from "next/link";
-import PortalSidebar from "./PortalSidebar";
+import PortalSidebar, { PortalSidebarProvider, SidebarToggle } from "./PortalSidebar";
 
 export interface PortalNavItem {
   label: string;
@@ -35,11 +35,13 @@ export default function PortalShell({
   avatarInitial: string;
   children: React.ReactNode;
 }) {
-  return (
-    <div data-portal={role} className="min-h-screen bg-cream text-ink">
+  const body = (
+    <>
       <header className="bg-ink text-white">
         <div className="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between gap-6">
           <div className="flex items-center gap-2 font-bold">
+            {/* Sidebar collapse toggle, pinned to the top-left corner (self-hides in nav mode). */}
+            <SidebarToggle />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/curiolab-mark.png" alt="CurioLab" width={24} height={24} className="w-6 h-6 object-contain" />
             CurioLab
@@ -97,6 +99,12 @@ export default function PortalShell({
       ) : (
         children
       )}
+    </>
+  );
+
+  return (
+    <div data-portal={role} className="min-h-screen bg-cream text-ink">
+      {sidebar ? <PortalSidebarProvider>{body}</PortalSidebarProvider> : body}
     </div>
   );
 }

@@ -1,13 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import Link from "next/link";
 import type { PortalNavGroup } from "./PortalShell";
 
+interface SidebarState {
+  open: boolean;
+  toggle: () => void;
+}
+const SidebarContext = createContext<SidebarState | null>(null);
+
+/** Holds the collapse state so the header toggle and the left rail stay in sync. */
+export function PortalSidebarProvider({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return <SidebarContext.Provider value={{ open, toggle: () => setOpen((v) => !v) }}>{children}</SidebarContext.Provider>;
+}
+
 /**
- * Collapsible left rail for the ops (director) shell. A hamburger toggles the
- * grouped nav open/closed on md+; the content reflows to fill the freed space.
- * Mobile keeps the shell's horizontal scroll nav, so this rail is md-only.
+ * Sidebar collapse toggle, rendered in the header's top-left corner. A chevron
+ * pointing left ("<") when open (collapse), flipping to ">" when collapsed
+ * (expand). Renders nothing outside a provider, so it self-hides in nav mode.
+ */
+export function SidebarToggle() {
+  const ctx = useContext(SidebarContext);
+  if (!ctx) return null;
+  const { open, toggle } = ctx;
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label={open ? "Collapse menu" : "Expand menu"}
+      aria-expanded={open}
+      className="hidden md:inline-flex items-center justify-center w-7 h-7 rounded-md text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className={`transition-transform duration-200 ${open ? "" : "rotate-180"}`}>
+        <path d="M10 3.5 L5.5 8 L10 12.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Collapsible left rail for the ops (director) shell. Reads the shared collapse
+ * state; the content reflows to fill the freed space when collapsed. Mobile
+ * keeps the shell's horizontal scroll nav, so this rail is md-only.
  */
 export default function PortalSidebar({
   sidebar,
@@ -18,11 +54,11 @@ export default function PortalSidebar({
   activeHref: string;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
+  const open = useContext(SidebarContext)?.open ?? true;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
-      <div className={`flex items-start ${open ? "md:gap-8" : "md:gap-4"}`}>
+      <div className={`flex items-start ${open ? "md:gap-8" : "md:gap-0"}`}>
         <aside className={`hidden md:block shrink-0 overflow-hidden transition-[width] duration-200 ${open ? "w-52" : "w-0"}`}>
           <nav className="flex flex-col gap-6 text-sm w-52">
             {sidebar.map((group) => (
@@ -46,20 +82,7 @@ export default function PortalSidebar({
           </nav>
         </aside>
 
-        <main className="min-w-0 flex-1">
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-label={open ? "Collapse menu" : "Expand menu"}
-            aria-expanded={open}
-            className="hidden md:inline-flex items-center justify-center w-9 h-9 rounded-lg border border-ink/10 bg-white text-ink/70 hover:bg-cream transition-colors mb-4"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
-          {children}
-        </main>
+        <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>
   );
