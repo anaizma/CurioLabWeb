@@ -1,4 +1,5 @@
 import Link from "next/link";
+import PortalSidebar from "./PortalSidebar";
 
 export interface PortalNavItem {
   label: string;
@@ -38,8 +39,9 @@ export default function PortalShell({
     <div data-portal={role} className="min-h-screen bg-cream text-ink">
       <header className="bg-ink text-white">
         <div className="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between gap-6">
-          <div className="flex items-center gap-2.5 font-bold">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ background: "var(--pt-accent)" }} />
+          <div className="flex items-center gap-2 font-bold">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/curiolab-mark.png" alt="CurioLab" width={24} height={24} className="w-6 h-6 object-contain" />
             CurioLab
             <span className="font-normal text-white/55 text-sm ml-1">{roleLabel}</span>
           </div>
@@ -89,31 +91,9 @@ export default function PortalShell({
       )}
 
       {sidebar ? (
-        <div className="mx-auto max-w-6xl px-6 py-8 flex gap-8">
-          <aside className="hidden md:block w-52 shrink-0">
-            <nav className="flex flex-col gap-6 text-sm">
-              {sidebar.map((group) => (
-                <div key={group.title} className="flex flex-col gap-1.5">
-                  <div className="label text-[11px] uppercase tracking-wide text-ink/40">{group.title}</div>
-                  {group.items.map((item) => {
-                    const on = item.href === activeHref;
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={on ? "font-semibold" : "text-ink/60 hover:text-ink transition-colors"}
-                        style={on ? { color: "var(--pt-accent)" } : undefined}
-                      >
-                        {item.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              ))}
-            </nav>
-          </aside>
-          <main className="min-w-0 flex-1">{children}</main>
-        </div>
+        <PortalSidebar sidebar={sidebar} activeHref={activeHref}>
+          {children}
+        </PortalSidebar>
       ) : (
         children
       )}
