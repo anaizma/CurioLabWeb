@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useState } from "react";
 
 export default function LoginPage() {
-  const [form, setForm] = useState({ email: "", password: "" });
+  // `identifier` matches POST /api/auth/login, which resolves an account by
+  // email OR username — a student signs in with their username, an adult with
+  // their email.
+  const [form, setForm] = useState({ identifier: "", password: "" });
   const [submitted, setSubmitted] = useState(false);
 
   return (
@@ -20,13 +23,15 @@ export default function LoginPage() {
         }}
       >
         <div>
-          <label className="label block mb-2">Email</label>
+          <label className="label block mb-2">Email or username</label>
           <input
             className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-            type="email"
+            type="text"
+            autoComplete="username"
+            placeholder="you@example.com or your username"
             required
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            value={form.identifier}
+            onChange={(e) => setForm({ ...form, identifier: e.target.value })}
           />
         </div>
         <div>
