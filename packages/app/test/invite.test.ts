@@ -365,102 +365,14 @@ describe('acceptInvite', () => {
     expect(await activeMemberCount(res.accountId)).toBe(0)
   })
 
-  test('username accept creates a pending student account with a username and NULL email — no membership, no edge', async () => {
+  test('the accept-student CREATE path is REMOVED: a student invite on an unlinked (no-shell) enrollment is refused, no account created, invite still issued', async () => {
+    // A seeding enrollment with NO shell-linked account (student_account_id null)
+    // — the CREATE path used to stand up a brand-new student here with no
+    // verified-guardian check. That path is gone: the accept is refused opaquely
+    // and nothing is created. In production every enrollment now creates the shell,
+    // so a student invite always resolves to an existing account (the guarded SET
+    // path); an unlinked one can never stand up a student.
     const f = await seedingStudentSetup()
-    const issued = await seedStudentInvite(f)
-    const username = `curio-${randomUUID().slice(0, 8)}`
-    const res = await svc().acceptInvite(issued.token, usernameCreds(username))
-
-    const [acct] = await h.sql`select * from account where id = ${res.accountId}`
-    expect(acct!.status).toBe('pending')
-    expect(acct!.username).toBe(username)
-    expect(acct!.email).toBeNull()
-    expect(acct!.credential_owner).toBe('guardian_provisioned')
-    expect(acct!.maturation_state).toBe('minor')
-    expect(res.guardianshipId).toBeNull()
-    expect(await memberCount(res.accountId)).toBe(0)
-  })
-
-  test('accept-student copies the DOB from the seeding enrollment with enrollment_record provenance + dob_source_ref, NOT from caller input, and backfills student_account_id', async () => {
-    const f = await seedingStudentSetup()
-    const issued = await seedStudentInvite(f)
-    const username = `curio-${randomUUID().slice(0, 8)}`
-    // The caller supplies a DIFFERENT DOB; it must be ignored in favour of the
-    // form DOB on the enrollment record.
-    const res = await svc().acceptInvite(issued.token, {
-      username,
-      password: 'correct horse battery staple',
-      legalName: 'Minor Testchild',
-      displayName: 'Minor T.',
-      dateOfBirth: '2000-01-01', // decoy; must NOT be used
-    })
-
-    const [acct] = await h.sql`
-      select date_of_birth::text as dob, dob_provenance, dob_source_ref
-      from account where id = ${res.accountId}
-    `
-    // DOB comes from the enrollment record, not the caller.
-    expect(acct!.dob).toBe(f.formDob)
-    expect(acct!.dob_provenance).toBe('enrollment_record')
-    expect(acct!.dob_source_ref).toBe(f.signedFormRef)
-
-    // The linkage backfill: the seeding enrollment now points at the new account,
-    // and its own DOB is untouched (write-once).
-    const [enr] = await h.sql`
-      select student_account_id, date_of_birth::text as dob from enrollment_record where id = ${f.enrollmentRecordId}
-    `
-    expect(enr!.student_account_id).toBe(res.accountId)
-    expect(enr!.dob).toBe(f.formDob)
-
-    // The resulting account satisfies the decision-4 trigger: an active student
-    // membership is accepted (provenance=enrollment_record, dob_source_ref set).
-    const [m] = await h.sql`
-      insert into membership (account_id, chapter_id, role, status)
-      values (${res.accountId}, ${f.chapter}, 'student', 'active') returning id
-    `
-    expect(m!.id).toBeTruthy()
-  })
-
-  test('accept-student creates the two form-sourced consents (enrollment, data_collection) once the account exists, and consent_current shows both active', async () => {
-    const f = await seedingStudentSetup()
-    const issued = await seedStudentInvite(f)
-    const username = `curio-${randomUUID().slice(0, 8)}`
-    const res = await svc().acceptInvite(issued.token, usernameCreds(username))
-
-    // Exactly the two form-sourced consents, with the coupling-D field shape:
-    // signed_form, source_ref = the signed-form scan, the enrollment anchor, and
-    // granted_by null (a paper grant; backfilled — as a fact on the guardianship
-    // edge — at verification).
-    const consents = await h.sql`
-      select * from consent where student_account_id = ${res.accountId} order by type::text
-    `
-    expect(consents.map((c) => c.type)).toEqual(['data_collection', 'enrollment'])
-    for (const c of consents) {
-      expect(c.action).toBe('grant')
-      expect(c.source).toBe('signed_form')
-      expect(c.source_ref).toBe(f.signedFormRef)
-      expect(c.enrollment_record_id).toBe(f.enrollmentRecordId)
-      expect(c.granted_by).toBeNull()
-      // effective_at is anchored at the enrollment record's form_signed_at.
-      expect(new Date(c.effective_at as string).toISOString()).toBe(`${f.formSignedAt}T00:00:00.000Z`)
-    }
-
-    const current = await h.sql`
-      select type, active from consent_current
-      where student_account_id = ${res.accountId} and type in ('enrollment', 'data_collection')
-      order by type::text
-    `
-    expect(current).toEqual([
-      { type: 'data_collection', active: true },
-      { type: 'enrollment', active: true },
-    ])
-  })
-
-  test('a signature date before the application submission is rejected by the temporal trigger; the whole accept rolls back', async () => {
-    const f = await seedingStudentSetup()
-    // Doctor the signature date to BEFORE the application submission (2013-01-01):
-    // the consent insert at accept-student is then rejected by the temporal trigger.
-    await h.sql`update enrollment_record set form_signed_at = '2012-01-01' where id = ${f.enrollmentRecordId}`
     const issued = await seedStudentInvite(f)
     const username = `curio-${randomUUID().slice(0, 8)}`
 
@@ -470,10 +382,10 @@ describe('acceptInvite', () => {
     } catch (e) {
       caught = e
     }
-    expect((caught as Error).message).toMatch(/submission|precede/i)
+    expect(caught).toBeInstanceOf(Error)
 
-    // Nothing persisted: no account, no consents, and the invite claim rolled
-    // back so the invite is still issued, and the enrollment is unlinked.
+    // Nothing created; the invite claim rolled back so it is still issued and the
+    // enrollment stays unlinked.
     const [acct] = await h.sql`select count(*)::int as n from account where username = ${username}`
     expect(acct!.n).toBe(0)
     const [inv] = await h.sql`select status from invite where id = ${issued.inviteId}`

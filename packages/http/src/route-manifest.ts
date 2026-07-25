@@ -303,6 +303,17 @@ export const ROUTE_MANIFEST: RouteManifest = [
     inert: 'rate limit, single-use token; creates a pending student account, no active membership until activate (05 inert table)',
     specEnumerated: true,
   },
+  // Account-origination chain (§3): the child redeems the guardian-minted, one-time
+  // `minor_setup` credential to set the password. Unauthenticated, token-gated
+  // (single-use, opaque invalid_token otherwise), like invite accept / account
+  // recovery; sets ONLY the password (the account stays pending — no membership).
+  // Not in 05-api-surface's enumerated inert table (a new post-audit endpoint).
+  {
+    method: 'POST',
+    path: '/api/setup/student/[token]',
+    inert: 'unauthenticated, token-gated (single-use minor_setup credential); sets the student password, account stays pending — no membership, no authorize',
+    specEnumerated: false,
+  },
 
   // ---- The Lab (05 §The Lab) ----
   { method: 'POST', path: '/api/lab/posts', capability: 'feed.post' },
@@ -372,6 +383,15 @@ export const ROUTE_MANIFEST: RouteManifest = [
     method: 'POST',
     path: '/api/guardian/children/[id]/publication-holds/[holdId]/object',
     capability: 'publication.object',
+  },
+  // Account-origination chain (§3): the verified guardian mints their child's
+  // one-time, guardian-routed setup credential. Guardian-scoped write, gated by
+  // guardian.provision_child (matched against ctx.guardianOf — an unverified/lapsed
+  // edge denies out_of_scope); the service adds the participation-consent floor.
+  {
+    method: 'POST',
+    path: '/api/guardian/children/[id]/setup-credential',
+    capability: 'guardian.provision_child',
   },
 
   // ---- Operations back office (05 §Operations back office) ----

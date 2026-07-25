@@ -462,6 +462,16 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectDeny(actors.guardian_of_S, 'publication.object', consentTargetChild18, 'out_of_scope')
   })
 
+  test('guardian.provision_child (§3 account-origination; guardian write)', () => {
+    // The verified guardian may mint their minor child's setup credential.
+    expectAllow(actors.guardian_of_S, 'guardian.provision_child', consentTargetChildS)
+    // The age-18 bar (guardian write authority ends at majority), like consent.revoke.
+    expectDeny(actors.guardian_of_S, 'guardian.provision_child', consentTargetChild18, 'out_of_scope')
+    // A stranger with no verified edge denies out_of_scope (the guardian-before-
+    // student floor is the scope itself).
+    expectDeny(actors.no_membership, 'guardian.provision_child', consentTargetChildS, 'out_of_scope')
+  })
+
   test('application.view (ops back office, chapter-scoped)', () => {
     expectAllow(actors.chapter_director_c1, 'application.view', applicationInC1)
     expectDeny(actors.lead_instructor_c1, 'application.view', applicationInC1, 'role_not_permitted')

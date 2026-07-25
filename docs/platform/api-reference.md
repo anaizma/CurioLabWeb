@@ -12,7 +12,7 @@ Every request field and response shape below is taken from the controller (reque
 - **`runAuthed` vs `runPublic`.** Authed controllers resolve the cookie to an `AuthContext` (`context.ts`). A missing / unknown / expired / revoked session resolves to a **null context**, which becomes an **opaque `403 {"error":"forbidden"}` with no audit** (there is no actor to attribute). Public / token-gated controllers take no `AuthContext`.
 - **Opaque 403.** A denied capability (`Forbidden`) and a null session both return the identical `403 {"error":"forbidden"}` body — "not allowed", "out of scope", and "does not exist" are deliberately indistinguishable from outside. Do not branch on 403 sub-reasons; there are none.
 - **Capabilities.** Each authed endpoint names the registry capability its service authorizes (`registry.ts`). Chapter-scoped capabilities require an in-force membership of the listed role in the resource's chapter; `platform`-scoped ones are reachable only via the platform override (`platform_admin`, or `platform_staff` for read-only capabilities).
-- **Unauthenticated / token-gated routes** (no `cl_session` needed): the Apply funnel (`/api/apply`, `/api/public/stage2/*`), `POST /api/auth/login`, the §10 two-factor continuation `POST /api/auth/totp{,/enroll,/confirm}` (gated by the short-lived pending-2FA token from login, not a session), `POST /api/auth/password/reset-request`, `POST /api/auth/password/reset`, `POST /api/auth/account-recovery`, all `/api/invites/[token]*`, `GET /api/verify/[token]`, all `/api/public/**` reads and newsletter subscribe/confirm/unsubscribe, and both `/api/webhooks/*`. These carry their own gate (an opaque token or a webhook signature), not a session.
+- **Unauthenticated / token-gated routes** (no `cl_session` needed): the Apply funnel (`/api/apply`, `/api/public/stage2/*`), `POST /api/auth/login`, the §10 two-factor continuation `POST /api/auth/totp{,/enroll,/confirm}` (gated by the short-lived pending-2FA token from login, not a session), `POST /api/auth/password/reset-request`, `POST /api/auth/password/reset`, `POST /api/auth/account-recovery`, all `/api/invites/[token]*`, `POST /api/setup/student/[token]` (the guardian-minted student setup credential), `GET /api/verify/[token]`, all `/api/public/**` reads and newsletter subscribe/confirm/unsubscribe, and both `/api/webhooks/*`. These carry their own gate (an opaque token or a webhook signature), not a session.
 
 ### Legend
 
@@ -249,21 +249,32 @@ export async function POST(req: Request) {
 - **Path param:** `token`.
 - **Response `200`:** `{ usable: boolean, kind: "guardian"|"student"|"mentor"|"staff"|null, chapter: string|null }` (uniform shape; a not-usable token returns `{usable:false, kind:null, chapter:null}`, never an error).
 
-### `POST /api/invites/{token}/accept` — email path (guardian / mentor / staff)
+### `POST /api/invites/{token}/accept` — email path (guardian / mentor / staff / director / admin)
 
-- **Auth:** token (invite token), public, inert — creates only a `pending` account (and a `pending` guardianship edge for a guardian invite).
+- **Auth:** token (invite token), public.
 - **Path param:** `token`. **Request body:** `email`, `password`, `legalName`, `displayName`, `dateOfBirth` (ISO `YYYY-MM-DD`) — all required strings.
 - **Response `201`:** `{ accountId: string, guardianshipId: string|null }` (edge id present only for a guardian invite).
 - **Errors:** `400` missing field or credential/email mismatch (`InviteCredentialMismatchError`, `GuardianInviteEmailMismatchError`); `401` invalid invite (`InvalidInviteError`); `404` unknown invite (`InviteNotFoundError`).
+- **Adult chapter-role kinds activate on accept (§2).** For `mentor`/`staff`/`director`/`admin`, the invite issuance **was** the authorization (the authority matrix, the two-person director rule, and admin-only-admin all gate *issuance*), so accepting **stands up an ACTIVE membership** and moves the account `active` in the same transaction. The role mapping: `mentor → junior_mentor`, `staff → comms_associate`, `director → chapter_director`, `admin → platform_admin` (a platform-scoped role, attached to the invite's bound chapter). First login forces TOTP (§P4). A **`guardian`** accept is UNCHANGED: it creates only a `pending` account + a `pending` guardianship edge (NO membership) — zero authority until name-match verification.
 
-### `POST /api/invites/{token}/accept-student` — username path (guardian-mediated)
+### `POST /api/invites/{token}/accept-student` — username path (guardian-mediated, legacy SET path)
 
 - **Auth:** token (invite token), public, inert.
-- **Path param:** `token`. **Request body:** `username`, `password`, `legalName`, `displayName` (required strings). `dateOfBirth` is **ignored** — the canonical DOB is copied from the bound enrollment record.
-- **Response `201`:** `{ accountId: string, guardianshipId: string|null, setupToken?: string, setupTokenRoute?: "guardian", guardianAccountId?: string|null }`.
+- **Path param:** `token`. **Request body:** `username`, `password`, `legalName`, `displayName` (required strings). `dateOfBirth` is **ignored** — the canonical DOB was set on the shell at enrollment.
+- **Response `201`:** `{ accountId: string, guardianshipId: null, setupToken?: string, setupTokenRoute?: "guardian", guardianAccountId?: string|null }`.
 - **Errors:** as `accept` above.
 
-**§3 guardian-before-student preconditions (the COPPA ordering invariant).** When the student invite's enrollment already binds a **guardian-provisioned** student account, accept-student **credentials that existing account** (rather than creating one) and is **refused unless**: (a) a **VERIFIED** guardianship edge exists for that student (a merely-`pending` edge is refused), **AND** (b) the guardian's **`platform_participation`** consent (the "may have a platform account" record that exists today) is currently active. Any failure is the **same opaque `401 invalid_token`** as a forged link and leaves the invite `issued` (usable on retry once the guardian verifies) — it reveals neither which gate failed nor whether the student exists. On success the account stays `pending` (no membership until `member.activate`), so **a student invite alone can never stand up an active student**. The one-time **setup credential is routed to the guardian, never emailed to the child**: the backend mints a `minor_setup` credential token bound to the student account, returns it once as `setupToken` with `setupTokenRoute:"guardian"` + `guardianAccountId` (a delivery seam the frontend fulfils). Redemption and the referenced consent artifact/method are written to the §8 access ledger with the source IP.
+**The unguarded CREATE path is REMOVED.** Previously accept-student could *create* a brand-new student account from a student invite with **no** verified-guardian check — it could stand up a student ahead of any guardian. That branch is deleted. It is also now dead: `EnrollmentService.create` always creates the inert student **shell** (and links the enrollment) at enrollment time, so a student invite always resolves to an **existing** account and takes the guarded SET path below; a student invite over an *unlinked* enrollment is refused with the opaque `401 invalid_token`. Note that student invites are **not issuable** through any ops endpoint, so this SET path is not reachable in production — the reachable, guardian-originated student-credential path is the setup-credential mint + redemption below.
+
+**§3 guardian-before-student preconditions (the COPPA ordering invariant).** The remaining SET path credentials the **existing** shell student and is **refused unless**: (a) a **VERIFIED** guardianship edge exists (a merely-`pending` edge is refused), **AND** (b) the guardian's **`platform_participation`** consent is currently active. Any failure is the **same opaque `401 invalid_token`** as a forged link and leaves the invite `issued` — it reveals neither which gate failed nor whether the student exists. On success the account stays `pending` (no membership until `member.activate`). The one-time setup credential is routed to the guardian (`setupTokenRoute:"guardian"`), never emailed to the child.
+
+### `POST /api/setup/student/{token}` — redeem the student setup credential
+
+- **Auth:** token (`minor_setup` credential token), public, inert — sets ONLY the password.
+- **Path param:** `token`. **Request body:** `password` (required string).
+- **Response `200`:** `{ accountId: string }`.
+- **Errors:** `401` invalid/expired/consumed/unknown token (`InvalidCredentialTokenError`) — one opaque signal, single-use.
+- The child redeems the guardian-minted, one-time credential (see the guardian setup-credential mint under §3) — **with the guardian present**, delivered in person. It sets the account's argon2id password, **keeps** the system-assigned username, and the account **stays `pending`**: redemption confers no membership. Activation is the director's separate `member.activate` step.
 
 ---
 
@@ -296,6 +307,14 @@ Every method is **guardian-scoped**: the resource names the child, and the scope
 - **Path params:** `id`, `type` (same consent-type set).
 - **Response `200`:** `{ consentId, studentAccountId, type, action: "revoke" }`.
 - **Errors:** `400` unknown `type`; `403` scope deny / null session.
+
+### `POST /api/guardian/children/{id}/setup-credential` — mint the child's setup credential (§3)
+
+- **Auth:** session — **`guardian.provision_child`** (guardian-scoped, matched against the guardian's verified children; an unverified/lapsed edge or an 18+ child → opaque `403`).
+- **Path param:** `id` (child account id — the inert shell created at enrollment).
+- **Response `200`:** `{ studentAccountId, setupToken, expiresAt, guardianAccountId, route: "guardian" }`. `setupToken` is the raw one-time token, returned **once** — the guardian hands it to the child in person; only its hash is stored. Redeemed at `POST /api/setup/student/{token}`.
+- **Errors:** `403` scope deny / null session; `401` `InvalidInviteError` when the §3 floor is not met (no verified guardian, or `platform_participation` consent not on file); `404` unknown child.
+- The verified guardian provisions the child: the backend supersedes any prior live `minor_setup` token and mints a fresh one bound to the child account (guardian-routed), writing the provisioning to the §8 access ledger with the source IP. This is the **reachable, guardian-originated** replacement for the retired director-issued student invite — the credential originates from the *verified* guardian, upholding guardian-before-student.
 
 ### `POST /api/guardian/children/{id}/export`
 
@@ -552,8 +571,9 @@ All `session`, chapter-scoped to the Chapter Director (platform_admin via overri
 ### `POST /api/ops/enrollments`
 
 - **Auth:** session — **`enrollment.create`**. (coupling D)
-- **Request body:** `applicationId` (required); `studentAccountId` (optional — absent in the seeding case); `dateOfBirth` (optional string); `chapterId` (required); `termId` (required); `guardianNameOnForm` (required); `signatureDate` (required — parsed as a Date); `signedForm` (required object → `{ body (required), contentType?, key? }`).
-- **Response `201`:** `{ enrollmentRecordId, signedFormRef, consentIds: { <formSourcedConsentType>: string } }` (`consentIds` is **empty** in the seeding case — the account does not exist yet).
+- **Request body:** `applicationId` (required); `studentAccountId` (optional — absent in the seeding case); `dateOfBirth` (optional string — required when seeding); `chapterId` (required); `termId` (required); `guardianNameOnForm` (required); `signatureDate` (required — parsed as a Date); `signedForm` (required object → `{ body (required), contentType?, key? }`).
+- **Response `201`:** `{ enrollmentRecordId, signedFormRef, consentIds: { <formSourcedConsentType>: string }, studentAccountId?, studentMembershipId? }`. `consentIds` now holds **both** form-sourced consents in both cases; `studentAccountId`/`studentMembershipId` are present in the **seeding** case.
+- **Seeding now creates the inert student SHELL (breaks the old guardian-before-student deadlock).** In the seeding case (no `studentAccountId`), the same transaction ALSO inserts: a `pending`, minor student **account** with a system-assigned non-identifying **username**, `email=null`, **`password_hash=null`** (login must fail until the guardian-originated setup), the form DOB with `dob_provenance='enrollment_record'` + `dob_source_ref` = the enrollment (so the decision-4 DOB trigger passes at activation); `enrollment_record.student_account_id` set to that shell; a **PENDING student membership** in the enrollment's chapter (the exact row `member.activate` later flips); and the two form-sourced consents keyed on the shell. The shell is **inert** — pending account, pending membership, no password, no access. Guardian-before-student holds: the guardian signed the enrollment form (consent on file) BEFORE the shell exists, and nothing here grants access.
 - **Errors:** `400` missing field / `EnrollmentDobRequiredError`; `403`.
 
 ### `POST /api/ops/invites`

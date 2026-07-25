@@ -62,6 +62,27 @@ export type InviteAuthorizeFn = <T = void>(
 /** Kinds a platform_admin alone may mint directly (admin, and a director invite). */
 const PLATFORM_ADMIN_ONLY_KINDS: ReadonlySet<InviteKind> = new Set(['admin', 'director'])
 
+/**
+ * The membership role each ADULT chapter-role invite kind maps to on accept (§2).
+ * The invite issuance WAS the authorization (the authority matrix, the two-person
+ * director rule, and admin-only-admin all gate ISSUANCE), so accepting one of
+ * these stands up an ACTIVE membership directly; first login forces TOTP (§P4).
+ *   - mentor -> junior_mentor: the base (entry) mentor teaching role;
+ *   - staff  -> comms_associate: the modeled chapter staff role;
+ *   - director -> chapter_director;
+ *   - admin  -> platform_admin: a platform-scoped role, represented (like every
+ *     role) as a membership row attached to the invite's bound chapter — the same
+ *     shape bootstrapPlatformAdmin writes.
+ * `guardian` and `student` are ABSENT: a guardian accept creates only a pending
+ * guardianship edge (no membership), and a student is never stood up by an accept.
+ */
+const ADULT_ACCEPT_MEMBERSHIP_ROLE: Partial<Record<InviteKind, string>> = {
+  mentor: 'junior_mentor',
+  staff: 'comms_associate',
+  director: 'chapter_director',
+  admin: 'platform_admin',
+}
+
 export interface InviteServiceDeps {
   sql: Sql
   authorize: InviteAuthorizeFn
@@ -527,7 +548,14 @@ export class InviteService {
       let setupToken: string | undefined
       let guardianRoutedTo: string | null = null
       if (isEmailCreds(credentials)) {
-        // guardian / mentor / staff: an email-identified adult account, pending.
+        // An email-identified adult account. For an ADULT CHAPTER-ROLE kind
+        // (mentor/staff/director/admin) the issuance WAS the authorization, so the
+        // account is created ACTIVE and an ACTIVE membership is stood up in the same
+        // transaction (§2). For a `guardian` kind the account stays `pending` and
+        // NO membership is created — the pending guardianship edge below carries no
+        // authority until name-match verification (step 4).
+        const membershipRole = ADULT_ACCEPT_MEMBERSHIP_ROLE[kind]
+        const accountStatus = membershipRole !== undefined ? 'active' : 'pending'
         const [acct] = await tx`
           insert into account (
             email, username, legal_name, display_name, date_of_birth,
@@ -536,10 +564,20 @@ export class InviteService {
           ) values (
             ${credentials.email}, ${null}, ${credentials.legalName}, ${credentials.displayName},
             ${credentials.dateOfBirth}, 'self_reported', ${null}, ${passwordHash}, 'self_private',
-            'pending', 'self_managed'
+            ${accountStatus}, 'self_managed'
           ) returning id
         `
         accountId = acct!.id as string
+        if (membershipRole !== undefined) {
+          // The chapter membership the invite authorized. boundChapter is the
+          // invite's bound chapter (adult invites carry no enrollment); it is
+          // non-null for every issuable adult kind.
+          if (boundChapter === null) throw new InvalidInviteError()
+          await tx`
+            insert into membership (account_id, chapter_id, role, status)
+            values (${accountId}, ${boundChapter}, ${membershipRole}, 'active')
+          `
+        }
       } else if (gatedStudent != null) {
         // §3 SET-path: credential the EXISTING guardian-provisioned student the
         // enrollment already binds (the guardian was onboarded + verified and the
@@ -570,85 +608,16 @@ export class InviteService {
           values (${accountId}, ${hashToken(setupToken)}, 'minor_setup', now() + ${this.ttlFor('student')} * interval '1 millisecond')
         `
       } else {
-        // student (guardian-mediated): a username-identified minor account, no
-        // email, pending. The `email XOR username` constraint is respected.
-        //
-        // The DOB is NOT taken from caller input. It is copied from the bound
-        // SEEDING enrollment record (the form's DOB, living there until now) with
-        // dob_provenance='enrollment_record' and dob_source_ref=signed_form_ref,
-        // which is exactly what the decision-4 trigger requires of any account
-        // that later holds an active student membership (02-data-model.md;
-        // decision-log.md "DOB on the enrollment record, reversed and refined").
-        const [enr] = await tx`
-          select date_of_birth::text as date_of_birth, signed_form_ref,
-                 form_signed_at::text as form_signed_at
-          from enrollment_record where id = ${invite.enrollment_record_id}
-        `
-        const dob = enr?.date_of_birth as string | null | undefined
-        const signedFormRef = enr?.signed_form_ref as string | null | undefined
-        const formSignedAt = enr?.form_signed_at as string | null | undefined
-        if (
-          invite.enrollment_record_id == null ||
-          dob == null ||
-          signedFormRef == null ||
-          formSignedAt == null
-        ) {
-          // A student accept must bind a seeding enrollment carrying the form DOB
-          // and the signature date (the anchor for the form-sourced consents).
-          throw new InvalidInviteError()
-        }
-        const [acct] = await tx`
-          insert into account (
-            email, username, legal_name, display_name, date_of_birth,
-            dob_provenance, dob_source_ref, password_hash, credential_owner,
-            status, maturation_state
-          ) values (
-            ${null}, ${credentials.username}, ${credentials.legalName}, ${credentials.displayName},
-            ${dob}, 'enrollment_record', ${signedFormRef}, ${passwordHash},
-            'guardian_provisioned', 'pending', 'minor'
-          ) returning id
-        `
-        accountId = acct!.id as string
-        // Linkage backfill: bind the seeding enrollment to the new account. This
-        // touches only student_account_id — the enrollment's write-once DOB is
-        // left equal, so its write-once trigger is not tripped.
-        await tx`
-          update enrollment_record set student_account_id = ${accountId}
-          where id = ${invite.enrollment_record_id}
-        `
-
-        // The seeding form-sourced consents (coupling D, deferred to here). At
-        // enrollment there was no student account to key them on
-        // (consent.student_account_id is NOT NULL), so the two ratifying rows for
-        // the signed paper form are written NOW that the account exists: the
-        // "paper form is the consent, the digital rows are its ratification"
-        // model, with ratification landing when the student exists
-        // (06-onboarding-flows Flow B; 04-state-machines coupling D / the consent
-        // machine's form-sourced grant). granted_by is null — a paper grant, per
-        // the earlier ruling; the provenance is carried on the guardianship edge
-        // at verification, not backfilled here (consent is append-only).
-        // effective_at is the signature date carried on the enrollment record;
-        // the DB temporal trigger floors it at the application submission date and
-        // consent_current is maintained by its own trigger. Returning students
-        // already hold these from a prior enrollment, so this is seeding-only —
-        // which the username/student accept path exactly is.
-        // The signature date is a calendar date; anchor each consent at UTC
-        // midnight of it, so the stored instant is deterministic regardless of
-        // the DB session timezone (matching how EnrollmentService writes the
-        // returning-case consents from the signature instant).
-        const effectiveAt = new Date(`${formSignedAt}T00:00:00Z`)
-        for (const type of this.config.formSourcedConsentTypes) {
-          await tx`
-            insert into consent (
-              student_account_id, type, action, source, source_ref,
-              enrollment_record_id, granted_by, effective_at, reason
-            ) values (
-              ${accountId}, ${type}, 'grant', 'signed_form', ${signedFormRef},
-              ${invite.enrollment_record_id}, ${null}, ${effectiveAt},
-              ${this.config.formSourcedConsentReason}
-            )
-          `
-        }
+        // §5: the old accept-student CREATE path is REMOVED. It created a NEW
+        // student account from a student invite with NO verified-guardian check —
+        // it could stand up a student ahead of any guardian. It is also now dead:
+        // EnrollmentService.create always creates the inert student SHELL (and
+        // links the enrollment) at enrollment time, so a student invite always
+        // resolves to an existing account and takes the guarded SET path above.
+        // A student accept that reaches here (no shell-linked enrollment) can never
+        // stand up a student — refused with the SAME opaque error as a forged link,
+        // upholding guardian-before-student.
+        throw new InvalidInviteError()
       }
 
       let guardianshipId: string | null = null
@@ -717,31 +686,14 @@ export class InviteService {
   }
 
   /**
-   * §3 gate: a guardian-provisioned student may be credentialed via accept-student
-   * only when a VERIFIED guardianship edge exists for them AND the guardian's
-   * `platform_participation` consent is currently active. Returns the verified
-   * guardian's account id (for guardian-routing the setup credential). Any failure
-   * — no edge, a merely-pending edge, or missing participation consent — throws the
-   * SAME opaque InvalidInviteError as a forged link (never reveals which gate failed).
+   * §3 gate: delegates to the shared {@link assertStudentGuardianGate}. Kept as a
+   * thin method so the SET path reads unchanged; the guardian-originated mint
+   * (StudentSetupService) reuses the same exported floor.
    */
   private async assertStudentGuardianGate(
     studentAccountId: string,
   ): Promise<{ studentAccountId: string; guardianAccountId: string }> {
-    const [g] = await this.sql`
-      select guardian_account_id from guardianship
-      where student_account_id = ${studentAccountId} and status = 'verified'
-      order by verified_at desc nulls last
-      limit 1
-    `
-    const guardianAccountId = (g?.guardian_account_id as string | null | undefined) ?? null
-    if (guardianAccountId == null) throw new InvalidInviteError()
-
-    const [c] = await this.sql`
-      select active from consent_current
-      where student_account_id = ${studentAccountId} and type = 'platform_participation'
-    `
-    if (c?.active !== true) throw new InvalidInviteError()
-    return { studentAccountId, guardianAccountId }
+    return assertStudentGuardianGate(this.sql, studentAccountId)
   }
 
   /**
@@ -810,6 +762,37 @@ export class InviteService {
       throw new InviteRateLimitError(issuerAccountId)
     }
   }
+}
+
+/**
+ * §3 guardian-before-student gate (the COPPA ordering invariant). A guardian-
+ * provisioned student may be credentialed only when a VERIFIED guardianship edge
+ * exists for them AND the guardian's `platform_participation` consent is currently
+ * active. Returns the verified guardian's account id (for guardian-routing the
+ * setup credential). Any failure — no edge, a merely-pending edge, or missing
+ * participation consent — throws the SAME opaque InvalidInviteError as a forged
+ * link (never revealing which gate failed). Shared by the accept-student SET path
+ * and the guardian-originated setup-credential mint (StudentSetupService).
+ */
+export async function assertStudentGuardianGate(
+  sql: Sql,
+  studentAccountId: string,
+): Promise<{ studentAccountId: string; guardianAccountId: string }> {
+  const [g] = await sql`
+    select guardian_account_id from guardianship
+    where student_account_id = ${studentAccountId} and status = 'verified'
+    order by verified_at desc nulls last
+    limit 1
+  `
+  const guardianAccountId = (g?.guardian_account_id as string | null | undefined) ?? null
+  if (guardianAccountId == null) throw new InvalidInviteError()
+
+  const [c] = await sql`
+    select active from consent_current
+    where student_account_id = ${studentAccountId} and type = 'platform_participation'
+  `
+  if (c?.active !== true) throw new InvalidInviteError()
+  return { studentAccountId, guardianAccountId }
 }
 
 /** Case-insensitive email equality, mirroring the citext DB columns. */

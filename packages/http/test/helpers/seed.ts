@@ -11,11 +11,10 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Sql } from 'postgres'
-import { authorize, createSession, generateSessionToken, hashToken, withRequest } from '@curiolab/runtime'
+import { authorize, createSession, withRequest } from '@curiolab/runtime'
 import {
   EnrollmentService,
   InMemoryStorageAdapter,
-  InviteService,
   MembershipActivationService,
 } from '@curiolab/app'
 import { baseCtx, mem } from '../../../app/test/helpers/ctx.js'
@@ -101,10 +100,13 @@ export async function onboardStudent(
   const { applicationId, guardianEmail } = await seedAcceptedApplication(sql, base.chapter)
   const ctx = directorCtx(base.director, base.chapter)
 
+  // EnrollmentService.create (seeding) creates the inert student SHELL, the
+  // PENDING student membership, and the form-sourced consents in one real
+  // transaction — nothing synthesized by hand.
   const enroll = new EnrollmentService({ sql, authorize, storage: new InMemoryStorageAdapter() })
-  let enrollmentRecordId!: string
+  let result!: Awaited<ReturnType<EnrollmentService['createEnrollment']>>
   await withRequest(async () => {
-    const r = await enroll.createEnrollment(
+    result = await enroll.createEnrollment(
       {
         applicationId,
         chapterId: base.chapter,
@@ -116,39 +118,18 @@ export async function onboardStudent(
       },
       ctx,
     )
-    enrollmentRecordId = r.enrollmentRecordId
   })
-
-  const invites = new InviteService({ sql, authorize })
-  // A student invite is not issuable through the ops endpoint (P2 §1); seed one
-  // directly (synthetic) so acceptInvite can create the student account.
-  const token = generateSessionToken()
-  await sql`
-    insert into invite (
-      token_hash, kind, enrollment_record_id, bound_chapter_id, issued_by,
-      expires_at, status, delivery_status
-    ) values (
-      ${hashToken(token)}, 'student', ${enrollmentRecordId}, ${base.chapter}, ${base.director},
-      now() + interval '7 days', 'issued', 'sent'
-    )
-  `
-  const { accountId } = await invites.acceptInvite(token, {
-    username: `curio-${randomUUID().slice(0, 8)}`,
-    password: 'correct horse battery staple',
-    legalName: 'Minor Testchild',
-    displayName: 'Minor T.',
-  })
+  const enrollmentRecordId = result.enrollmentRecordId
+  const accountId = result.studentAccountId!
+  const membershipId = result.studentMembershipId!
 
   // A pod so a guardian's out-of-pod read logs a minor_record.read (the guardian
-  // has no pod, so any non-null student pod differs).
+  // has no pod, so any non-null student pod differs). Attach the pending student
+  // membership to it.
   const [pod] = await sql`
     insert into pod (chapter_id, term_id, name) values (${base.chapter}, ${base.term}, 'Pod Alpha') returning id
   `
-  const [m] = await sql`
-    insert into membership (account_id, chapter_id, role, status, term_id, pod_id)
-    values (${accountId}, ${base.chapter}, 'student', 'pending', ${base.term}, ${pod!.id}) returning id
-  `
-  const membershipId = m!.id as string
+  await sql`update membership set pod_id = ${pod!.id} where id = ${membershipId}`
 
   if (opts.activate) {
     await withRequest(async () => {

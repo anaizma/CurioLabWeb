@@ -93,6 +93,13 @@ export type {
   AcceptStudentInput,
 } from './controllers/invites.js'
 
+// Student setup credential (§3): guardian mint + token-gated redemption
+export { provisionStudentSetup, redeemStudentSetup } from './controllers/student-setup.js'
+export type {
+  ProvisionStudentSetupInput,
+  RedeemStudentSetupInput,
+} from './controllers/student-setup.js'
+
 // Account lifecycle (coming of age + 16+ self_private)
 export {
   addEmail,

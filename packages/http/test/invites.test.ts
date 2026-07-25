@@ -38,6 +38,7 @@ async function seedingEnrollment() {
   const { applicationId, guardianEmail } = await seedAcceptedApplication(h.sql, base.chapter)
   const ctx = directorCtx(base.director, base.chapter)
   let enrollmentRecordId!: string
+  let studentAccountId!: string
   await withRequest(async () => {
     const r = await new EnrollmentService({
       sql: h.sql,
@@ -55,9 +56,11 @@ async function seedingEnrollment() {
       },
       ctx,
     )
+    // The enrollment now creates the inert student SHELL (student_account_id set).
     enrollmentRecordId = r.enrollmentRecordId
+    studentAccountId = r.studentAccountId!
   })
-  return { ...base, applicationId, guardianEmail, enrollmentRecordId, ctx }
+  return { ...base, applicationId, guardianEmail, enrollmentRecordId, studentAccountId, ctx }
 }
 
 // A student invite is not issuable through the ops endpoint (P2 §1); seed one
@@ -74,6 +77,42 @@ async function issueStudentInvite(chapter: string, enrollmentRecordId: string, c
     )
   `
   return token
+}
+
+// The accept-student SET path is gated on a VERIFIED guardian + participation
+// consent on file (§3). Seed both synthetically for the controller tests: a
+// verified guardianship edge to the shell student, and an active
+// platform_participation consent anchored on the enrollment.
+async function seedVerifiedGuardian(s: Awaited<ReturnType<typeof seedingEnrollment>>): Promise<string> {
+  const [g] = await h.sql`
+    insert into account (
+      email, legal_name, display_name, date_of_birth, dob_provenance,
+      credential_owner, status, maturation_state
+    ) values (
+      ${`guardian-${randomUUID().slice(0, 8)}@example.test`}, 'Parent Testperson', 'Parent T.',
+      '1985-01-01', 'staff_entered', 'self_private', 'active', 'self_managed'
+    ) returning id
+  `
+  const guardian = g!.id as string
+  await h.sql`
+    insert into guardianship (
+      guardian_account_id, student_account_id, relationship, status,
+      verification_method, verified_by, source_ref, verified_at
+    ) values (
+      ${guardian}, ${s.studentAccountId}, 'guardian', 'verified',
+      'signed_form_match', ${s.director}, ${randomUUID()}, now()
+    )
+  `
+  await h.sql`
+    insert into consent (
+      student_account_id, type, action, source, source_ref,
+      enrollment_record_id, granted_by, effective_at, reason
+    ) values (
+      ${s.studentAccountId}, 'platform_participation', 'grant', 'digital', ${null},
+      ${s.enrollmentRecordId}, ${guardian}, now(), 'standard'
+    )
+  `
+  return guardian
 }
 
 describe('validateInviteToken (GET /api/invites/:token)', () => {
@@ -103,7 +142,9 @@ describe('validateInviteToken (GET /api/invites/:token)', () => {
     `
     const expired = await validateInviteToken({ sql: h.sql, params: { token: expiredToken } })
 
-    // accepted: issue then accept a student invite
+    // accepted: issue then accept a student invite (SET path needs a verified
+    // guardian + participation consent on the shell student).
+    await seedVerifiedGuardian(s)
     const acceptToken = await issueStudentInvite(s.chapter, s.enrollmentRecordId, s.ctx)
     await acceptStudent({
       sql: h.sql,
@@ -128,8 +169,9 @@ describe('validateInviteToken (GET /api/invites/:token)', () => {
 })
 
 describe('acceptStudent (POST /api/invites/:token/accept-student)', () => {
-  test('creates a PENDING, username-identified minor account, no authority', async () => {
+  test('credentials the existing SHELL student (verified guardian + participation), stays pending, no authority', async () => {
     const s = await seedingEnrollment()
+    await seedVerifiedGuardian(s)
     const token = await issueStudentInvite(s.chapter, s.enrollmentRecordId, s.ctx)
     const username = `curio-${randomUUID().slice(0, 8)}`
 
@@ -144,8 +186,11 @@ describe('acceptStudent (POST /api/invites/:token/accept-student)', () => {
       },
     })
     expect(res.status).toBe(201)
-    expect(res.body.accountId).toBeTruthy()
+    // The SET path credentials the pre-existing shell student, not a new account.
+    expect(res.body.accountId).toBe(s.studentAccountId)
     expect(res.body.guardianshipId).toBeNull()
+    // The guardian-routed one-time setup credential.
+    expect(res.body.setupTokenRoute).toBe('guardian')
 
     const [acct] = await h.sql`
       select status, maturation_state, email, username from account where id = ${res.body.accountId}

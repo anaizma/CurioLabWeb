@@ -23,6 +23,7 @@ import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
 import { randomUUID } from 'node:crypto'
 import { type AppConfig, defaultConfig, type FormSourcedConsentType } from './config.js'
 import { EnrollmentDobRequiredError } from './errors.js'
+import { displayFromFullName } from './ops-read.js'
 import type { StorageAdapter } from './storage.js'
 
 /**
@@ -82,12 +83,25 @@ export interface CreateEnrollmentResult {
   /** The stored signed-form ref (uuid), shared by the record and the consents. */
   signedFormRef: string
   /**
-   * The form-sourced consent ids written in this transaction. Populated in the
-   * RETURNING case; EMPTY in the SEEDING case, because consent.student_account_id
-   * is NOT NULL and the account does not exist yet — those consents follow once
-   * it does (they cannot be pre-written or backfilled, consent being append-only).
+   * The form-sourced consent ids written in this transaction. Populated in BOTH
+   * cases now: the SEEDING case creates the inert student shell in the same
+   * transaction (breaking the old deadlock), so the two form-sourced consents can
+   * finally be keyed on that account here rather than deferred.
    */
   consentIds: Partial<Record<FormSourcedConsentType, string>>
+  /**
+   * SEEDING case only: the inert student SHELL account created in this
+   * transaction — `pending`, minor, a system-assigned non-identifying username, no
+   * email, NO password (login fails until the guardian-originated setup), carrying
+   * the form DOB with `dob_provenance='enrollment_record'`. Absent in the
+   * RETURNING case (the account already existed).
+   */
+  studentAccountId?: string
+  /**
+   * SEEDING case only: the PENDING student membership created for the shell in the
+   * enrollment's chapter — the exact row `activateStudent` later flips to active.
+   */
+  studentMembershipId?: string
 }
 
 export class EnrollmentService {
@@ -168,28 +182,84 @@ export class EnrollmentService {
         `
         const enrollmentRecordId = enr!.id as string
 
-        // Step 3: the two form-sourced consents (granted_by backfilled later).
-        // Only in the RETURNING case: consent.student_account_id is NOT NULL, so
-        // with no account yet (seeding) there is nothing to key them on, and they
-        // cannot be pre-written or backfilled (consent is append-only). They are
-        // captured once the account exists.
-        const consentIds: Partial<Record<FormSourcedConsentType, string>> = {}
-        if (!seeding) {
-          for (const type of this.config.formSourcedConsentTypes) {
-            const [c] = await tx`
-              insert into consent (
-                student_account_id, type, action, source, source_ref,
-                enrollment_record_id, granted_by, effective_at, reason
-              ) values (
-                ${studentAccountId}, ${type}, 'grant', 'signed_form', ${storedRef},
-                ${enrollmentRecordId}, ${null}, ${input.signatureDate}, ${this.config.formSourcedConsentReason}
-              ) returning id
-            `
-            consentIds[type] = c!.id as string
-          }
+        // Step 3 (SEEDING only): create the INERT student shell + a PENDING student
+        // membership, breaking the old guardian-before-student deadlock. The shell
+        // is a `pending`, minor, system-username account with NO password (login
+        // fails until the guardian-originated setup) carrying the form DOB with
+        // `dob_provenance='enrollment_record'` and `dob_source_ref` = this
+        // enrollment, so the decision-4 DOB trigger passes when the membership is
+        // later activated. Guardian-before-student holds: the guardian signed the
+        // enrollment form (consent on file below) BEFORE this shell exists, and
+        // nothing here grants any access.
+        let shellAccountId: string | undefined
+        let shellMembershipId: string | undefined
+        let consentSubjectId = studentAccountId
+        if (seeding) {
+          // The student's legal name comes from the accepted application
+          // (applicant_name); the username is a system-assigned non-identifying
+          // slug (students never self-pick an identifying handle). display_name is
+          // the privacy-preserving "First L." short form (the same transform the
+          // ops read surfaces use), not the full legal name.
+          const [appRow] = await tx`
+            select applicant_name from application where id = ${input.applicationId}
+          `
+          const legalName = (appRow?.applicant_name as string | undefined) ?? 'Student'
+          const displayName = displayFromFullName(legalName) ?? legalName
+          const username = `curio-${randomUUID().replace(/-/g, '').slice(0, 12)}`
+          const [acct] = await tx`
+            insert into account (
+              email, username, legal_name, display_name, date_of_birth,
+              dob_provenance, dob_source_ref, password_hash, credential_owner,
+              status, maturation_state, created_by
+            ) values (
+              ${null}, ${username}, ${legalName}, ${displayName},
+              ${input.dateOfBirth!}, 'enrollment_record', ${enrollmentRecordId}, ${null},
+              'self_private', 'pending', 'minor', ${ctx.account.id}
+            ) returning id
+          `
+          shellAccountId = acct!.id as string
+          consentSubjectId = shellAccountId
+          // Link the seeding enrollment to the shell (touches only
+          // student_account_id — the write-once DOB is left equal, so its trigger
+          // is not tripped).
+          await tx`
+            update enrollment_record set student_account_id = ${shellAccountId}
+            where id = ${enrollmentRecordId}
+          `
+          // The PENDING student membership `activateStudent` will flip to active.
+          const [m] = await tx`
+            insert into membership (account_id, chapter_id, role, status, term_id)
+            values (${shellAccountId}, ${input.chapterId}, 'student', 'pending', ${input.termId})
+            returning id
+          `
+          shellMembershipId = m!.id as string
         }
 
-        return { enrollmentRecordId, signedFormRef: storedRef, consentIds }
+        // Step 4: the two form-sourced consents (coupling D). In BOTH cases the
+        // subject account now exists (the shell for seeding, the given account for
+        // returning), so the ratifying consent rows are written here keyed on it.
+        // granted_by is null — a paper grant; the provenance is carried on the
+        // guardianship edge at verification, not backfilled (consent is append-only).
+        const consentIds: Partial<Record<FormSourcedConsentType, string>> = {}
+        for (const type of this.config.formSourcedConsentTypes) {
+          const [c] = await tx`
+            insert into consent (
+              student_account_id, type, action, source, source_ref,
+              enrollment_record_id, granted_by, effective_at, reason
+            ) values (
+              ${consentSubjectId}, ${type}, 'grant', 'signed_form', ${storedRef},
+              ${enrollmentRecordId}, ${null}, ${input.signatureDate}, ${this.config.formSourcedConsentReason}
+            ) returning id
+          `
+          consentIds[type] = c!.id as string
+        }
+
+        return {
+          enrollmentRecordId,
+          signedFormRef: storedRef,
+          consentIds,
+          ...(seeding ? { studentAccountId: shellAccountId, studentMembershipId: shellMembershipId } : {}),
+        }
       })
     } catch (err) {
       // The DB transaction rolled back; compensate the (now orphaned) upload so

@@ -122,8 +122,8 @@ async function consentCount(studentId: string): Promise<number> {
 }
 
 // ===========================================================================
-describe('SEEDING createEnrollment (primary): brand-new student, no account yet', () => {
-  test('writes the enrollment record with student_account_id null and the form DOB, storing the signed form; no consents (no account to anchor them)', async () => {
+describe('SEEDING createEnrollment (primary): brand-new student, inert shell created', () => {
+  test('creates the inert student shell (pending, system username, no password, dob provenance) + a pending student membership, links the enrollment, and writes the two form-sourced consents', async () => {
     const f = await acceptedApplication()
     const ctx = baseCtx(f.director, new Date(), [mem('chapter_director', f.chapter)])
     const storage = new InMemoryStorageAdapter()
@@ -138,18 +138,72 @@ describe('SEEDING createEnrollment (primary): brand-new student, no account yet'
     expect(storage.size).toBe(1)
     expect(storage.has(result.signedFormRef)).toBe(true)
 
-    // Exactly one enrollment record: no account yet, DOB carried on the record.
+    // Exactly one enrollment record, now LINKED to the shell, DOB on the record.
     const [enr] = await h.sql`
       select *, date_of_birth::text as dob_text from enrollment_record where id = ${result.enrollmentRecordId}
     `
     expect(enr!.application_id).toBe(f.applicationId)
     expect(enr!.signed_form_ref).toBe(result.signedFormRef)
-    expect(enr!.student_account_id).toBeNull()
     expect(enr!.dob_text).toBe('2015-06-01')
     expect(await enrollmentCount(f.applicationId)).toBe(1)
 
-    // No form-sourced consents at seeding time (no student account to key on).
-    expect(Object.keys(result.consentIds)).toEqual([])
+    // The inert student SHELL: pending, minor, a system-assigned non-identifying
+    // username, NO email, NO password (login must fail until setup), the form DOB
+    // with enrollment_record provenance + this enrollment as the source ref.
+    expect(result.studentAccountId).toBeTruthy()
+    expect(enr!.student_account_id).toBe(result.studentAccountId)
+    const [acct] = await h.sql`
+      select *, date_of_birth::text as dob from account where id = ${result.studentAccountId!}
+    `
+    expect(acct!.status).toBe('pending')
+    expect(acct!.maturation_state).toBe('minor')
+    expect(acct!.username).toBeTruthy()
+    expect(acct!.email).toBeNull()
+    expect(acct!.password_hash).toBeNull()
+    expect(acct!.dob).toBe('2015-06-01')
+    expect(acct!.dob_provenance).toBe('enrollment_record')
+    expect(acct!.dob_source_ref).toBe(result.enrollmentRecordId)
+
+    // A PENDING student membership in the enrollment's chapter — the exact row
+    // activation later flips.
+    expect(result.studentMembershipId).toBeTruthy()
+    const [m] = await h.sql`select * from membership where id = ${result.studentMembershipId!}`
+    expect(m!.account_id).toBe(result.studentAccountId)
+    expect(m!.chapter_id).toBe(f.chapter)
+    expect(m!.role).toBe('student')
+    expect(m!.status).toBe('pending')
+    expect(m!.term_id).toBe(f.term)
+
+    // The two form-sourced consents are written now (the shell keys them), active.
+    expect(Object.keys(result.consentIds).sort()).toEqual(['data_collection', 'enrollment'])
+    const current = await h.sql`
+      select type, active from consent_current
+      where student_account_id = ${result.studentAccountId!} and type in ('enrollment', 'data_collection')
+      order by type::text
+    `
+    expect(current).toEqual([
+      { type: 'data_collection', active: true },
+      { type: 'enrollment', active: true },
+    ])
+  })
+
+  test('the shell is INERT: pending account, pending membership, no password, no active membership — no access until activation', async () => {
+    const f = await acceptedApplication()
+    const ctx = baseCtx(f.director, new Date(), [mem('chapter_director', f.chapter)])
+    const svc = new EnrollmentService({ sql: h.sql, authorize, storage: new InMemoryStorageAdapter() })
+
+    let result!: Awaited<ReturnType<EnrollmentService['createEnrollment']>>
+    await withRequest(async () => {
+      result = await svc.createEnrollment(seedingInput(f), ctx)
+    })
+
+    const [active] = await h.sql`
+      select count(*)::int as n from membership where account_id = ${result.studentAccountId!} and status = 'active'
+    `
+    expect(active!.n).toBe(0)
+    const [acct] = await h.sql`select password_hash, status from account where id = ${result.studentAccountId!}`
+    expect(acct!.password_hash).toBeNull()
+    expect(acct!.status).toBe('pending')
   })
 
   test('requires the form DOB: a seeding enrollment with no dateOfBirth throws and nothing persists', async () => {

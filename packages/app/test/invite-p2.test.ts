@@ -342,6 +342,61 @@ describe('§4 redemption binding: {email, kind, chapter}', () => {
 })
 
 // ===========================================================================
+// §2: accepting an adult chapter-role invite stands up an ACTIVE membership (the
+// issuance WAS the authorization). The role mapping: mentor->junior_mentor,
+// staff->comms_associate, director->chapter_director, admin->platform_admin.
+describe('§2 adult accept stands up an ACTIVE membership', () => {
+  const creds = (e: string) => ({
+    email: e,
+    password: 'correct horse battery staple',
+    legalName: 'Adult Testperson',
+    displayName: 'Adult T.',
+    dateOfBirth: '1990-01-01',
+  })
+
+  async function issueDirectMint(kind: 'mentor' | 'staff' | 'director' | 'admin') {
+    const f = await setup()
+    const targetEmail = email()
+    // A platform_admin may mint any of these directly (director/admin need the
+    // admin authority; mentor/staff are fine too) — one issuance path for the test.
+    const out = await issue(adminCtx(f.admin, f.chapter), { kind, chapterId: f.chapter, targetEmail })
+    return { f, targetEmail, out }
+  }
+
+  const CASES = [
+    ['mentor', 'junior_mentor'],
+    ['staff', 'comms_associate'],
+    ['director', 'chapter_director'],
+    ['admin', 'platform_admin'],
+  ] as const
+
+  for (const [kind, role] of CASES) {
+    test(`${kind} accept -> account active + one ACTIVE ${role} membership in the bound chapter`, async () => {
+      const { f, targetEmail, out } = await issueDirectMint(kind)
+      const res = await svc().acceptInvite(out.token, creds(targetEmail), {
+        email: targetEmail,
+        kind,
+        chapter: f.chapter,
+      })
+      // The account is ACTIVE (not pending) — the invite issuance authorized it.
+      const [acct] = await h.sql`select status, email from account where id = ${res.accountId}`
+      expect(acct!.status).toBe('active')
+      expect(acct!.email).toBe(targetEmail)
+      // Exactly one ACTIVE membership, the mapped role, in the invite's chapter.
+      const ms = await h.sql`
+        select role, status, chapter_id from membership where account_id = ${res.accountId}
+      `
+      expect(ms).toHaveLength(1)
+      expect(ms[0]!.role).toBe(role)
+      expect(ms[0]!.status).toBe('active')
+      expect(ms[0]!.chapter_id).toBe(f.chapter)
+      // Not a guardian accept: no guardianship edge.
+      expect(res.guardianshipId).toBeNull()
+    })
+  }
+})
+
+// ===========================================================================
 describe('§4 per-issuer rate limit', () => {
   test('issuance trips after the configured cap', async () => {
     const f = await setup()

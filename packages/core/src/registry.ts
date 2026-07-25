@@ -696,6 +696,21 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: [],
     writes: true,
   },
+  // ---- account-origination chain: verified guardian provisions the child (§3) ----
+  // The verified guardian mints the one-time, guardian-routed `minor_setup`
+  // credential for their child's pending shell account (the inert account created
+  // at enrollment). Guardian-scoped write, roles [] — guardianship itself is the
+  // authority, matched against ctx.guardianOf; an unverified/lapsed edge is absent
+  // so it denies out_of_scope (the guardian-before-student COPPA floor is the scope
+  // itself). writes:true, so the age-18 bar applies. The additional
+  // participation-consent precondition (the guardian's platform_participation
+  // consent on file) is enforced in the service (assertStudentGuardianGate),
+  // layered on this scope floor — mirroring publication.object / attendance.submit.
+  'guardian.provision_child': {
+    scope: 'guardian',
+    roles: [],
+    writes: true,
+  },
 
   // ---- mentor eligibility as state (admin/director backend §6) --------------
   // mentor.manage_eligibility: the ops/director authority to RECORD a mentor's

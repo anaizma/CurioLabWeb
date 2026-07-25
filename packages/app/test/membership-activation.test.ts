@@ -8,13 +8,12 @@
 
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { Forbidden, authorize, generateSessionToken, hashToken, withRequest } from '@curiolab/runtime'
+import { Forbidden, authorize, withRequest } from '@curiolab/runtime'
 import { startHarness, type Harness } from './helpers/pg.js'
 import { makeAdult, makeChapter, makeMinor } from './helpers/fixtures.js'
 import { baseCtx, mem } from './helpers/ctx.js'
 import {
   EnrollmentService,
-  InviteService,
   InMemoryStorageAdapter,
   MembershipActivationService,
   MembershipActivationConsentError,
@@ -36,10 +35,10 @@ function directorCtx(director: string, chapter: string) {
   return baseCtx(director, new Date(), [mem('chapter_director', chapter)])
 }
 
-// The full seeding chain, ending at a PENDING student ready to activate:
-//   createEnrollment (seeding, DOB + form_signed_at) -> issue+accept student
-//   invite (account created, DOB copied, form-sourced consents created) ->
-//   insert the pending student membership.
+// The REAL seeding chain, ending at a PENDING student ready to activate.
+// EnrollmentService.create (seeding) now creates the inert student SHELL, the
+// PENDING student membership, and the two form-sourced consents in ONE
+// transaction — nothing is synthesized by hand here.
 async function seededPendingStudent() {
   const chapter = await makeChapter(h.sql)
   const [term] = await h.sql`
@@ -69,11 +68,13 @@ async function seededPendingStudent() {
   `
   const ctx = directorCtx(director, chapter)
 
-  // Coupling D (seeding): enrollment record with the form DOB + signature date.
+  // Coupling D (seeding): the enrollment record + the inert student SHELL + the
+  // PENDING student membership + the two form-sourced consents, all in one real
+  // transaction. Nothing is synthesized by hand.
   const enroll = new EnrollmentService({ sql: h.sql, authorize, storage: new InMemoryStorageAdapter() })
-  let enrollmentRecordId!: string
+  let result!: Awaited<ReturnType<EnrollmentService['createEnrollment']>>
   await withRequest(async () => {
-    const r = await enroll.createEnrollment(
+    result = await enroll.createEnrollment(
       {
         applicationId: app!.id as string,
         chapterId: chapter,
@@ -85,38 +86,16 @@ async function seededPendingStudent() {
       },
       ctx,
     )
-    enrollmentRecordId = r.enrollmentRecordId
   })
 
-  // accept-student: the account is created (DOB copied, provenance
-  // enrollment_record) and the two form-sourced consents are written.
-  const invites = new InviteService({ sql: h.sql, authorize })
-  // A student invite is not issuable through the ops endpoint (P2 §1); seed one
-  // directly (synthetic) so acceptInvite can create the student account.
-  const token = generateSessionToken()
-  await h.sql`
-    insert into invite (
-      token_hash, kind, enrollment_record_id, bound_chapter_id, issued_by,
-      expires_at, status, delivery_status
-    ) values (
-      ${hashToken(token)}, 'student', ${enrollmentRecordId}, ${chapter}, ${director},
-      now() + interval '7 days', 'issued', 'sent'
-    )
-  `
-  const username = `curio-${randomUUID().slice(0, 8)}`
-  const { accountId } = await invites.acceptInvite(token, {
-    username,
-    password: 'correct horse battery staple',
-    legalName: 'Minor Testchild',
-    displayName: 'Minor T.',
-  })
-
-  // The pending student membership (created upstream at enroll; synthesized here).
-  const [m] = await h.sql`
-    insert into membership (account_id, chapter_id, role, status, term_id)
-    values (${accountId}, ${chapter}, 'student', 'pending', ${term!.id}) returning id
-  `
-  return { chapter, term: term!.id as string, director, accountId, enrollmentRecordId, membershipId: m!.id as string }
+  return {
+    chapter,
+    term: term!.id as string,
+    director,
+    accountId: result.studentAccountId!,
+    enrollmentRecordId: result.enrollmentRecordId,
+    membershipId: result.studentMembershipId!,
+  }
 }
 
 async function statusesOf(membershipId: string, accountId: string) {

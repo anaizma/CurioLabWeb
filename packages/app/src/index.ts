@@ -23,7 +23,7 @@ export type {
   CreateEnrollmentResult,
   SignedForm,
 } from './enrollment.js'
-export { InviteService } from './invite.js'
+export { InviteService, assertStudentGuardianGate } from './invite.js'
 export type {
   InviteServiceDeps,
   InviteAuthorizeFn,
@@ -41,6 +41,13 @@ export type {
   UsernameCredentials,
   AcceptInviteResult,
 } from './invite.js'
+export { StudentSetupService } from './student-setup.js'
+export type {
+  StudentSetupServiceDeps,
+  StudentSetupAuthorizeFn,
+  ProvisionSetupCredentialResult,
+  RedeemSetupCredentialResult,
+} from './student-setup.js'
 export { GuardianshipService } from './guardianship.js'
 export type {
   GuardianshipServiceDeps,

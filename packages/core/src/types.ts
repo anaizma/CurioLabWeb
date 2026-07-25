@@ -347,6 +347,15 @@ export type Capability =
   | 'guardian.view_grants'
   | 'guardian.view_public_items'
   | 'publication.object'
+  // account-origination chain (§3): the verified guardian provisions their child.
+  // guardian.provision_child is the guardian-scoped WRITE that mints the one-time,
+  // guardian-routed `minor_setup` credential for the child's pending shell account
+  // (created inert at enrollment). Matched against ctx.guardianOf like
+  // publication.object, so an unverified/lapsed guardian is absent and denies
+  // out_of_scope; writes:true, so the age-18 bar applies (a guardian cannot
+  // provision an 18+ former child). The participation-consent precondition is a
+  // service concern (assertStudentGuardianGate), layered on this scope floor.
+  | 'guardian.provision_child'
   // mentor eligibility as state (admin/director backend §6, REVIEW-GATED). The
   // ops/director authority to RECORD a mentor's eligibility component clearances
   // (background check, mandatory-reporter training, CWRU affiliation, code of
