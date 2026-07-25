@@ -395,8 +395,36 @@ Every method is **guardian-scoped**: the resource names the child, and the scope
 A minor may *optionally* have a **hidden, outbound-only** `notification_email` — DISTINCT from the login `email`. A minor still logs in by `username` with `email = null`; `notification_email` is an additional address to which notifications may ALSO be sent. It is a nullable `citext` on `account` (migration 0037), does **not** participate in the email-XOR-username identity constraint, and is **HIDDEN in the backend**: no director/staff/other-user read selects or returns it (readable only by the student themselves or a verified guardian).
 
 - **The consent grant `student_notification_email`** (P6a ledger; enum value migration 0036). Captured by the guardian, method **`signed_form`** (a click is refused — like `mentor_dm`), with a non-null evidence artifact. **REFUSED for a subject under 13** (`StudentNotificationEmailAgeError` at the service; DB trigger backstop in 0037). Annual renewal clock. Independently revocable via the existing per-grant revoke (`POST /api/guardian/children/{id}/grants/{type}/revoke`). Captured/revoked through the existing `consent.grant` / `consent.revoke` capabilities — no new capability. Grant capture/revoke always run (they only WRITE the ledger); the flag gates only *setting the email* and the *resolver's student-email emission*.
-- **Setting the `notification_email`** happens at student setup redemption (`POST /api/setup/student/{token}` with `notificationEmail` in the body): the child enters the address with the guardian present, the guardian's signed grant being the authorizer. It is set **only if** the flag is on **and** a current `student_notification_email` grant is active **and** the student is 13+, in the same transaction as the password set; otherwise `403` (`StudentNotificationEmailNotAuthorizedError`) and the field stays null. It never touches the login identity.
+- **Setting the `notification_email`** happens at student setup redemption (`POST /api/setup/student/{token}` with `notificationEmail` in the body): the child enters the address with the guardian present, the guardian's signed grant being the authorizer. It is set **only if** the flag is on **and** a current `student_notification_email` grant is active **and** the student is 13+, in the same transaction as the password set; otherwise `403` (`StudentNotificationEmailNotAuthorizedError`) and the field stays null. It never touches the login identity. This setup-time path is unchanged; the **self-service settings endpoint below is the ongoing change path**.
 - **Parent-CC RESOLVER SEAM (the core safety primitive):** `resolveStudentNotificationTargets(sql, studentAccountId, now, config?) → { studentEmail: string | null, guardianEmails: string[] }`. `guardianEmails` is **ALL verified guardians' login emails — ALWAYS returned** (the parent always gets the notification). `studentEmail` is the student's `notification_email` **only if** the flag is on AND a current `student_notification_email` grant is active AND the student is 13+ AND `notification_email` is set; in **every** other case (flag off, no/revoked/expired grant, under-13, or unset) it is `null` — only the guardian is notified. **Parent-CC is structural: you cannot get a student email out of this resolver without the guardian emails alongside.** A notification caller (e.g. the DM-notification code) sends to `studentEmail` (if non-null) **AND ALWAYS** to every `guardianEmails` address. This is the sole enforcement point for direct minor contactability.
+
+### The PRIMARY / SECONDARY model (self-service settings)
+
+The student's contactability settings are a **PRIMARY + SECONDARY** pair:
+
+- **PRIMARY** = the student's **own** `notification_email` — the single stored, student-editable address (still hidden/outbound-only). Editable through the endpoints below **only** under the full gate.
+- **SECONDARY** = the **first verified-guardian email**, resolved **LIVE** at read time (NOT a stored column). It is **always CC'd** (see the resolver above) and is **never student-editable** — so the student can neither remove the parent nor let the parent address go stale. When the student has **not** set a primary, they are "using the parent's" and the guardian email surfaces as the primary instead.
+
+**The gate for setting/updating/clearing the PRIMARY** (all four must hold): the global flag `STUDENT_NOTIFICATION_EMAIL_ENABLED` is on **AND** the student is **13+** (age from DOB) **AND** an active `student_notification_email` grant is on file **AND** the caller is the student acting on their **OWN** account (capability `student.set_notification_email`, scope `own`, roles `[student]`, writes). Any miss is an opaque `403` (a non-own/non-student actor → capability `Forbidden`; a failed flag/age/grant → `StudentNotificationEmailNotAuthorizedError`). With the flag off the write is refused and the whole surface is inert (DARK).
+
+### `PUT /api/portal/student/notification-email` — set / update / clear the PRIMARY
+
+- **Auth:** session — **`student.set_notification_email`** (own; the subject is the acting student — a student can only ever write their **own** account). DARK/COUNSEL-GATED.
+- **Request body:** `{ email: string | null }` — a well-formed string **sets/updates** the primary; `null` **clears** it (reverts to parent-only). A non-string value is treated as a clear.
+- **Response `200`:** the read model below (the fresh settings after the write).
+- **Errors:** `403` — the caller is not a student acting on their own account (capability deny / null session), **or** the flag/13+/grant gate fails (`StudentNotificationEmailNotAuthorizedError`) — one opaque signal across those causes, the field stays null. `400` (`InvalidNotificationEmailError`) — a non-null `email` that is not a well-formed address (checked **after** the gate, so it never leaks authorization state).
+
+### `GET /api/portal/student/notification-email` — the settings-screen model
+
+- **Auth:** session — **`student.view_notification_email`** (own; readable only by the student themselves — never leaked to staff). DARK/COUNSEL-GATED.
+- **Response `200`:** `{ primary: { email: string | null, isOwn: boolean, editable: boolean }, secondary: { email: string | null, editable: false } }` where:
+  - **own primary set** (authorized) → `primary = { email: <student's own>, isOwn: true, editable: true }`, `secondary = { email: <first verified-guardian email>, editable: false }`.
+  - **no own primary** but eligible (flag on + 13+ + active grant) → `primary = { email: <guardian email>, isOwn: false, editable: true }`, `secondary = { email: null, editable: false }` ("using the parent's").
+  - **flag off, or under-13, or no active grant** → `primary = { email: <guardian email>, isOwn: false, editable: false }` (no own-email path), `secondary = { email: null, editable: false }`.
+  - `primary.editable` = whether the student may set/change their own primary right now (the same gate as the write) — the settings screen shows a read-only parent-only view when it is `false`.
+- **Errors:** `403` — not a student acting on their own account / null session.
+
+The `notification_email` PRIMARY remains **HIDDEN from every director/staff read** (regression-tested): only these own-scoped endpoints and the resolver ever touch it. The SECONDARY is always the live guardian and is never student-editable.
 
 ---
 

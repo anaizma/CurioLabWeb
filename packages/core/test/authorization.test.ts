@@ -394,6 +394,45 @@ describe('capability coverage: allow and deny for every registry key', () => {
     expectDeny(actors.no_membership, 'verification.regenerate', verificationTargetSelf('someone-else'), 'out_of_scope')
   })
 
+  test('student.set_notification_email (own; a 13+ MINOR student on their OWN account — no age-18 condition)', () => {
+    // A 13+ minor student sets their own hidden notification_email (own scope, no
+    // ownCondition — the 13+/flag/grant gates are the service's, not can's).
+    expectAllow(
+      actors.student_minor_consented,
+      'student.set_notification_email',
+      profileOwnedBy(actors.student_minor_consented.account.id),
+    )
+    // Someone else's account → out_of_scope (own binds to the actor's own id).
+    expectDeny(
+      actors.student_minor_consented,
+      'student.set_notification_email',
+      profileOwnedBy('someone-else'),
+      'out_of_scope',
+    )
+    // A non-student actor (a director) on their OWN account: the own scope matches
+    // their (non-student) membership, so the role gate denies role_not_permitted.
+    expectDeny(
+      actors.chapter_director_c1,
+      'student.set_notification_email',
+      profileOwnedBy(actors.chapter_director_c1.account.id),
+      'role_not_permitted',
+    )
+  })
+
+  test('student.view_notification_email (own; the settings-screen read)', () => {
+    expectAllow(
+      actors.student_18,
+      'student.view_notification_email',
+      profileOwnedBy(actors.student_18.account.id),
+    )
+    expectDeny(
+      actors.student_18,
+      'student.view_notification_email',
+      profileOwnedBy('someone-else'),
+      'out_of_scope',
+    )
+  })
+
   test('student.view_record (emits a minor_record.read obligation out of pod)', () => {
     const inPod = expectAllow(actors.lead_instructor_c1, 'student.view_record', childRecordInPod)
     expect(inPod.obligations).toHaveLength(0)

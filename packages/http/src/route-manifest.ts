@@ -343,6 +343,17 @@ export const ROUTE_MANIFEST: RouteManifest = [
     path: '/api/profile/verification-token',
     capability: 'verification.regenerate',
   },
+  // Student notification-email settings (DARK, COUNSEL-GATED). PUT sets/updates/
+  // clears the student's OWN primary notification_email, gated by
+  // student.set_notification_email (own scope, roles [student], writes:true); the
+  // flag + 13+ + active grant gate is the service's, layered on this floor. The GET
+  // read (student.view_notification_email) is GET-exempt from the manifest. The
+  // feature is inert with STUDENT_NOTIFICATION_EMAIL_ENABLED off.
+  {
+    method: 'PUT',
+    path: '/api/portal/student/notification-email',
+    capability: 'student.set_notification_email',
+  },
   { method: 'POST', path: '/api/projects', capability: 'project.create' },
   { method: 'PATCH', path: '/api/projects/[id]/submit', capability: 'project.submit' },
   { method: 'POST', path: '/api/projects/[id]/verify', capability: 'project.verify' },

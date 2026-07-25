@@ -23,8 +23,14 @@
 // -------------------------------------------------------------------------
 
 import type { Sql, TransactionSql } from 'postgres'
+import type { AuthContext, Resource } from '@curiolab/core'
+import { assertAuthorized, type AuthorizeDeps } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
 import { hasActiveGrant } from './consent-grant.js'
+import {
+  InvalidNotificationEmailError,
+  StudentNotificationEmailNotAuthorizedError,
+} from './errors.js'
 
 type Db = Sql | TransactionSql
 
@@ -94,4 +100,191 @@ export async function resolveStudentNotificationTargets(
   }
 
   return { studentEmail, guardianEmails }
+}
+
+// -------------------------------------------------------------------------
+// The PRIMARY / SECONDARY self-service settings surface (DARK, counsel-gated).
+//
+//   PRIMARY   = the student's OWN notification_email (stored on `account`;
+//               student-editable through this service, but only when authorized).
+//   SECONDARY = the LIVE first verified-guardian email — NOT a stored column, so
+//               it can neither be removed by the student nor go stale; it is never
+//               student-editable.
+//
+// `resolveStudentNotificationTargets` remains the single ENFORCEMENT point for
+// outbound contactability; this service is the settings WRITE + the read model on
+// top. The write authorizes the own-scope capability (a student acting on their
+// OWN account), then applies the same opaque gate as the setup-time setter (the
+// global flag on + 13+ + an active student_notification_email grant) before any
+// mutation. With the flag off the whole surface is inert.
+// -------------------------------------------------------------------------
+
+/** A minimal, deliberately-forgiving email shape check (local@domain.tld). */
+function isValidEmail(email: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())
+}
+
+/**
+ * Whether the student MAY have an own primary notification email right now — the
+ * flag is on, the student is 13+ (age from DOB), AND a current
+ * student_notification_email grant is active. This is BOTH the write gate and the
+ * read model's `editable` bit. Independent of whether an email is actually set
+ * (that extra condition is the resolver's studentEmail emission).
+ */
+async function isNotificationEmailAuthorized(
+  sql: Db,
+  accountId: string,
+  now: Date,
+  config: AppConfig,
+): Promise<boolean> {
+  if (!config.studentNotificationEmailEnabled) return false
+  const [acct] = await sql`select date_of_birth as dob from account where id = ${accountId}`
+  if (acct === undefined) return false
+  const age = ageInYears(new Date(acct.dob as string), now)
+  if (age < 13) return false
+  return hasActiveGrant(sql, accountId, 'student_notification_email', now)
+}
+
+/** The PRIMARY slot of the settings model — the student's own, editable address. */
+export interface NotificationEmailPrimary {
+  /**
+   * The address shown as the primary: the student's OWN notification_email when
+   * they have set an authorized one (`isOwn: true`), otherwise the verified-guardian
+   * email they are "using the parent's" (`isOwn: false`), or null if neither exists.
+   */
+  email: string | null
+  /** True iff `email` is the student's own notification_email (not the parent's). */
+  isOwn: boolean
+  /**
+   * Whether the student may set/change their own primary right now (flag on + 13+
+   * + active grant). False when the feature is dark for them (flag off / under-13 /
+   * no active grant) — the settings screen then shows a read-only parent-only view.
+   */
+  editable: boolean
+}
+
+/** The SECONDARY slot — the live verified-guardian email, never student-editable. */
+export interface NotificationEmailSecondary {
+  /** The first verified-guardian email when a student primary is set; else null. */
+  email: string | null
+  /** Always false: the secondary is the live guardian and is never student-editable. */
+  editable: false
+}
+
+/** The settings-screen model: the student's primary + the (live) guardian secondary. */
+export interface NotificationEmailSettings {
+  primary: NotificationEmailPrimary
+  secondary: NotificationEmailSecondary
+}
+
+/**
+ * The injected `authorize` dependency, narrowed to this service's two own-scoped
+ * capabilities (structurally the runtime `authorize` wrapper; injected so the
+ * deny/backstop paths are testable without HTTP).
+ */
+export type StudentNotificationAuthorizeFn = <T = void>(
+  ctx: AuthContext,
+  capability: 'student.set_notification_email' | 'student.view_notification_email',
+  resource: Resource,
+  deps: AuthorizeDeps<T>,
+) => Promise<T | undefined>
+
+export interface StudentNotificationSettingsServiceDeps {
+  sql: Sql
+  authorize: StudentNotificationAuthorizeFn
+  config?: Partial<AppConfig>
+}
+
+export class StudentNotificationSettingsService {
+  private readonly sql: Sql
+  private readonly authorize: StudentNotificationAuthorizeFn
+  private readonly config: AppConfig
+
+  constructor(deps: StudentNotificationSettingsServiceDeps) {
+    this.sql = deps.sql
+    this.authorize = deps.authorize
+    this.config = { ...defaultConfig, ...deps.config }
+  }
+
+  /**
+   * PUT /api/portal/student/notification-email — set / update / clear the PRIMARY.
+   *
+   * Gated through `authorize` under `student.set_notification_email` (own scope —
+   * the resource owner is the acting student, so a caller can only ever act on
+   * their OWN account; a non-student actor denies out_of_scope/role_not_permitted).
+   * Then the same opaque gate as setup-time setting: the global flag on AND 13+ AND
+   * an active student_notification_email grant — any miss is one
+   * StudentNotificationEmailNotAuthorizedError (403), whether setting or clearing,
+   * so the feature is fully dark with the flag off. A non-null email must be
+   * well-formed (InvalidNotificationEmailError, 400), checked only after the gate so
+   * it never leaks authorization state. Clearing passes `null` (reverts to
+   * parent-only). Returns the fresh settings model.
+   */
+  async setPrimaryEmail(
+    email: string | null,
+    ctx: AuthContext,
+    opts: { now?: Date } = {},
+  ): Promise<NotificationEmailSettings> {
+    const now = opts.now ?? new Date()
+    const accountId = ctx.account.id
+    const resource: Resource = { ownerAccountId: accountId }
+    await this.authorize(ctx, 'student.set_notification_email', resource, { sql: this.sql })
+
+    // The opaque contactability gate (flag + 13+ + active grant). Applies to a
+    // clear too — with the flag off there is nothing to clear anyway.
+    const authorized = await isNotificationEmailAuthorized(this.sql, accountId, now, this.config)
+    if (!authorized) throw new StudentNotificationEmailNotAuthorizedError(accountId)
+
+    // Validate only after the gate (a 400 here never distinguishes an authorized
+    // account). Clearing (null) skips validation.
+    const normalized = email === null ? null : email.trim()
+    if (normalized !== null && !isValidEmail(normalized)) {
+      throw new InvalidNotificationEmailError()
+    }
+
+    await this.sql.begin(async (tx) => {
+      assertAuthorized() // runtime backstop: no mutation without a recorded decision
+      await tx`update account set notification_email = ${normalized} where id = ${accountId}`
+    })
+
+    return this.viewSettings(ctx, { now })
+  }
+
+  /**
+   * GET /api/portal/student/notification-email — the settings-screen model.
+   *
+   * Gated through `authorize` under `student.view_notification_email` (own scope).
+   * Reads the LIVE targets via `resolveStudentNotificationTargets` (so the student
+   * email surfaces ONLY under the full authorization chain and the guardian email
+   * is always the live one). The `editable` bit and the "using the parent's" state
+   * follow the same gate as the write.
+   */
+  async viewSettings(
+    ctx: AuthContext,
+    opts: { now?: Date } = {},
+  ): Promise<NotificationEmailSettings> {
+    const now = opts.now ?? new Date()
+    const accountId = ctx.account.id
+    const resource: Resource = { ownerAccountId: accountId }
+    await this.authorize(ctx, 'student.view_notification_email', resource, { sql: this.sql })
+
+    const targets = await resolveStudentNotificationTargets(this.sql, accountId, now, this.config)
+    const firstGuardian = targets.guardianEmails[0] ?? null
+
+    if (targets.studentEmail !== null) {
+      // Authorized AND set: primary is the student's own; secondary is the guardian.
+      return {
+        primary: { email: targets.studentEmail, isOwn: true, editable: true },
+        secondary: { email: firstGuardian, editable: false },
+      }
+    }
+
+    // No authorized own primary: the student is "using the parent's" email. The
+    // primary shows the guardian; whether the student may set their own is the gate.
+    const editable = await isNotificationEmailAuthorized(this.sql, accountId, now, this.config)
+    return {
+      primary: { email: firstGuardian, isOwn: false, editable },
+      secondary: { email: null, editable: false },
+    }
+  }
 }

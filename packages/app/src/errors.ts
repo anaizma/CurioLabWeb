@@ -1424,6 +1424,20 @@ export class StudentNotificationEmailNotAuthorizedError extends Error {
 }
 
 /**
+ * The `notification_email` supplied to the student settings write is not a
+ * well-formed email address. Distinct from the opaque not-authorized refusal (a
+ * 403): this is an input-shape problem (a 400), raised only AFTER the own-scope
+ * authorization and the flag/13+/grant gate have passed, so it never leaks the
+ * subject's authorization state. Clearing (null) never triggers it.
+ */
+export class InvalidNotificationEmailError extends Error {
+  constructor() {
+    super('notification email is not a valid email address')
+    this.name = 'InvalidNotificationEmailError'
+  }
+}
+
+/**
  * A `safety_officer` assignment was refused because the target account already
  * holds a mentor/teaching or student membership in that chapter (or vice versa) —
  * the not-a-peer rule (design C.1): independence is the point, peer review does

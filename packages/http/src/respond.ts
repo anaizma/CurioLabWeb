@@ -189,6 +189,9 @@ const BAD_REQUEST = new Set([
   // Student notification-email (dark): a student_notification_email grant captured
   // for a subject under 13 (v1 is 13+ only). COUNSEL-GATED feature.
   'StudentNotificationEmailAgeError',
+  // Student notification-email settings (dark): the PRIMARY email supplied to the
+  // self-service write is not a well-formed address (checked after the gate).
+  'InvalidNotificationEmailError',
   // Mentor-student DM (Phase 3): a guardian-visibility suspension with no reason.
   'DmSuspensionReasonRequiredError',
   // Shared chapter calendar (Feature 1): a bad time range / audience set / kind.

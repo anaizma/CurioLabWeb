@@ -251,9 +251,20 @@ export {
   PublicationGrantRequiredError,
   StudentNotificationEmailAgeError,
   StudentNotificationEmailNotAuthorizedError,
+  InvalidNotificationEmailError,
 } from './errors.js'
-export { resolveStudentNotificationTargets } from './student-notification.js'
-export type { StudentNotificationTargets } from './student-notification.js'
+export {
+  resolveStudentNotificationTargets,
+  StudentNotificationSettingsService,
+} from './student-notification.js'
+export type {
+  StudentNotificationTargets,
+  StudentNotificationSettingsServiceDeps,
+  StudentNotificationAuthorizeFn,
+  NotificationEmailSettings,
+  NotificationEmailPrimary,
+  NotificationEmailSecondary,
+} from './student-notification.js'
 export { STUDENT_NOTIFICATION_EMAIL_ENABLED } from './config.js'
 export { GuardianPortalService } from './guardian-portal.js'
 export type {

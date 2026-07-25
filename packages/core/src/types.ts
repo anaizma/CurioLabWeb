@@ -443,3 +443,15 @@ export type Capability =
   // party) and ride the existing guardian-staff exemption in the no-DM guard.
   | 'dm.suspend_guardian_visibility'
   | 'dm.acknowledge_visibility_suspension'
+  // student notification-email settings (DARK, COUNSEL-GATED). The student-facing
+  // self-service surface for the PRIMARY/SECONDARY contactability model.
+  // student.set_notification_email is the own-scoped WRITE (a 13+ student sets /
+  // updates / clears their OWN hidden notification_email; roles [student],
+  // writes:true — a read-only override cannot write). student.view_notification_email
+  // is the own-scoped READ of the settings screen model (primary + secondary;
+  // writes:false). Both are floored to a student acting on their OWN account (own
+  // scope); the flag + 13+ + active student_notification_email grant gates live in
+  // the service (opaque refusal), never here. The SECONDARY (the verified guardian)
+  // is resolved LIVE and is never student-editable.
+  | 'student.set_notification_email'
+  | 'student.view_notification_email'

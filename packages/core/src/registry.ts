@@ -964,4 +964,37 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director', 'safety_officer'],
     writes: true,
   },
+
+  // ---- student notification-email settings (DARK, COUNSEL-GATED) ------------
+  // The student-facing self-service surface for the PRIMARY/SECONDARY
+  // contactability model (student-notification.ts). The PRIMARY is the student's
+  // OWN hidden notification_email; the SECONDARY is the LIVE verified-guardian
+  // email, resolved at read time and never student-editable.
+  //
+  // student.set_notification_email: the own-scoped WRITE — a student sets /
+  // updates / clears their OWN notification_email. scope 'own' (matched against
+  // resource.ownerAccountId === ctx.account.id, so the actor can only ever act on
+  // their own account), roles ['student'] (a non-student actor denies out_of_scope
+  // — there is no student membership to match). writes:true, so a read-only
+  // impersonation override cannot write. NO ownCondition: v1 is a 13+ MINOR
+  // surface, so the age-18 self-condition MUST NOT apply — the 13+ floor, the
+  // global flag, and the active student_notification_email grant are enforced in
+  // the service as one opaque refusal (StudentNotificationEmailNotAuthorizedError),
+  // never here, so the whole feature stays dark with the flag off.
+  'student.set_notification_email': {
+    scope: 'own',
+    roles: ['student'],
+    writes: true,
+  },
+  // student.view_notification_email: the own-scoped READ of the settings-screen
+  // model (primary + secondary). Same own/student floor as the write; writes:false,
+  // so a read-only override may view. It NEVER leaks the field to staff (the own
+  // scope binds it to the student themselves); the guardian-portal has its own
+  // reads. The flag/13+/grant conditions shape the returned model (isOwn / editable)
+  // in the service, not the gate.
+  'student.view_notification_email': {
+    scope: 'own',
+    roles: ['student'],
+    writes: false,
+  },
 }

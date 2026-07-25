@@ -379,6 +379,17 @@ export type {
 export { viewVerification } from './controllers/verify.js'
 export type { ViewVerificationInput } from './controllers/verify.js'
 
+// Student notification-email settings (DARK, COUNSEL-GATED): the student-facing
+// PRIMARY/SECONDARY self-service surface.
+export {
+  viewNotificationEmail,
+  setNotificationEmail,
+} from './controllers/student-notification.js'
+export type {
+  ViewNotificationEmailInput,
+  SetNotificationEmailInput,
+} from './controllers/student-notification.js'
+
 // Project lifecycle (M3.7)
 export {
   createProject,
