@@ -1,0 +1,224 @@
+{
+  "form-01": [
+    {
+      "itemKey": "form-01:item-1",
+      "text": "I am the parent or legal Guardian of the child named above and have authority to make these decisions for them."
+    },
+    {
+      "itemKey": "form-01:item-2",
+      "text": "The information I am providing is true and current."
+    },
+    {
+      "itemKey": "form-01:item-3",
+      "text": "I will notify CurioLab if my legal authority to consent changes."
+    },
+    {
+      "itemKey": "form-01:item-4",
+      "text": "My child will follow the CurioLab code of conduct, which requires respectful behavior and prohibits harassment and the sharing of others' private information."
+    },
+    {
+      "itemKey": "form-01:item-5",
+      "text": "Mentors are screened before working with Students. Screening is a safeguard and not a guarantee."
+    },
+    {
+      "itemKey": "form-01:item-6",
+      "text": "If a CurioLab adult forms a reasonable concern about a child's safety, they may be legally required to report it to county children services or law enforcement, and CurioLab cannot promise to keep such a concern private."
+    },
+    {
+      "itemKey": "form-01:item-7",
+      "text": "CurioLab may remove any Student or Mentor for conduct reasons."
+    },
+    {
+      "itemKey": "form-01:item-8",
+      "text": "**(Required to use the Platform.)** I consent to CurioLab creating an account for my child and collecting and using the information above, for the stated purposes and for Internal use only."
+    },
+    {
+      "itemKey": "form-01:item-9",
+      "text": "**(Optional.)** My child's project work may also be visible to other Students and Mentors within my child's own chapter when they are signed in. This remains non-public and is not searchable on the internet. Leave blank to keep the work visible only to the Mentor and staff."
+    }
+  ],
+  "form-02": [
+    {
+      "itemKey": "form-02:item-1",
+      "text": "Publish my child's project work (code, description, result)."
+    },
+    {
+      "itemKey": "form-02:item-2",
+      "text": "Show my child's first name and last initial with published work. Leave blank to publish under a nickname with no real name."
+    },
+    {
+      "itemKey": "form-02:item-3",
+      "text": "Include my child's photograph or video with published work. (For photographs generally, not tied to public posts, use Form 3 instead.)"
+    },
+    {
+      "itemKey": "form-02:item-4",
+      "text": "Allow published work to remain in past newsletter archives after the project is no longer current."
+    },
+    {
+      "itemKey": "form-02:item-5",
+      "text": "CurioLab newsletter (email)"
+    },
+    {
+      "itemKey": "form-02:item-6",
+      "text": "CurioLab public community page (website)"
+    },
+    {
+      "itemKey": "form-02:item-7",
+      "text": "I understand I may withdraw this permission at any time."
+    }
+  ],
+  "form-03": [
+    {
+      "itemKey": "form-03:item-1",
+      "text": "Still photographs of my child during program activities."
+    },
+    {
+      "itemKey": "form-03:item-2",
+      "text": "Video or audio of my child during program activities."
+    },
+    {
+      "itemKey": "form-03:item-3",
+      "text": "Internal program archive and records."
+    },
+    {
+      "itemKey": "form-03:item-4",
+      "text": "Sharing within my child's own chapter when signed in."
+    },
+    {
+      "itemKey": "form-03:item-5",
+      "text": "CurioLab public community page or website."
+    },
+    {
+      "itemKey": "form-03:item-6",
+      "text": "CurioLab newsletter."
+    },
+    {
+      "itemKey": "form-03:item-7",
+      "text": "CurioLab social media accounts."
+    },
+    {
+      "itemKey": "form-03:item-8",
+      "text": "My child's first name and last initial. Leave blank for no name."
+    },
+    {
+      "itemKey": "form-03:item-9",
+      "text": "The name of the project shown."
+    },
+    {
+      "itemKey": "form-03:item-10",
+      "text": "I understand I may withdraw this permission at any time."
+    }
+  ],
+  "form-04": [
+    {
+      "itemKey": "form-04:item-1",
+      "text": "I allow my child to use direct messaging with their assigned Mentor, on the terms above."
+    },
+    {
+      "itemKey": "form-04:item-2",
+      "text": "I understand and accept that these messages are kept until my child turns thirty and are not covered by an ordinary \"delete my data\" request. This longer keeping period exists because certain claims may be brought many years later. It applies only if you allow messaging."
+    },
+    {
+      "itemKey": "form-04:item-3",
+      "text": "I understand I may withdraw this permission at any time."
+    }
+  ],
+  "form-05": [
+    {
+      "itemKey": "form-05:item-1",
+      "text": "I understand the link can be forwarded, and anyone holding it can view the page."
+    },
+    {
+      "itemKey": "form-05:item-2",
+      "text": "I understand that regenerating the link disables the old one, and that anyone I previously sent it to will no longer be able to open it."
+    },
+    {
+      "itemKey": "form-05:item-3",
+      "text": "I understand that a link does not make copies unrecoverable: if a viewer saves or screenshots the page, CurioLab cannot retrieve that copy."
+    },
+    {
+      "itemKey": "form-05:item-4",
+      "text": "Allow the shared page to also include my child's Community posts, in addition to verified work. Leave blank to show verified work only."
+    },
+    {
+      "itemKey": "form-05:item-5",
+      "text": "I understand I may disable the link at any time from the guardian portal."
+    }
+  ],
+  "form-06": [
+    {
+      "itemKey": "form-06:item-1",
+      "text": "If my child has a medical emergency and I cannot be reached in time, I authorize CurioLab staff to call emergency medical services and to share the information above with responders."
+    },
+    {
+      "itemKey": "form-06:item-2",
+      "text": "I authorize CurioLab to arrange emergency transport if responders advise it."
+    },
+    {
+      "itemKey": "form-06:item-3",
+      "text": "I understand this form does not transfer general medical decision-making to CurioLab and does not replace a treating provider's own consent process."
+    },
+    {
+      "itemKey": "form-06:item-4",
+      "text": "I understand an emergency already underway will be handled according to applicable medical and emergency law."
+    }
+  ],
+  "form-07": [
+    {
+      "itemKey": "form-07:item-1",
+      "text": "I authorize CurioLab to ask any person collecting my child for photo identification and to decline release if identity cannot be confirmed."
+    },
+    {
+      "itemKey": "form-07:item-2",
+      "text": "I understand CurioLab will not release my child to any person who appears impaired or unauthorized, and will contact me if that occurs."
+    },
+    {
+      "itemKey": "form-07:item-3",
+      "text": "I understand that changes to this authorization must be made through a verified method, and that CurioLab may decline an unverified verbal change at the door."
+    }
+  ],
+  "form-08": [
+    {
+      "itemKey": "form-08:item-1",
+      "text": "I have read, understood, and agree to this Code of Conduct and Acceptable Use Agreement."
+    }
+  ],
+  "form-09": [
+    {
+      "itemKey": "form-09:item-1",
+      "text": "I have read this disclosure."
+    },
+    {
+      "itemKey": "form-09:item-2",
+      "text": "I authorize CurioLab to obtain the consumer report(s) described in the standalone disclosure above."
+    }
+  ],
+  "form-10": [
+    {
+      "itemKey": "form-10:item-1",
+      "text": "I have read and agree to this Volunteer and Role Agreement."
+    }
+  ],
+  "form-11": [
+    {
+      "itemKey": "form-11:item-1",
+      "text": "I renew permission to publish my work publicly.  [ ] I decline."
+    },
+    {
+      "itemKey": "form-11:item-2",
+      "text": "I renew direct messaging.  [ ] I decline."
+    },
+    {
+      "itemKey": "form-11:item-3",
+      "text": "I renew photograph and video use as I will specify.  [ ] I decline."
+    },
+    {
+      "itemKey": "form-11:item-4",
+      "text": "My former guardian may remain an emergency contact only.  [ ] Remove them as a contact."
+    },
+    {
+      "itemKey": "form-11:item-5",
+      "text": "I understand these decisions are now mine, and my signature confirms only the choices I checked above."
+    }
+  ]
+}

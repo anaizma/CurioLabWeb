@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "npm run test --workspaces --if-present",
-    "test:web": "vitest run"
+    "test:web": "vitest run",
+    "consent:pdfs": "node scripts/consent-forms/generate-pdfs.mjs"
   },
   "dependencies": {
     "next": "16.2.10",
@@ -26,6 +27,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "pdfkit": "^0.15.2",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^2.1.9"
