@@ -309,8 +309,16 @@ describe('monitoring ledger + oversight of the officer (design C.7)', () => {
     await withRequest(() => os.markThreadRead(threadId, officerCtx(w), NOW))
     const [flag] = await h.sql`select id from dm_flag where message_id = ${messageId} limit 1`
     await withRequest(() => os.reviewFlag(flag!.id as string, 'benign', officerCtx(w), { now: NOW }))
-    const from = new Date(NOW.getTime() - 24 * 60 * 60 * 1000)
-    const to = new Date(NOW.getTime() + 24 * 60 * 60 * 1000)
+    // dm_flag / dm_flag_review rows are stamped with the DB wall clock (their
+    // created_at defaults to now()), whereas the messages above use the injected
+    // synthetic NOW. A tight NOW±24h window therefore drops the flags/reviews once
+    // the real clock drifts past it — a wall-clock-sensitive test. This report
+    // exercises AGGREGATION, not tight windowing, so use a wide fixed window that
+    // always spans both clocks. (A cleaner fix — stamping dm_flag/dm_flag_review
+    // created_at from the injected now — needs a coordinated change to the flag
+    // insert in mentor-dm.ts, currently owned by the email-notification work.)
+    const from = new Date('2020-01-01T00:00:00Z')
+    const to = new Date('2100-01-01T00:00:00Z')
     const rep = await dmOversightReport({ sql: h.sql, chapterId: w.chapter, from, to })
     expect(rep.totalMessages).toBe(2)
     expect(rep.readMessages).toBe(2)
