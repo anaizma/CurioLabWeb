@@ -46,6 +46,7 @@ import type { Sql, TransactionSql } from 'postgres'
 import type { AuthContext, Resource, Role } from '@curiolab/core'
 import { assertAuthorized, writeAudit, writeAccessLedger, type AuthorizeDeps } from '@curiolab/runtime'
 import { MessageThreadNotFoundError, MessagingValidationError } from './errors.js'
+import { type Mailer, type MailMessage, defaultMailer } from './mail.js'
 
 type Db = Sql | TransactionSql
 
@@ -67,6 +68,16 @@ export type MessagingAuthorizeFn = <T = void>(
 export interface MessagingServiceDeps {
   sql: Sql
   authorize: MessagingAuthorizeFn
+  /**
+   * The transactional mailer used to ALSO deliver a portal message to the
+   * recipient's real inbox (a guardian send notifies the chapter's teaching
+   * staff; a staff reply notifies the thread's guardian). Defaults to
+   * `defaultMailer()` (a ResendMailer when RESEND_API_KEY is set, else a
+   * NoopMailer) so the Next routes trigger email with no wiring change; tests
+   * inject a FakeMailer. Delivery is BEST-EFFORT and never blocks or rolls back
+   * the append-only write.
+   */
+  mailer?: Mailer
 }
 
 export type MessageSenderRole = 'guardian' | 'mentor' | 'director'
@@ -138,6 +149,16 @@ function iso(v: unknown): string {
   return v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString()
 }
 
+/** Escape a user-supplied string for safe interpolation into the HTML email body. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 /** Whole years from `dob` to `at` (birthday-aware, UTC). */
 function ageInYears(dob: Date, at: Date): number {
   let age = at.getUTCFullYear() - dob.getUTCFullYear()
@@ -188,10 +209,12 @@ interface EligibleChild {
 export class MessagingService {
   private readonly sql: Sql
   private readonly authorize: MessagingAuthorizeFn
+  private readonly mailer: Mailer
 
   constructor(deps: MessagingServiceDeps) {
     this.sql = deps.sql
     this.authorize = deps.authorize
+    this.mailer = deps.mailer ?? defaultMailer()
   }
 
   /**
@@ -361,7 +384,7 @@ export class MessagingService {
     const [senderRow] = await this.sql`select display_name from account where id = ${ctx.account.id}`
     const senderName = (senderRow?.display_name as string | null) ?? ''
 
-    return this.sql.begin(async (tx) => {
+    const message = (await this.sql.begin(async (tx) => {
       assertAuthorized()
       let tid = threadId
       if (tid === null) {
@@ -383,7 +406,12 @@ export class MessagingService {
         ledgerEvent: 'message.sent',
         auditAction: 'message.sent',
       })
-    }) as Promise<Message>
+    })) as Message
+
+    // Also deliver to the chapter staff's real inboxes (best-effort — the message
+    // is already committed; a send failure is logged and swallowed).
+    await this.notifyStaffOfGuardianMessage(chapterId, senderName, body)
+    return message
   }
 
   /**
@@ -531,19 +559,103 @@ export class MessagingService {
     const [senderRow] = await this.sql`select display_name from account where id = ${ctx.account.id}`
     const senderName = (senderRow?.display_name as string | null) ?? ''
 
-    return this.sql.begin(async (tx) => {
+    const guardianAccountId = thread.guardian_account_id as string
+    const message = (await this.sql.begin(async (tx) => {
       assertAuthorized()
       return this.writeMessage(tx, ctx, {
         threadId,
         chapterId,
-        guardianAccountId: thread.guardian_account_id as string,
+        guardianAccountId,
         senderRole,
         body,
         senderName,
         ledgerEvent: 'message.replied',
         auditAction: 'message.replied',
       })
-    }) as Promise<Message>
+    })) as Message
+
+    // Also deliver the reply to the guardian's real inbox (best-effort).
+    await this.notifyGuardianOfReply(guardianAccountId, senderName, body)
+    return message
+  }
+
+  /**
+   * Best-effort email fan-out to the chapter's teaching staff (director +
+   * mentors) after a guardian send: the plaintext message body lands in each
+   * staff member's real inbox so they need not poll the portal. Only accounts
+   * with an email are reached (username-only accounts are skipped silently).
+   * Any failure — resolving recipients or a single send — is logged and
+   * swallowed; the message is already committed and must not be undone.
+   */
+  private async notifyStaffOfGuardianMessage(
+    chapterId: string,
+    guardianName: string,
+    body: string,
+  ): Promise<void> {
+    try {
+      const rows = await this.sql`
+        select distinct a.email
+        from membership m
+        join account a on a.id = m.account_id
+        where m.chapter_id = ${chapterId}
+          and m.role in ${this.sql([...TEACHING_ROLES])}
+          and m.status = 'active'
+          and a.email is not null
+      `
+      const from = guardianName.trim() === '' ? 'A parent' : guardianName
+      const subject = `New message from ${from} — CurioLab`
+      const text =
+        `${from} sent a new message to your CurioLab chapter:\n\n` +
+        `${body}\n\n` +
+        'Open your CurioLab portal to view the conversation and reply.'
+      const html =
+        `<p>${escapeHtml(from)} sent a new message to your CurioLab chapter:</p>` +
+        `<blockquote>${escapeHtml(body)}</blockquote>` +
+        '<p>Open your CurioLab portal to view the conversation and reply.</p>'
+      for (const r of rows) {
+        await this.sendBestEffort({ to: r.email as string, subject, text, html })
+      }
+    } catch (err) {
+      console.error(`[MessagingService] staff notification failed for chapter ${chapterId}:`, err)
+    }
+  }
+
+  /**
+   * Best-effort email to the thread's guardian after a staff reply. Skipped
+   * silently when the guardian account has no email (a username-only account).
+   */
+  private async notifyGuardianOfReply(
+    guardianAccountId: string,
+    senderName: string,
+    body: string,
+  ): Promise<void> {
+    try {
+      const [row] = await this.sql`select email from account where id = ${guardianAccountId}`
+      const email = (row?.email as string | null) ?? null
+      if (email === null) return
+      const from = senderName.trim() === '' ? 'Your CurioLab chapter' : senderName
+      const subject = 'New reply from CurioLab'
+      const text =
+        `${from} replied to your CurioLab message:\n\n` +
+        `${body}\n\n` +
+        'Open your CurioLab portal to view the full conversation and reply.'
+      const html =
+        `<p>${escapeHtml(from)} replied to your CurioLab message:</p>` +
+        `<blockquote>${escapeHtml(body)}</blockquote>` +
+        '<p>Open your CurioLab portal to view the full conversation and reply.</p>'
+      await this.sendBestEffort({ to: email, subject, text, html })
+    } catch (err) {
+      console.error(`[MessagingService] guardian notification failed for ${guardianAccountId}:`, err)
+    }
+  }
+
+  /** Send one notification, swallowing (logging) any transport failure. */
+  private async sendBestEffort(message: MailMessage): Promise<void> {
+    try {
+      await this.mailer.send(message)
+    } catch (err) {
+      console.error(`[MessagingService] notification email to ${message.to} failed:`, err)
+    }
   }
 
   /** In-force chapters where the actor holds a teaching role. */
