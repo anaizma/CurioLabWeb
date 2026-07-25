@@ -354,7 +354,7 @@ export default function AttendanceClient({
                 <span className="text-muted">Why will {childName} be absent?</span>
                 <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="A short note is all we need." className="rounded-md border border-black/[.12] px-3 py-2 text-[13px] bg-white min-h-24" />
               </label>
-              <label className="flex gap-2.5 items-start text-[12.5px] leading-relaxed">
+              <label className="flex gap-3 items-start text-[12.5px] leading-relaxed">
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5" />
                 <span>I consent to {childName} making up this session with a <b>30-minute virtual check-in</b>, completed after {childName} finishes the session&apos;s assignment.</span>
               </label>

@@ -59,7 +59,7 @@ export default function ApplyPage() {
       <p className="label-blue mb-3">Apply</p>
       <h1 className="text-3xl md:text-4xl font-bold mb-4">Apply to CurioLab</h1>
       <p className="text-muted mb-2">
-        Grades 6–12. No experience required — just curiosity.
+        Grades 6–12. No experience required. Just curiosity is enough to get started.
       </p>
       <p className="text-muted mb-8">
         We&apos;ll send the next step by email.
