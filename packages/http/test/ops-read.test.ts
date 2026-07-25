@@ -69,14 +69,41 @@ async function seedPlatformAdmin(): Promise<{ account: string; token: string }> 
   return { account, token: await sessionFor(account) }
 }
 
-/** A submitted student application in `chapter`, returning its id. */
-async function submittedApplication(chapter: string, applicantName = 'Minor Testchild'): Promise<string> {
+/**
+ * A submitted student application in `chapter`, returning its id. `createdAt`
+ * defaults to inside the seedDirector Fall Term 2099 window so the default
+ * most-recent-term filter includes it.
+ */
+async function submittedApplication(
+  chapter: string,
+  applicantName = 'Minor Testchild',
+  createdAt = '2099-10-01T00:00:00Z',
+): Promise<string> {
   const [app] = await h.sql`
-    insert into application (kind, chapter_id, status, applicant_name, applicant_contact_email, guardian_name, guardian_email)
-    values ('student', ${chapter}, 'submitted', ${applicantName}, 'p@example.test', 'Parent Testperson', 'p@example.test')
+    insert into application (kind, chapter_id, status, applicant_name, applicant_contact_email, guardian_name, guardian_email, created_at)
+    values ('student', ${chapter}, 'submitted', ${applicantName}, 'student@example.test', 'Parent Testperson', 'parent@example.test', ${createdAt})
     returning id
   `
   return app!.id as string
+}
+
+/** Attach a converted funnel draft (2A parentAnswers + 2B studentAnswers) to an application. */
+async function attachDraft(
+  chapter: string,
+  applicationId: string,
+  parentAnswers: Record<string, string>,
+  studentAnswers: Record<string, string> = {},
+): Promise<void> {
+  const [lead] = await h.sql`
+    insert into application_lead (email, chapter, chapter_id, filler_role, status, expires_at, converted_application_id)
+    values ('parent@example.test', 'code', ${chapter}, 'parent', 'converted', now() + interval '30 days', ${applicationId})
+    returning id
+  `
+  await h.sql`
+    insert into application_draft (lead_id, parent_token_hash, phase, status, parent_answers, student_answers, converted_application_id)
+    values (${lead!.id}, 'hash', 'submitted', 'submitted',
+            ${h.sql.json(parentAnswers)}, ${h.sql.json(studentAnswers)}, ${applicationId})
+  `
 }
 
 // ===========================================================================
@@ -86,13 +113,13 @@ describe('listApplications — the representative read matrix', () => {
     const b = await seedDirector(h.sql)
     const appA = await submittedApplication(a.chapter)
 
-    const seenByA = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: {} })
+    const seenByA = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: 'all' } })
     expect(seenByA.status).toBe(200)
     expect(seenByA.body.items.map((i) => i.applicationId)).toContain(appA)
     // A's list is confined to A's chapter.
     expect(seenByA.body.items.every((i) => i.chapterId === a.chapter)).toBe(true)
 
-    const seenByB = await listApplications({ sql: h.sql, sessionToken: b.directorToken, query: {} })
+    const seenByB = await listApplications({ sql: h.sql, sessionToken: b.directorToken, query: { termId: 'all' } })
     expect(seenByB.status).toBe(200)
     expect(seenByB.body.items.map((i) => i.applicationId)).not.toContain(appA)
   })
@@ -117,7 +144,7 @@ describe('listApplications — the representative read matrix', () => {
     const appB = await submittedApplication(b.chapter)
     const admin = await seedPlatformAdmin()
 
-    const all = await listApplications({ sql: h.sql, sessionToken: admin.token, query: {} })
+    const all = await listApplications({ sql: h.sql, sessionToken: admin.token, query: { termId: 'all' } })
     expect(all.status).toBe(200)
     const ids = all.body.items.map((i) => i.applicationId)
     expect(ids).toContain(appA)
@@ -126,7 +153,7 @@ describe('listApplications — the representative read matrix', () => {
     const filtered = await listApplications({
       sql: h.sql,
       sessionToken: admin.token,
-      query: { chapterId: a.chapter },
+      query: { chapterId: a.chapter, termId: 'all' },
     })
     expect(filtered.body.items.map((i) => i.applicationId)).toContain(appA)
     expect(filtered.body.items.map((i) => i.applicationId)).not.toContain(appB)
@@ -154,13 +181,13 @@ describe('listApplications — the representative read matrix', () => {
     const submitted = await submittedApplication(a.chapter)
     const [screening] = await h.sql`
       insert into application (kind, chapter_id, status, applicant_name, applicant_contact_email)
-      values ('student', ${a.chapter}, 'screening', 'Minor Testchild', 'p@example.test') returning id
+      values ('student', ${a.chapter}, 'screening', 'Minor Testchild', 'student@example.test') returning id
     `
     // CSV form
     const csv = await listApplications({
       sql: h.sql,
       sessionToken: a.directorToken,
-      query: { status: 'submitted' },
+      query: { status: 'submitted', termId: 'all' },
     })
     const csvIds = csv.body.items.map((i) => i.applicationId)
     expect(csvIds).toContain(submitted)
@@ -170,41 +197,111 @@ describe('listApplications — the representative read matrix', () => {
     const both = await listApplications({
       sql: h.sql,
       sessionToken: a.directorToken,
-      query: { status: ['submitted', 'screening'] },
+      query: { status: ['submitted', 'screening'], termId: 'all' },
     })
     const bothIds = both.body.items.map((i) => i.applicationId)
     expect(bothIds).toContain(submitted)
     expect(bothIds).toContain(screening!.id)
   })
+})
 
-  test('the list carries a first+last-initial display name, never the raw applicant last name', async () => {
+// ===========================================================================
+describe('listApplications — full applicant info (authorized PII for the director)', () => {
+  test('default returns FULL student name + grade + term; view=full adds guardian/school/contact', async () => {
     const a = await seedDirector(h.sql)
-    await submittedApplication(a.chapter, 'Minor Secretlastname')
-    const res = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: {} })
-    const blob = JSON.stringify(res.body)
-    expect(blob).not.toMatch(/Secretlastname/)
-    expect(res.body.items.some((i) => i.studentDisplayName === 'Minor S.')).toBe(true)
+    const appId = await submittedApplication(a.chapter, 'Minor Secretlastname')
+    await attachDraft(a.chapter, appId, {
+      gradeEntering: '8',
+      schoolName: 'Lincoln Middle School',
+      guardianName: 'Parent Fullname',
+    })
+
+    const def = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: 'all' } })
+    const row = def.body.items.find((i) => i.applicationId === appId)!
+    expect(row).toBeTruthy()
+    // Full applicant name is now returned to the director (authorized PII change).
+    expect(row.studentName).toBe('Minor Secretlastname')
+    expect(row.gradeLevel).toBe('8')
+    expect(row.submittedAt).toBeTruthy()
+    // Term is derived by date-containment (2099-10-01 is inside Fall Term 2099).
+    expect(row.termName).toBe('Fall Term 2099')
+    expect(row.termId).toBeTruthy()
+    // Default view is data-minimized: the extra full-PII fields are absent.
+    expect(row.guardianName).toBeUndefined()
+    expect(row.school).toBeUndefined()
+    expect(row.contactEmail).toBeUndefined()
+
+    const full = await listApplications({
+      sql: h.sql,
+      sessionToken: a.directorToken,
+      query: { termId: 'all', view: 'full' },
+    })
+    const frow = full.body.items.find((i) => i.applicationId === appId)!
+    expect(frow.guardianName).toBe('Parent Testperson') // application.guardian_name (full parent name)
+    expect(frow.school).toBe('Lincoln Middle School')
+    expect(frow.contactEmail).toBe('parent@example.test') // guardian_email ?? applicant_contact_email
+  })
+
+  test('gradeLevel is null when the draft has no grade (or no draft at all)', async () => {
+    const a = await seedDirector(h.sql)
+    const noDraft = await submittedApplication(a.chapter, 'Nodraft Kid')
+    const noGrade = await submittedApplication(a.chapter, 'Nograde Kid')
+    await attachDraft(a.chapter, noGrade, { schoolName: 'Some School' }) // no gradeEntering key
+    const res = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: 'all' } })
+    expect(res.body.items.find((i) => i.applicationId === noDraft)!.gradeLevel).toBeNull()
+    expect(res.body.items.find((i) => i.applicationId === noGrade)!.gradeLevel).toBeNull()
   })
 })
 
 // ===========================================================================
-describe('getApplication — detail with 2A/2B answers + history', () => {
-  test('returns the draft answers and the status history', async () => {
+describe('listApplications — term filter + most-recent default', () => {
+  test('?termId filters by window; ?termId=all returns all; no termId defaults to most recent', async () => {
+    const a = await seedDirector(h.sql) // creates Fall Term 2099 (2099-09-01 .. 2099-12-15)
+    const [fall] = await h.sql`select id from term where chapter_id = ${a.chapter} and name = 'Fall Term 2099'`
+    const [spring] = await h.sql`
+      insert into term (chapter_id, name, starts_on, ends_on)
+      values (${a.chapter}, 'Spring 2100', '2100-01-01', '2100-05-01') returning id
+    `
+    const appFall = await submittedApplication(a.chapter, 'Fall Applicant', '2099-10-01T00:00:00Z')
+    const appSpring = await submittedApplication(a.chapter, 'Spring Applicant', '2100-02-01T00:00:00Z')
+
+    // ?termId=all — both appear, each carrying its own derived term.
+    const all = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: 'all' } })
+    const allIds = all.body.items.map((i) => i.applicationId)
+    expect(allIds).toEqual(expect.arrayContaining([appFall, appSpring]))
+    const fallItem = all.body.items.find((i) => i.applicationId === appFall)!
+    expect(fallItem.termId).toBe(fall!.id)
+    expect(fallItem.termName).toBe('Fall Term 2099')
+
+    // ?termId=<fall> — only the Fall applicant.
+    const onlyFall = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: fall!.id as string } })
+    const onlyFallIds = onlyFall.body.items.map((i) => i.applicationId)
+    expect(onlyFallIds).toContain(appFall)
+    expect(onlyFallIds).not.toContain(appSpring)
+    expect(onlyFall.body.activeTermId).toBe(fall!.id)
+    expect(onlyFall.body.activeTermName).toBe('Fall Term 2099')
+
+    // No termId — defaults to the most recent term (Spring 2100), filters to it.
+    const def = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: {} })
+    const defIds = def.body.items.map((i) => i.applicationId)
+    expect(defIds).toContain(appSpring)
+    expect(defIds).not.toContain(appFall)
+    expect(def.body.activeTermId).toBe(spring!.id)
+    expect(def.body.activeTermName).toBe('Spring 2100')
+  })
+})
+
+// ===========================================================================
+describe('getApplication — full record + complete 2A/2B answers + history', () => {
+  test('returns full name/grade/school/contact/parent + the raw answer blobs and history', async () => {
     const a = await seedDirector(h.sql)
-    // A full funnel-shaped record: an application plus its draft (2A + 2B answers)
-    // and a couple of application_event rows.
-    const appId = await submittedApplication(a.chapter)
-    const [lead] = await h.sql`
-      insert into application_lead (email, chapter, chapter_id, filler_role, status, expires_at, converted_application_id)
-      values ('p@example.test', 'code', ${a.chapter}, 'parent', 'converted', now() + interval '30 days', ${appId})
-      returning id
-    `
-    await h.sql`
-      insert into application_draft (lead_id, parent_token_hash, phase, status, parent_answers, student_answers, converted_application_id)
-      values (${lead!.id}, 'hash', 'submitted', 'submitted',
-              ${h.sql.json({ childName: 'Minor Testchild', guardianName: 'Parent Testperson' })},
-              ${h.sql.json({ favoriteThing: 'robots' })}, ${appId})
-    `
+    const appId = await submittedApplication(a.chapter, 'Minor Secretlastname')
+    await attachDraft(
+      a.chapter,
+      appId,
+      { childName: 'Minor Secretlastname', gradeEntering: '9', schoolName: 'Central High', guardianName: 'Parent Testperson' },
+      { interests: 'robots', motivation: 'to build things' },
+    )
     await h.sql`
       insert into application_event (application_id, from_status, to_status, note)
       values (${appId}, null, 'submitted', 'created'), (${appId}, 'submitted', 'screening', 'looks good')
@@ -213,8 +310,20 @@ describe('getApplication — detail with 2A/2B answers + history', () => {
     const res = await getApplication({ sql: h.sql, sessionToken: a.directorToken, params: { id: appId } })
     expect(res.status).toBe(200)
     expect(res.body.applicationId).toBe(appId)
-    expect(res.body.answers.stage2a).toMatchObject({ childName: 'Minor Testchild' })
-    expect(res.body.answers.stage2b).toMatchObject({ favoriteThing: 'robots' })
+    // Full applicant PII returned to the director for their own chapter.
+    expect(res.body.student.fullName).toBe('Minor Secretlastname')
+    expect(res.body.student.gradeLevel).toBe('9')
+    expect(res.body.student.school).toBe('Central High')
+    expect(res.body.student.contactEmail).toBe('parent@example.test')
+    expect(res.body.guardian.fullName).toBe('Parent Testperson')
+    expect(res.body.guardian.email).toBe('parent@example.test')
+    // Term derived by containment.
+    expect(res.body.termName).toBe('Fall Term 2099')
+    expect(res.body.termId).toBeTruthy()
+    // The complete raw answer blobs, unmodified.
+    expect(res.body.answers.stage2a).toMatchObject({ childName: 'Minor Secretlastname', gradeEntering: '9', schoolName: 'Central High' })
+    expect(res.body.answers.stage2b).toMatchObject({ interests: 'robots', motivation: 'to build things' })
+    expect(res.body.answers.stage2c).toBeNull()
     expect(res.body.history.map((e) => e.to)).toEqual(['submitted', 'screening'])
     expect(res.body.history[1]!.from).toBe('submitted')
   })
@@ -231,6 +340,17 @@ describe('getApplication — detail with 2A/2B answers + history', () => {
     const a = await seedDirector(h.sql)
     const res = await getApplication({ sql: h.sql, sessionToken: a.directorToken, params: { id: randomUUID() } })
     expect(res.status).toBe(404)
+  })
+})
+
+// ===========================================================================
+describe('applications PII change is scoped — other surfaces still masked', () => {
+  test('memberships roster still returns a masked display name, never a raw last name', async () => {
+    const s = await onboardStudent(h.sql, { activate: true })
+    const res = await listMemberships({ sql: h.sql, sessionToken: s.directorToken, query: {} })
+    const student = res.body.items.find((i) => i.accountId === s.accountId)!
+    expect(student.displayName).toBe('Minor T.') // first name + last initial, unchanged
+    expect(JSON.stringify(res.body)).not.toMatch(/Testchild/) // raw last name never leaks here
   })
 })
 

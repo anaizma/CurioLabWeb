@@ -70,12 +70,30 @@ export interface OpsReadServiceDeps {
 export interface ApplicationListItem {
   applicationId: string
   status: string
-  studentDisplayName: string | null
-  guardianDisplayName: string | null
+  /** FULL applicant name (authorized director PII for their own chapter; see the PII note). */
+  studentName: string | null
+  /** From the draft's parentAnswers `gradeEntering`; null when absent / no draft. */
+  gradeLevel: string | null
   submittedAt: string
   chapterId: string
-  /** No term is captured on an application; always null (noted for the frontend). */
-  term: string | null
+  /** The term whose [starts_on, ends_on] window contains created_at (date-containment). */
+  termId: string | null
+  termName: string | null
+  // ---- `?view=full` only (data-minimized by default) ----
+  /** FULL parent/guardian name (application.guardian_name). */
+  guardianName?: string | null
+  /** From the draft's parentAnswers `schoolName`. */
+  school?: string | null
+  /** guardian_email ?? applicant_contact_email. */
+  contactEmail?: string | null
+}
+
+/** The list envelope: the items plus the resolved active (filtered) term, if any. */
+export interface ApplicationListResult {
+  items: ApplicationListItem[]
+  /** The term the list was filtered to (the default most-recent term, or ?termId); null for ?termId=all / when no terms exist. */
+  activeTermId: string | null
+  activeTermName: string | null
 }
 
 export interface ApplicationDetail {
@@ -83,8 +101,16 @@ export interface ApplicationDetail {
   status: string
   submittedAt: string
   chapterId: string
-  student: { displayName: string | null }
-  guardian: { displayName: string | null; email: string | null }
+  /** The term whose window contains created_at (date-containment), if any. */
+  termId: string | null
+  termName: string | null
+  student: {
+    fullName: string | null
+    gradeLevel: string | null
+    school: string | null
+    contactEmail: string | null
+  }
+  guardian: { fullName: string | null; email: string | null }
   answers: {
     stage2a: Record<string, unknown>
     stage2b: Record<string, unknown>
@@ -193,6 +219,10 @@ export interface DashboardSummary {
 export interface ApplicationListQuery {
   chapterId?: string | null
   statuses?: string[]
+  /** `'full'` includes guardianName/school/contactEmail on each item. */
+  view?: 'full' | null
+  /** A term id to filter by (created_at within its window), `'all'` for no term filter, or omitted to default to the most recent term. */
+  termId?: string | null
 }
 export interface MembershipListQuery {
   chapterId?: string | null
@@ -236,6 +266,25 @@ function iso(v: unknown): string {
   return v instanceof Date ? v.toISOString() : String(v)
 }
 
+/** A postgres `date` (arrives as a Date or a string) reduced to its YYYY-MM-DD. */
+function dateOnly(v: unknown): string {
+  return v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10)
+}
+
+// The exact keys the apply funnel's 2A parent section writes into
+// application_draft.parentAnswers (app/apply/parent/[token]/parent-client.tsx).
+const PARENT_GRADE_KEY = 'gradeEntering'
+const PARENT_SCHOOL_KEY = 'schoolName'
+
+/** Read a trimmed non-empty string value from a jsonb answers blob, else null. */
+function answerString(blob: unknown, key: string): string | null {
+  if (blob == null || typeof blob !== 'object') return null
+  const v = (blob as Record<string, unknown>)[key]
+  if (v == null) return null
+  const s = String(v).trim()
+  return s === '' ? null : s
+}
+
 // ---------------------------------------------------------------------------
 
 export class OpsReadService {
@@ -276,38 +325,132 @@ export class OpsReadService {
 
   // ---- applications -------------------------------------------------------
 
+  /**
+   * The application list. Returns FULL applicant PII (name, grade, school,
+   * parent, contact) to the chapter director for their OWN chapter — an
+   * authorized application-processing use (see the PII note in the header);
+   * `application.read` restricts this to that director (+ admin). Grade/school
+   * come from the funnel draft's `parentAnswers`; each item's term is derived by
+   * date-containment against the `term` table (mirroring attendance). The list
+   * defaults to the MOST RECENT term (latest started `starts_on`, else latest
+   * `starts_on`) and filters to it; `?termId=<id>` filters to that term's window;
+   * `?termId=all` returns all terms. Extra PII fields are included only on
+   * `?view=full` (data-minimized by default).
+   */
   async listApplications(
     ctx: AuthContext,
     query: ApplicationListQuery = {},
-  ): Promise<{ items: ApplicationListItem[] }> {
+  ): Promise<ApplicationListResult> {
     const chapters = await this.resolveChapters(ctx, 'application.read', query.chapterId)
     const statuses = query.statuses && query.statuses.length > 0 ? query.statuses : null
+    const full = query.view === 'full'
     const sql = this.sql
+
+    // Resolve the term the list is filtered to.
+    interface FilterTerm {
+      id: string
+      name: string | null
+      startsOn: string
+      endsOn: string
+    }
+    let filterTerm: FilterTerm | null = null
+    const termParam = query.termId
+    if (termParam === 'all') {
+      filterTerm = null
+    } else if (termParam != null && termParam !== '') {
+      const [t] = await sql`select id, name, starts_on, ends_on from term where id = ${termParam}`
+      filterTerm = t
+        ? {
+            id: t.id as string,
+            name: t.name as string,
+            startsOn: dateOnly(t.starts_on),
+            endsOn: dateOnly(t.ends_on),
+          }
+        : // Unknown term id: an empty window so nothing matches (never a leak).
+          { id: termParam, name: null, startsOn: '0001-01-01', endsOn: '0001-01-01' }
+    } else {
+      // Default: the most recent term in scope (prefer started, else latest starts_on).
+      const [t] = await sql`
+        select id, name, starts_on, ends_on from term
+        where ${chapters === null ? sql`true` : sql`chapter_id in ${sql(chapters)}`}
+        order by (starts_on <= current_date) desc, starts_on desc
+        limit 1
+      `
+      filterTerm = t
+        ? {
+            id: t.id as string,
+            name: t.name as string,
+            startsOn: dateOnly(t.starts_on),
+            endsOn: dateOnly(t.ends_on),
+          }
+        : null
+    }
+
     const rows = await sql`
-      select a.id, a.status, a.applicant_name, a.guardian_name, a.chapter_id, a.created_at
+      select a.id, a.status, a.applicant_name, a.guardian_name, a.guardian_email,
+             a.applicant_contact_email, a.chapter_id, a.created_at,
+             d.parent_answers,
+             ct.id as term_id, ct.name as term_name
       from application a
+      left join lateral (
+        select parent_answers from application_draft
+        where converted_application_id = a.id
+        order by created_at desc limit 1
+      ) d on true
+      left join lateral (
+        select id, name from term
+        where chapter_id = a.chapter_id
+          and a.created_at::date between starts_on and ends_on
+        order by starts_on desc limit 1
+      ) ct on true
       where ${chapters === null ? sql`true` : sql`a.chapter_id in ${sql(chapters)}`}
         ${statuses ? sql`and a.status in ${sql(statuses)}` : sql``}
+        ${
+          filterTerm
+            ? sql`and a.created_at::date between ${filterTerm.startsOn}::date and ${filterTerm.endsOn}::date`
+            : sql``
+        }
       order by a.created_at desc
     `
-    return {
-      items: rows.map((r) => ({
+
+    const items = rows.map((r) => {
+      const item: ApplicationListItem = {
         applicationId: r.id as string,
         status: r.status as string,
-        studentDisplayName: displayFromFullName(r.applicant_name as string | null),
-        guardianDisplayName: displayFromFullName(r.guardian_name as string | null),
+        studentName: (r.applicant_name as string | null) ?? null,
+        gradeLevel: answerString(r.parent_answers, PARENT_GRADE_KEY),
         submittedAt: iso(r.created_at),
         chapterId: r.chapter_id as string,
-        term: null,
-      })),
+        termId: (r.term_id as string | null) ?? null,
+        termName: (r.term_name as string | null) ?? null,
+      }
+      if (full) {
+        item.guardianName = (r.guardian_name as string | null) ?? null
+        item.school = answerString(r.parent_answers, PARENT_SCHOOL_KEY)
+        item.contactEmail =
+          (r.guardian_email as string | null) ?? (r.applicant_contact_email as string | null) ?? null
+      }
+      return item
+    })
+
+    return {
+      items,
+      activeTermId: filterTerm ? filterTerm.id : null,
+      activeTermName: filterTerm ? filterTerm.name : null,
     }
   }
 
+  /**
+   * The full application review record for the chapter director: the FULL
+   * applicant name/grade/school/contact and parent name/email, the derived term,
+   * the COMPLETE raw 2A (parentAnswers) + 2B (studentAnswers) answer blobs
+   * (unmodified — the questionnaire the parent saw), and the status history.
+   */
   async getApplication(ctx: AuthContext, applicationId: string): Promise<ApplicationDetail> {
     const sql = this.sql
     const [app] = await sql`
-      select id, status, chapter_id, applicant_name, guardian_name, guardian_email,
-             created_at, student_section
+      select id, status, chapter_id, applicant_name, applicant_contact_email,
+             guardian_name, guardian_email, created_at, student_section
       from application where id = ${applicationId}
     `
     if (app === undefined) throw new ApplicationNotFoundError(applicationId)
@@ -323,11 +466,19 @@ export class OpsReadService {
       from application_draft where converted_application_id = ${applicationId}
       order by created_at desc limit 1
     `
+    // The term whose window contains created_at (date-containment), in the app's chapter.
+    const [term] = await sql`
+      select id, name from term
+      where chapter_id = ${app.chapter_id as string}
+        and ${app.created_at}::date between starts_on and ends_on
+      order by starts_on desc limit 1
+    `
     const events = await sql`
       select from_status, to_status, at, note
       from application_event where application_id = ${applicationId}
       order by at asc
     `
+    const parentAnswers = (draft?.parent_answers as Record<string, unknown> | null) ?? {}
     const stage2b =
       (draft?.student_answers as Record<string, unknown> | null) ??
       (app.student_section as Record<string, unknown> | null) ??
@@ -337,13 +488,23 @@ export class OpsReadService {
       status: app.status as string,
       submittedAt: iso(app.created_at),
       chapterId: app.chapter_id as string,
-      student: { displayName: displayFromFullName(app.applicant_name as string | null) },
+      termId: (term?.id as string | null) ?? null,
+      termName: (term?.name as string | null) ?? null,
+      student: {
+        fullName: (app.applicant_name as string | null) ?? null,
+        gradeLevel: answerString(parentAnswers, PARENT_GRADE_KEY),
+        school: answerString(parentAnswers, PARENT_SCHOOL_KEY),
+        contactEmail:
+          (app.guardian_email as string | null) ??
+          (app.applicant_contact_email as string | null) ??
+          null,
+      },
       guardian: {
-        displayName: displayFromFullName(app.guardian_name as string | null),
+        fullName: (app.guardian_name as string | null) ?? null,
         email: (app.guardian_email as string | null) ?? null,
       },
       answers: {
-        stage2a: (draft?.parent_answers as Record<string, unknown> | null) ?? {},
+        stage2a: parentAnswers,
         stage2b,
         stage2c: null,
       },

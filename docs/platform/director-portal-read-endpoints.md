@@ -20,11 +20,15 @@ The frontend ships today against representative fallback data and flips each sur
 
 Powers the Applications review surface (transitions already exist at `PATCH /api/ops/applications/{id}`).
 
-- **List** `?status=submitted|screening|interview|accepted|declined|withdrawn` (repeatable). Response:
-  `{ items: [{ applicationId, status, studentDisplayName, guardianDisplayName, submittedAt, chapterId, term?: string }] }`
+> **Full applicant PII, by design (applications only).** The program lead authorized exposing the FULL applicant name, grade, school, parent name, and contact to the chapter director for **their own chapter's** applications — a legitimate application-processing need, restricted by `application.read` to that chapter's director (+ admin). This is scoped to the applications list/detail; every other director surface still masks minors to a display name.
+
+- **List** `?status=submitted|screening|interview|accepted|declined|withdrawn` (repeatable/CSV), `?view=full`, `?termId=<id>|all`, `?chapterId=`. Response:
+  - Default item: `{ applicationId, status, studentName (FULL), gradeLevel: string|null, submittedAt, chapterId, termId: string|null, termName: string|null }`, plus envelope `{ activeTermId, activeTermName }`.
+  - `?view=full` adds to each item: `guardianName (FULL), school: string|null, contactEmail: string|null` (data-minimized — only with `view=full`).
+  - **Grade/school** come from the funnel draft's `parentAnswers` (keys `gradeEntering` / `schoolName`). **Term** is derived by date-containment (the term whose `[starts_on, ends_on]` contains the application's `created_at`). With no `?termId`, the list **defaults to the most recent term** (latest started `starts_on`, else latest `starts_on`) and filters to it; `?termId=all` returns every term.
 - **Detail** `{id}`:
-  `{ applicationId, status, submittedAt, student: { displayName, ageBand? }, guardian: { displayName, email? }, answers: { stage2a: {...}, stage2b: {...}, stage2c?: {...} }, history: [{ from, to, at, note? }] }`
-  (Whatever the funnel captured — the detail view renders the 2A/2B/2C answers read-only for the review decision.)
+  `{ applicationId, status, submittedAt, chapterId, termId: string|null, termName: string|null, student: { fullName, gradeLevel, school, contactEmail }, guardian: { fullName, email }, answers: { stage2a: {...}, stage2b: {...}, stage2c: null }, history: [{ from, to, at, note? }] }`
+  (`stage2a`/`stage2b` are the funnel draft's complete raw parent/student answer blobs, unmodified, so the detail view renders every answer read-only for the review decision; there is no separate `stage2c` blob.)
 
 ### 2. `GET /api/ops/invites` — list
 

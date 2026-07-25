@@ -25,7 +25,7 @@
 import type { Sql } from 'postgres'
 import {
   OpsReadService,
-  type ApplicationListItem,
+  type ApplicationListResult,
   type ApplicationDetail,
   type InviteListItem,
   type MembershipListItem,
@@ -86,12 +86,16 @@ function svc(sql: Sql) {
 
 export function listApplications(
   input: ReadQueryInput,
-): Promise<ControllerResult<ListEnvelope<ApplicationListItem>>> {
+): Promise<ControllerResult<ApplicationListResult>> {
   return runAuthed(input, async (ctx, sql) => {
     const statuses = normalizeApplicationStatuses(parseList(input.query?.status))
+    const view = optStr(input.query?.view) === 'full' ? ('full' as const) : null
+    const termId = optStr(input.query?.termId)
     const result = await svc(sql).listApplications(ctx, {
       chapterId: chapterId(input),
       ...(statuses ? { statuses } : {}),
+      ...(view ? { view } : {}),
+      ...(termId != null ? { termId } : {}),
     })
     return { status: 200, body: result }
   })

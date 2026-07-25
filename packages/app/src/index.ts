@@ -419,6 +419,7 @@ export type {
   OpsReadAuthorizeFn,
   OpsReadCapability,
   ApplicationListItem,
+  ApplicationListResult,
   ApplicationDetail,
   InviteListItem,
   MembershipListItem,
