@@ -25,6 +25,7 @@ import { startHarness, type Harness } from './helpers/pg.js'
 import { makeAdult, makeChapter, makeMinor } from './helpers/fixtures.js'
 import { baseCtx, mem } from './helpers/ctx.js'
 import {
+  type AppConfig,
   ConsentGrantService,
   DmEnableService,
   DmEnablePreconditionError,
@@ -143,6 +144,17 @@ async function captureMentorDm(w: World, opts: { now?: Date } = {}): Promise<voi
   await withRequest(() =>
     svc.captureGrant(w.student, 'mentor_dm', gctx, {
       method: 'signed_form', evidenceArtifactRef: 'signed-dm-consent-ref', now: opts.now ?? NOW,
+    }),
+  )
+}
+
+/** Capture a signed-form student_notification_email grant for a 13+ student (via the guardian). */
+async function captureNotificationEmailGrant(w: World, opts: { now?: Date } = {}): Promise<void> {
+  const svc = new ConsentGrantService({ sql: h.sql, authorize })
+  const gctx: AuthContext = { ...baseCtx(w.guardian, opts.now ?? NOW), guardianOf: [w.student] }
+  await withRequest(() =>
+    svc.captureGrant(w.student, 'student_notification_email', gctx, {
+      method: 'signed_form', evidenceArtifactRef: 'signed-notif-consent-ref', now: opts.now ?? NOW,
     }),
   )
 }
@@ -391,8 +403,8 @@ describe('DmThreadService — notification-only email on send', () => {
     await captureMentorDm(w)
     return w
   }
-  function svc(mailer: Mailer): DmThreadService {
-    return new DmThreadService({ sql: h.sql, config: { mentorDmEnabled: true }, authorize, mailer })
+  function svc(mailer: Mailer, extraConfig: Partial<AppConfig> = {}): DmThreadService {
+    return new DmThreadService({ sql: h.sql, config: { mentorDmEnabled: true, ...extraConfig }, authorize, mailer })
   }
 
   test('a mentor→student message notifies the student’s verified guardian, WITHOUT the message body', async () => {
@@ -436,24 +448,48 @@ describe('DmThreadService — notification-only email on send', () => {
     expect(mailer.sent.filter((m) => m.to === guardianEmail)).toHaveLength(1)
   })
 
-  test('a 13+ student with an email is notified alongside the guardian (both addresses)', async () => {
+  test('a 13+ student is notified at their CONFIGURED notification email (not account.email), alongside the guardian', async () => {
     // Seed the student at age 16 (date_of_birth is write-once, so it must be set at creation).
     const w = await provisioned({ studentDob: '2010-01-01' })
     const guardianEmail = (await emailOf(w.guardian))!
-    // Give the 16-year-old an email identity (username cleared).
-    const studentEmail = `teen-${Date.now()}@example.test`
-    await h.sql`update account set email = ${studentEmail}, username = null where id = ${w.student}`
+    // The student configures their OWN notification email + an active grant (flag on).
+    // Their login-identity account.email stays null — they are username-identified —
+    // so the nudge must route to notification_email, never a raw login address.
+    const notifEmail = `teen-notif-${Date.now()}@example.test`
+    await captureNotificationEmailGrant(w)
+    await h.sql`update account set notification_email = ${notifEmail} where id = ${w.student}`
 
     const mailer = new FakeMailer()
     await withRequest(() =>
-      svc(mailer).sendMessage(
+      svc(mailer, { studentNotificationEmailEnabled: true }).sendMessage(
         { mentorMembershipId: w.mentorMembership, studentAccountId: w.student, chapterId: w.chapter, body: 'hello teen' },
         mentorCtx(w), NOW,
       ),
     )
 
-    expect(mailer.sent.filter((m) => m.to === studentEmail)).toHaveLength(1)
+    // Delivered to the configured notification email AND the guardian — and nothing else.
+    expect(mailer.sent.filter((m) => m.to === notifEmail)).toHaveLength(1)
     expect(mailer.sent.filter((m) => m.to === guardianEmail)).toHaveLength(1)
+    expect(mailer.sent.every((m) => m.to === notifEmail || m.to === guardianEmail)).toBe(true)
+  })
+
+  test('a 13+ student who has NOT configured a notification email is guardian-only (never account.email)', async () => {
+    const w = await provisioned({ studentDob: '2010-01-01' })
+    const guardianEmail = (await emailOf(w.guardian))!
+    // Give the teen a raw login-identity email but NO notification_email/grant: the
+    // resolver must not fall back to account.email — only the guardian is notified.
+    await h.sql`update account set email = ${`teen-login-${Date.now()}@example.test`}, username = null where id = ${w.student}`
+
+    const mailer = new FakeMailer()
+    await withRequest(() =>
+      svc(mailer, { studentNotificationEmailEnabled: true }).sendMessage(
+        { mentorMembershipId: w.mentorMembership, studentAccountId: w.student, chapterId: w.chapter, body: 'hello teen' },
+        mentorCtx(w), NOW,
+      ),
+    )
+
+    expect(mailer.sent.filter((m) => m.to === guardianEmail)).toHaveLength(1)
+    expect(mailer.sent.every((m) => m.to === guardianEmail)).toBe(true)
   })
 
   test('a student→mentor message notifies the mentor', async () => {

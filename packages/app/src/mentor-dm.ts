@@ -45,6 +45,7 @@ import {
 import { type AppConfig, defaultConfig } from './config.js'
 import { type Mailer, type MailMessage, defaultMailer } from './mail.js'
 import { loadMentorEligibility } from './mentor-eligibility.js'
+import { resolveStudentNotificationTargets } from './student-notification.js'
 import {
   DmClosedHoursError,
   DmEnablePreconditionError,
@@ -55,23 +56,6 @@ import {
 } from './errors.js'
 
 type Db = Sql | TransactionSql
-
-/** Whole years from `dob` to `at` (birthday-aware, UTC). */
-function ageInYears(dob: Date, at: Date): number {
-  let age = at.getUTCFullYear() - dob.getUTCFullYear()
-  const m = at.getUTCMonth() - dob.getUTCMonth()
-  if (m < 0 || (m === 0 && at.getUTCDate() < dob.getUTCDate())) age -= 1
-  return age
-}
-
-/**
- * The COPPA age floor for emailing a STUDENT's own address directly. A student
- * under this age is never sent a direct notification — only their guardian(s) are
- * (design: under-13 DM notifications are guardian-only; a 13+ student with a
- * consented channel may also be emailed at their own address). A value, not a
- * literal — the threshold is a policy constant.
- */
-const DM_STUDENT_DIRECT_EMAIL_MIN_AGE = 13
 
 /**
  * The sender's LOCAL wall-clock hour (0-23) in a timezone, at `now`. Deterministic
@@ -718,45 +702,40 @@ export class DmThreadService {
     now: Date,
   ): Promise<void> {
     try {
+      // The email links straight to the portal login. A student (their own nudge,
+      // or a guardian-received nudge about a minor) signs in with their USERNAME +
+      // password; adults sign in with their email. No message body is ever included.
+      const loginUrl = `${this.config.appUrl}/login`
       const recipientIsStudent = senderAccountId !== args.studentAccountId
       if (recipientIsStudent) {
-        // The verified guardian(s) are ALWAYS notified. The student's OWN address
-        // is emailed only when the student is 13+ (COPPA floor): an under-13
-        // student is never emailed directly — even if an address is on file — so
-        // the direct email cannot leak to a protected minor. A missing DOB is
-        // treated as protected (no direct email).
-        const [srow] = await this.sql`
-          select date_of_birth, email from account where id = ${args.studentAccountId}
-        `
-        const studentEmail = (srow?.email as string | null) ?? null
-        const dob = srow?.date_of_birth as string | Date | null | undefined
-        const studentAge = dob != null ? ageInYears(new Date(dob), now) : null
-        if (
-          studentEmail !== null &&
-          studentAge !== null &&
-          studentAge >= DM_STUDENT_DIRECT_EMAIL_MIN_AGE
-        ) {
+        // Recipient resolution runs through the SINGLE COPPA enforcement point,
+        // resolveStudentNotificationTargets: the student's own configured
+        // notification_email is emitted ONLY when the feature flag is on AND the
+        // student is 13+ AND an active student_notification_email grant is on file
+        // AND the address is set. An under-13 student NEVER resolves a direct
+        // address, so the nudge can't reach a protected minor — only the guardian
+        // is emailed. Every VERIFIED guardian is ALWAYS notified. (Their raw
+        // account.email is never used; a minor is username-identified.)
+        const targets = await resolveStudentNotificationTargets(
+          this.sql,
+          args.studentAccountId,
+          now,
+          this.config,
+        )
+        if (targets.studentEmail !== null) {
           await this.sendBestEffort({
-            to: studentEmail,
+            to: targets.studentEmail,
             subject: 'New message in CurioLab',
-            text: 'You have a new message from your CurioLab mentor. Open your CurioLab portal to read and reply.',
-            html: '<p>You have a new message from your CurioLab mentor.</p><p>Open your CurioLab portal to read and reply.</p>',
+            text: `You have a new message from your CurioLab mentor. Sign in to your CurioLab portal to read and reply: ${loginUrl}`,
+            html: `<p>You have a new message from your CurioLab mentor.</p><p><a href="${loginUrl}">Sign in to your CurioLab portal</a> to read and reply.</p>`,
           })
         }
-        const guardianRows = await this.sql`
-          select a.email
-          from guardianship g
-          join account a on a.id = g.guardian_account_id
-          where g.student_account_id = ${args.studentAccountId}
-            and g.status = 'verified'
-            and a.email is not null
-        `
-        for (const r of guardianRows) {
+        for (const guardianEmail of targets.guardianEmails) {
           await this.sendBestEffort({
-            to: r.email as string,
+            to: guardianEmail,
             subject: 'A new CurioLab message for your child',
-            text: 'Your child has a new message from their CurioLab mentor. Open the CurioLab portal to view the conversation.',
-            html: '<p>Your child has a new message from their CurioLab mentor.</p><p>Open the CurioLab portal to view the conversation.</p>',
+            text: `Your child has a new message from their CurioLab mentor. Open the CurioLab portal to view the conversation — your child signs in with their username and password: ${loginUrl}`,
+            html: `<p>Your child has a new message from their CurioLab mentor.</p><p><a href="${loginUrl}">Open the CurioLab portal</a> — your child signs in with their username and password.</p>`,
           })
         }
       } else {
@@ -772,8 +751,8 @@ export class DmThreadService {
           await this.sendBestEffort({
             to: mentorEmail,
             subject: 'New CurioLab message',
-            text: 'You have a new message from your student. Open your CurioLab portal to read and reply.',
-            html: '<p>You have a new message from your student.</p><p>Open your CurioLab portal to read and reply.</p>',
+            text: `You have a new message from your student. Sign in to your CurioLab portal to read and reply: ${loginUrl}`,
+            html: `<p>You have a new message from your student.</p><p><a href="${loginUrl}">Sign in to your CurioLab portal</a> to read and reply.</p>`,
           })
         }
       }
