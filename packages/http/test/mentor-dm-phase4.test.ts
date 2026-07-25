@@ -137,8 +137,13 @@ async function fullyProvisioned(): Promise<World> {
 }
 
 async function seedThread(w: World): Promise<string> {
+  // Pin a deterministic mid-day instant (16:00Z = ~noon in the chapter's US
+  // timezone) so the Phase-2 closed-hours check (07:00-21:00 local) does not make
+  // this test wall-clock-dependent: without it the send is refused (409) whenever
+  // the suite runs after 21:00 local. The hours behavior itself is covered by the
+  // app-layer Phase-2 tests with an injected `now`.
   const res = await sendDmMessage({
-    sql: h.sql, sessionToken: w.mentorToken,
+    sql: h.sql, sessionToken: w.mentorToken, now: new Date('2026-07-24T16:00:00Z'),
     body: { mentorMembershipId: w.mentorMembership, studentAccountId: w.student, chapterId: w.chapter, body: 'hello student (synthetic)' },
   })
   expect(res.status).toBe(201)
