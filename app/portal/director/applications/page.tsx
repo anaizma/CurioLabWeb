@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getApplicationsView, gradeLabel, type ApplicationStatus } from "@/lib/portal/director/applications-data";
+import { getApplicationsView, getTerms, gradeLabel, type ApplicationStatus } from "@/lib/portal/director/applications-data";
+import ApplicationsControls from "@/components/portal/director/ApplicationsControls";
 import SampleBanner from "@/components/portal/SampleBanner";
 
 const STATUS_LABEL: Record<ApplicationStatus, string> = {
@@ -10,40 +11,29 @@ const STATUS_LABEL: Record<ApplicationStatus, string> = {
   declined: "Declined",
 };
 
-export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<{ terms?: string }> }) {
-  const { terms } = await searchParams;
-  const allTerms = terms === "all";
-  const { applications, activeTermName, isSample } = await getApplicationsView({ allTerms });
+export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<{ term?: string; view?: string }> }) {
+  const { term, view } = await searchParams;
+  const full = view === "full";
+  const [{ terms }, appsView] = await Promise.all([
+    getTerms(),
+    getApplicationsView({ termId: term, full }),
+  ]);
+  const { applications, activeTermId, activeTermName, isSample } = appsView;
+  const showingAll = term === "all";
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Applications</h1>
           <p className="text-ink/60 text-sm mt-1">Review and advance applications for this chapter.</p>
         </div>
-        {/* Backend now defaults to the most-recent term; toggle to see every term. */}
-        <div className="flex items-center gap-1 rounded-lg border border-ink/10 bg-white p-0.5 text-xs font-semibold shrink-0">
-          <Link
-            href="/portal/director/applications"
-            className="rounded-md px-2.5 py-1 transition-colors"
-            style={!allTerms ? { background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" } : { color: "var(--color-ink)", opacity: 0.6 }}
-          >
-            {activeTermName ?? "Current term"}
-          </Link>
-          <Link
-            href="/portal/director/applications?terms=all"
-            className="rounded-md px-2.5 py-1 transition-colors"
-            style={allTerms ? { background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" } : { color: "var(--color-ink)", opacity: 0.6 }}
-          >
-            All terms
-          </Link>
-        </div>
+        <ApplicationsControls terms={terms} activeTermId={activeTermId} view={full ? "full" : "partial"} />
       </div>
       {isSample && <SampleBanner />}
       {applications.length === 0 ? (
         <p className="text-sm text-ink/50 rounded-xl border border-ink/10 bg-white px-4 py-6 text-center">
-          No applications{allTerms ? "" : activeTermName ? ` for ${activeTermName}` : " for the current term"}.
+          No applications{showingAll ? "" : activeTermName ? ` for ${activeTermName}` : ""}.
         </p>
       ) : (
         <ul className="rounded-xl border border-ink/10 bg-white divide-y divide-ink/5">
@@ -63,9 +53,17 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                       )}
                     </div>
                     <div className="text-xs text-ink/50 mt-0.5">
-                      submitted {a.submittedLabel}
-                      {allTerms && a.termName ? ` · ${a.termName}` : ""}
+                      applied {a.submittedLabel}
+                      {showingAll && a.termName ? ` · ${a.termName}` : ""}
                     </div>
+                    {/* Full view adds the applicant's non-answer info (parent, school, contact). */}
+                    {full && (
+                      <div className="text-xs text-ink/45 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                        {a.guardianName && <span>Parent: {a.guardianName}</span>}
+                        {a.school && <span>{a.school}</span>}
+                        {a.contactEmail && <span className="font-mono">{a.contactEmail}</span>}
+                      </div>
+                    )}
                   </div>
                   <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 shrink-0" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
                     {STATUS_LABEL[a.status]}
