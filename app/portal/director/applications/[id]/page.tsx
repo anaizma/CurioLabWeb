@@ -44,6 +44,39 @@ export default async function ApplicationDetailPage({ params }: { params: Promis
           {detail.interview.location ? ` · ${detail.interview.location}` : ""}
         </div>
       )}
+      {detail.duplicate?.flagged && (
+        <div
+          className="rounded-sm px-4 py-2.5 text-[13px] flex items-center justify-between gap-3 flex-wrap"
+          style={{ background: "#FBF0DA", color: "#8A5A00" }}
+        >
+          <div>
+            <span className="font-semibold">Possible duplicate applicant.</span>{" "}
+            Matches {detail.duplicate.ofApplicantName ?? "an existing application"} by name and date of birth.
+            {detail.duplicate.ofApplicationId && (
+              <>
+                {" "}
+                <Link
+                  href={`/portal/director/applications/${detail.duplicate.ofApplicationId}`}
+                  className="underline font-medium"
+                >
+                  View the other application
+                </Link>
+                .
+              </>
+            )}
+          </div>
+          {!isSample && (
+            <OpsActionButton
+              method="PATCH"
+              url={`/api/ops/applications/${detail.applicationId}`}
+              body={{ action: "clear-duplicate-flag" }}
+              label="Not a duplicate"
+              variant="outline"
+              confirmText="Dismiss the duplicate flag for this application?"
+            />
+          )}
+        </div>
+      )}
       {/* Applicant info the director needs to process the application (full PII, own chapter only). */}
       <div className="rounded-sm border border-ink/10 bg-white p-5 grid grid-cols-2 gap-x-6 gap-y-4">
         <InfoField label="Guardian" value={detail.guardianName} />
