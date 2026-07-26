@@ -95,6 +95,12 @@ export class LeadService {
     // for this email, regardless of age. A parent who lost the link gets a FRESH
     // one (the old goes stale) without a duplicate row. Only when no open lead
     // exists (all prior converted/deleted) do we create a new lead below.
+    //
+    // Not transactional with the re-mint below - two near-simultaneous re-applies
+    // for the same email can both read this SELECT and both mint a token, and
+    // last-write-wins on the UPDATE. Self-healing (only the last-emailed link is
+    // valid, and it's the same party either way); rate-limiting/debounce at the
+    // HTTP layer is the intended mitigation, same deferral as config.ts's dedupe note.
     const [openLead] = await this.sql`
       select id from application_lead
       where email = ${input.email}
@@ -105,10 +111,7 @@ export class LeadService {
     `
     if (openLead) {
       const leadId = openLead.id as string
-      const rawToken = generateSessionToken()
-      const tokenHash = hashToken(rawToken)
-      const now = new Date()
-      const expiresAt = new Date(now.getTime() + this.config.leadExpiryWindowMs)
+      const { rawToken, tokenHash, now, expiresAt } = this.mintToken()
       await this.sql`
         update application_lead
         set token_hash = ${tokenHash}, expires_at = ${expiresAt}, last_requested_at = ${now}
@@ -150,13 +153,9 @@ export class LeadService {
     // Issue the Stage-2 token now (design §7.1). Its hash is stored on the lead;
     // the raw token is captured so it can be surfaced to a PARENT-filler below. For
     // a student-filler the hash is still stored (the parent receives the raw token
-    // by email later) but the raw token is NOT returned in the response.
-    const rawToken = generateSessionToken()
-    const tokenHash = hashToken(rawToken)
-
-    // Set created_at and expires_at from one clock so the +30d invariant is exact.
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + this.config.leadExpiryWindowMs)
+    // by email later) but the raw token is NOT returned in the response. Minted
+    // from one clock so the +30d invariant is exact.
+    const { rawToken, tokenHash, now, expiresAt } = this.mintToken()
 
     const [row] = await this.sql`
       insert into application_lead
@@ -201,5 +200,14 @@ export class LeadService {
     }
 
     return { leadId: row!.id as string, suppressed: false, resent: false, parentToken }
+  }
+
+  /** Mint a fresh Stage-2 token (raw + hash) and the paired now/expiry stamps. */
+  private mintToken(): { rawToken: string; tokenHash: string; now: Date; expiresAt: Date } {
+    const rawToken = generateSessionToken()
+    const tokenHash = hashToken(rawToken)
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + this.config.leadExpiryWindowMs)
+    return { rawToken, tokenHash, now, expiresAt }
   }
 }
