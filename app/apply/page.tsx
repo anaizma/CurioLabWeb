@@ -10,6 +10,7 @@ type Status = "idle" | "submitting" | "error";
 
 interface ApplyResult {
   suppressed: boolean;
+  resent: boolean;
   parentToken: string | null;
   fillerRole: FillerRole;
 }
@@ -43,6 +44,7 @@ export default function ApplyPage() {
       }
       setResult({
         suppressed: Boolean(body.suppressed),
+        resent: Boolean(body.resent),
         parentToken: typeof body.parentToken === "string" ? body.parentToken : null,
         fillerRole,
       });
@@ -67,17 +69,15 @@ export default function ApplyPage() {
 
       {result ? (
         <div className="space-y-4">
-          {result.suppressed ? (
-            <p className="text-black">
-              We already have a recent application started for this email —
-              check your inbox for the link we sent.
-            </p>
-          ) : result.fillerRole === "parent" && result.parentToken ? (
+          {result.fillerRole === "parent" && result.parentToken ? (
             <>
-              <h2 className="text-2xl font-bold mb-2">Check your email</h2>
+              <h2 className="text-2xl font-bold mb-2">
+                {result.resent ? "We re-sent your link" : "Check your email"}
+              </h2>
               <p className="text-black">
-                We&apos;ve sent you the application link. You can also
-                continue right now.
+                {result.resent
+                  ? "We've emailed you a fresh application link. Any earlier link is now inactive. You can also continue right now."
+                  : "We've sent you the application link. You can also continue right now."}
               </p>
               <Link
                 href={`/apply/parent/${result.parentToken}`}
@@ -86,14 +86,13 @@ export default function ApplyPage() {
                 Continue to your application →
               </Link>
               <p className="text-sm text-muted">
-                The emailed link works too — both go to the same
-                application.
+                The emailed link works too - both go to the same application.
               </p>
             </>
           ) : (
             <>
               <h2 className="text-2xl font-bold mb-2">
-                We&apos;ve emailed your parent
+                {result.resent ? "We re-sent the link to your parent" : "We've emailed your parent"}
               </h2>
               <p className="text-black">
                 Ask them to look for a message from CurioLab, and to check
