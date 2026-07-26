@@ -94,6 +94,13 @@ const citext = customType<{ data: string }>({
   },
 })
 
+/** Postgres `bytea` — raw binary (signature images, blobs). */
+const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return 'bytea'
+  },
+})
+
 const createdAt = () =>
   timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 
@@ -1538,4 +1545,80 @@ export const totpAttempt = pgTable(
     at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('totp_attempt_account_at_idx').on(t.accountId, t.at)],
+)
+
+// --- Consent-form completion + signature store (migration 0039) ------------
+// Two append-only ledgers (the immutable per-form audit record and its bound
+// signature — together the evidence artifact referenced by consent_grant), plus
+// two mutable per-guardian work tables (the autofill store and the draft).
+export const consentFormCompletion = pgTable(
+  'consent_form_completion',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'bigint' }).notNull().unique(),
+    formId: text('form_id').notNull(),
+    formVersion: text('form_version').notNull(),
+    pdfSha256: text('pdf_sha256').notNull(),
+    subjectStudentAccountId: uuid('subject_student_account_id').references(() => account.id),
+    signerAccountId: uuid('signer_account_id')
+      .notNull()
+      .references(() => account.id),
+    audience: text('audience').notNull(),
+    itemStates: jsonb('item_states').notNull(),
+    fieldValues: jsonb('field_values').notNull(),
+    signatureRef: uuid('signature_ref').notNull(),
+    verification: jsonb('verification'),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('consent_form_completion_subject_idx').on(t.subjectStudentAccountId, t.formId, t.seq),
+    index('consent_form_completion_signer_idx').on(t.signerAccountId, t.formId, t.seq),
+  ],
+)
+
+export const consentSignature = pgTable(
+  'consent_signature',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'bigint' }).notNull().unique(),
+    completionId: uuid('completion_id').notNull(),
+    image: bytea('image').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+    binding: jsonb('binding').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('consent_signature_completion_idx').on(t.completionId)],
+)
+
+export const guardianSavedField = pgTable(
+  'guardian_saved_field',
+  {
+    guardianAccountId: uuid('guardian_account_id')
+      .notNull()
+      .references(() => account.id),
+    fieldType: text('field_type').notNull(),
+    valueText: text('value_text'),
+    valueBlob: bytea('value_blob'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.guardianAccountId, t.fieldType] })],
+)
+
+export const consentFormDraft = pgTable(
+  'consent_form_draft',
+  {
+    guardianAccountId: uuid('guardian_account_id')
+      .notNull()
+      .references(() => account.id),
+    subjectStudentAccountId: uuid('subject_student_account_id').references(() => account.id),
+    formId: text('form_id').notNull(),
+    itemStates: jsonb('item_states'),
+    fieldValues: jsonb('field_values'),
+    signature: bytea('signature'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.guardianAccountId, t.subjectStudentAccountId, t.formId] })],
 )
