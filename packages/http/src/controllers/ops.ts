@@ -82,6 +82,13 @@ export function transitionApplication(
       }
     }
 
+    // Not a status transition (no from/to), so it's handled outside the
+    // switch below like `reopen` above rather than forced into TransitionOutcome's shape.
+    if (action === 'clear-duplicate-flag') {
+      const r = await svc.clearDuplicateFlag(ctx, tinput)
+      return { status: 200, body: { applicationId: r.applicationId } }
+    }
+
     let outcome
     switch (action) {
       case 'screen':

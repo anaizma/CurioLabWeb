@@ -163,6 +163,31 @@ export class ApplicationService {
     return { applicationId: successorId, reopenedFromId: declined.id }
   }
 
+  /**
+   * Dismiss a duplicate-applicant flag (a director's manual "not a duplicate"
+   * decision). Gated on `application.transition` (chapter-scoped), same as the
+   * transitions above. Stamps duplicate_cleared_at/by; leaves
+   * duplicate_flagged_at/duplicate_of_application_id intact as the audit
+   * trail. NOT a status change: `status` is untouched and no
+   * `application_event` is written (that would corrupt the current-status
+   * "Date" column). Harmless no-op (columns just get overwritten) if the
+   * application was never flagged.
+   */
+  async clearDuplicateFlag(ctx: AuthContext, input: TransitionInput): Promise<{ applicationId: string }> {
+    const app = await this.load(input.applicationId)
+    const resource: Resource = { id: app.id, chapter_id: app.chapterId }
+    await this.authorize(ctx, 'application.transition', resource, { sql: this.sql })
+    await this.sql.begin(async (tx) => {
+      assertAuthorized() // runtime backstop: no mutation without a recorded decision
+      await tx`
+        update application
+        set duplicate_cleared_at = now(), duplicate_cleared_by = ${ctx.account.id}
+        where id = ${app.id}
+      `
+    })
+    return { applicationId: app.id }
+  }
+
   private async applyTransition(
     ctx: AuthContext,
     input: TransitionInput,

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { authorize, withRequest } from '@curiolab/runtime'
+import { Forbidden, authorize, withRequest } from '@curiolab/runtime'
 import { startHarness, type Harness } from './helpers/pg.js'
 import { makeAdult, makeChapter } from './helpers/fixtures.js'
 import { baseCtx, mem } from './helpers/ctx.js'
@@ -251,5 +251,71 @@ describe('reopen — mints a successor, leaves the declined row immutable', () =
       }
     })
     expect(caught).toBeInstanceOf(IllegalTransitionError)
+  })
+})
+
+// clearDuplicateFlag (0043) — a director dismissing a non-blocking duplicate
+// flag. This is NOT a status transition: it must not touch `status` and must
+// not write an `application_event` (that would corrupt the current-status
+// "Date" column). Gated on the same `application.transition` capability as
+// the other lifecycle actions above.
+describe('clearDuplicateFlag — dismiss a duplicate-applicant flag (not a status transition)', () => {
+  test('stamps duplicate_cleared_at/by, leaves duplicate_flagged_at + status untouched, writes no event', async () => {
+    const { director, applicationId } = await seed()
+    const [otherApp] = await h.sql`
+      insert into application (
+        kind, chapter_id, status, applicant_name, applicant_contact_email,
+        guardian_name, guardian_email
+      ) values (
+        'student', (select chapter_id from application where id = ${applicationId}), 'submitted',
+        'Some Other Kid', 'other@example.test', 'Guardian Other', 'other@example.test'
+      ) returning id
+    `
+    await h.sql`
+      update application
+      set duplicate_flagged_at = now(), duplicate_of_application_id = ${otherApp!.id as string}
+      where id = ${applicationId}
+    `
+
+    const out = await withRequest(() => service().clearDuplicateFlag(director, { applicationId }))
+    expect(out).toMatchObject({ applicationId })
+
+    const [row] = await h.sql`
+      select status, duplicate_flagged_at, duplicate_of_application_id, duplicate_cleared_at, duplicate_cleared_by
+      from application where id = ${applicationId}
+    `
+    expect(row!.status).toBe('submitted') // untouched — not a status change
+    expect(row!.duplicate_flagged_at).not.toBeNull() // audit trail intact
+    expect(row!.duplicate_of_application_id).toBe(otherApp!.id)
+    expect(row!.duplicate_cleared_at).not.toBeNull()
+    expect(row!.duplicate_cleared_by).toBe(director.account.id)
+
+    // Not a status transition: no application_event written.
+    expect(await eventCount(applicationId)).toBe(0)
+  })
+
+  test('an unauthorized actor (cross-chapter director) is denied: opaque Forbidden, no mutation', async () => {
+    const { applicationId } = await seed()
+    await h.sql`update application set duplicate_flagged_at = now() where id = ${applicationId}`
+
+    const otherChapter = await makeChapter(h.sql)
+    const strangerId = await makeAdult(h.sql)
+    const stranger = baseCtx(strangerId, new Date(), [mem('chapter_director', otherChapter)])
+
+    let caught: unknown
+    await withRequest(async () => {
+      try {
+        await service().clearDuplicateFlag(stranger, { applicationId })
+      } catch (e) {
+        caught = e
+      }
+    })
+
+    expect(caught).toBeInstanceOf(Forbidden)
+    const [row] = await h.sql`
+      select duplicate_cleared_at, duplicate_cleared_by from application where id = ${applicationId}
+    `
+    expect(row!.duplicate_cleared_at).toBeNull()
+    expect(row!.duplicate_cleared_by).toBeNull()
   })
 })
