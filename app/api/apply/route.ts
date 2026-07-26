@@ -4,7 +4,7 @@
 // Contract: docs/platform/api-reference.md §1.
 import { getSql } from '@curiolab/http'
 import { LeadService } from '@curiolab/app'
-import { sendParentContinueEmail } from '@/lib/emails/apply-mail'
+import { sendParentContinueEmail, sendDirectorLeadNotification } from '@/lib/emails/apply-mail'
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
@@ -38,6 +38,18 @@ export async function POST(req: Request) {
         await sendParentContinueEmail(email, continueUrl)
       } catch (mailErr) {
         console.error('[api/apply] email send failed (lead still created):', mailErr)
+      }
+    }
+
+    // Notify the director of every FRESH lead (an in-window duplicate is suppressed
+    // upstream, so no repeat alerts). Best-effort: a send failure must not lose the
+    // lead, so it is logged and swallowed - identical to the continue-link send above.
+    if (!result.suppressed && process.env.RESEND_API_KEY) {
+      const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin
+      try {
+        await sendDirectorLeadNotification({ leadEmail: email, chapter, fillerRole, source, appUrl: origin })
+      } catch (mailErr) {
+        console.error('[api/apply] director notification failed (lead still created):', mailErr)
       }
     }
 
