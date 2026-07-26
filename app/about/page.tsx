@@ -4,16 +4,19 @@ const ladderStages = [
   {
     n: "01",
     name: "Explore",
+    colorKey: "Explorer",
     desc: "Students build foundational skills, learn how technical systems work, and complete guided projects with close mentor support.",
   },
   {
     n: "02",
     name: "Build",
+    colorKey: "Builder",
     desc: "Students apply the skills and knowledge they have developed to complete a larger project with close guidance from their mentors.",
   },
   {
     n: "03",
     name: "Innovate",
+    colorKey: "Innovator",
     desc: "Students lead community projects of their own that solves a problem they identified. They work with greater autonomy and creativity, and is eligible to support their peers who are earlier in the journey.",
   },
 ] as const;
@@ -89,10 +92,10 @@ export default function AboutPage() {
         <div className="grid md:grid-cols-3 gap-6 mb-12">
           {ladderStages.map((s) => (
             <div key={s.name} className="bg-white border border-black/10 rounded-xl p-6">
-              <p className={`font-mono text-xs uppercase tracking-widest mb-3 ${tierColors[s.name].text}`}>
+              <p className={`font-mono text-xs uppercase tracking-widest mb-3 ${tierColors[s.colorKey].text}`}>
                 {s.n}
               </p>
-              <h3 className={`font-bold text-lg mb-2 ${tierColors[s.name].text}`}>{s.name}</h3>
+              <h3 className={`font-bold text-lg mb-2 ${tierColors[s.colorKey].text}`}>{s.name}</h3>
               <p className="text-sm text-muted">{s.desc}</p>
             </div>
           ))}
