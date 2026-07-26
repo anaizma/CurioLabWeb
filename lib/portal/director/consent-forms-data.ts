@@ -12,6 +12,21 @@ import { getDirectorContext } from "./session";
 
 export type FormAudience = "guardian" | "mentor" | "student";
 export type FieldInputType = "text" | "date" | "tel" | "email";
+/** The detail-field input types a director may pick (adds `signature`). */
+export type EditableFieldInputType = "text" | "date" | "tel" | "email" | "signature";
+
+/** The grant types a checkbox item may map to (mirrors ConsentGrantType). */
+export const GRANT_MAPPINGS = [
+  "program_participation",
+  "platform_account",
+  "public_publication",
+  "photo_video_likeness",
+  "emergency_medical_pickup",
+  "verification_link_sharing",
+  "mentor_dm",
+  "student_notification_email",
+] as const;
+export type GrantMapping = (typeof GRANT_MAPPINGS)[number];
 
 export const AUDIENCES: FormAudience[] = ["guardian", "mentor", "student"];
 export const AUDIENCE_LABELS: Record<FormAudience, string> = {
@@ -61,6 +76,88 @@ export interface DirectorFormDetail {
   pdfPath: string;
   items: DirectorFormItem[];
   fields: DirectorFormField[];
+}
+
+// ---- editable definition (Phase 2b editor) --------------------------------
+
+/** One editable checkbox clause. */
+export interface EditableItem {
+  itemKey: string;
+  text: string;
+  required: boolean;
+  elevated: boolean;
+  grantMapping?: string | null;
+}
+
+/** One editable detail field. `fixed:true` marks a locked default (not removable). */
+export interface EditableField {
+  fieldType: string;
+  label: string;
+  inputType: EditableFieldInputType;
+  required: boolean;
+  fixed?: boolean;
+}
+
+/** The CURRENT definition loaded into the editor (draft or published, else catalog). */
+export interface EditableConsentForm {
+  formKey: string;
+  audience: FormAudience;
+  title: string;
+  documentId: string;
+  elevated: boolean;
+  items: EditableItem[];
+  fields: EditableField[];
+  pdfUrl: string;
+  version: number;
+  status: "draft" | "published";
+  hasDraft: boolean;
+}
+
+/**
+ * The locked default detail fields per audience — hardcoded to match the backend
+ * (ConsentFormAdminService.LOCKED_FIELDS). A director may ADD fields but not
+ * remove these. Client-safe (no server imports) so the editor page can seed a
+ * create template and the client editor can swap defaults on audience change.
+ */
+export const LOCKED_FIELDS: Record<FormAudience, readonly EditableField[]> = {
+  guardian: [
+    { fieldType: "guardian_name", label: "Guardian name", inputType: "text", required: true, fixed: true },
+    { fieldType: "relationship", label: "Relationship to child", inputType: "text", required: true, fixed: true },
+    { fieldType: "date", label: "Date", inputType: "date", required: true, fixed: true },
+    { fieldType: "signature", label: "Signature", inputType: "signature", required: true, fixed: true },
+  ],
+  mentor: [
+    { fieldType: "mentor_name", label: "Mentor name", inputType: "text", required: true, fixed: true },
+    { fieldType: "date", label: "Date", inputType: "date", required: true, fixed: true },
+    { fieldType: "signature", label: "Signature", inputType: "signature", required: true, fixed: true },
+  ],
+  student: [
+    { fieldType: "student_name", label: "Student name", inputType: "text", required: true, fixed: true },
+    { fieldType: "date", label: "Date", inputType: "date", required: true, fixed: true },
+    { fieldType: "signature", label: "Signature", inputType: "signature", required: true, fixed: true },
+  ],
+};
+
+/** The locked default fields for an audience (a fresh copy each call). */
+export function lockedFieldsFor(audience: FormAudience): EditableField[] {
+  return (LOCKED_FIELDS[audience] ?? []).map((f) => ({ ...f }));
+}
+
+/** A blank editable form for the "new consent form" flow. */
+export function emptyEditableFor(audience: FormAudience): EditableConsentForm {
+  return {
+    formKey: "",
+    audience,
+    title: "",
+    documentId: "",
+    elevated: false,
+    items: [],
+    fields: lockedFieldsFor(audience),
+    pdfUrl: "",
+    version: 0,
+    status: "draft",
+    hasDraft: false,
+  };
 }
 
 // ---- representative sample (unauthenticated preview) ----------------------
@@ -185,4 +282,92 @@ export async function getConsentFormDetailForDirector(key: string): Promise<{ de
   }
   const summary = SAMPLE_FORMS.find((f) => f.formKey === key);
   return { detail: summary ? sampleDetail(summary) : null, isSample: true };
+}
+
+// ---- editable read (Phase 2b editor) --------------------------------------
+
+interface LiveEditable {
+  formKey?: string;
+  audience?: string;
+  title?: string;
+  documentId?: string;
+  elevated?: boolean;
+  items?: { itemKey?: string; text?: string; required?: boolean; elevated?: boolean; grantMapping?: string | null }[];
+  fields?: { fieldType?: string; label?: string; inputType?: string; required?: boolean; fixed?: boolean }[];
+  pdfUrl?: string;
+  version?: number;
+  status?: string;
+  hasDraft?: boolean;
+}
+
+function toEditableInputType(t: string | undefined): EditableFieldInputType {
+  return t === "date" || t === "tel" || t === "email" || t === "signature" ? t : "text";
+}
+
+/** Synthesize a representative editable form for the unauthenticated preview. */
+function sampleEditable(key: string): EditableConsentForm | null {
+  const summary = SAMPLE_FORMS.find((f) => f.formKey === key);
+  if (!summary) return null;
+  const detail = sampleDetail(summary);
+  return {
+    formKey: summary.formKey,
+    audience: summary.audience,
+    title: summary.title,
+    documentId: summary.documentId,
+    elevated: summary.elevated,
+    items: detail.items.map((it) => ({ ...it })),
+    fields: lockedFieldsFor(summary.audience),
+    pdfUrl: summary.pdfPath,
+    version: 0,
+    status: "published",
+    hasDraft: false,
+  };
+}
+
+export async function getEditableConsentForm(
+  key: string,
+): Promise<{ editable: EditableConsentForm | null; isSample: boolean }> {
+  const ctx = await getDirectorContext();
+  if (ctx) {
+    try {
+      const res = await fetch(`${ctx.origin}/api/ops/consent-forms/${encodeURIComponent(key)}/editable`, {
+        headers: { cookie: ctx.cookie },
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const d = (await res.json()) as LiveEditable;
+        const audience = toAudience(d.audience);
+        const editable: EditableConsentForm = {
+          formKey: d.formKey ?? key,
+          audience,
+          title: d.title ?? "",
+          documentId: d.documentId ?? "",
+          elevated: d.elevated ?? false,
+          items: (d.items ?? []).map((it, i) => ({
+            itemKey: it.itemKey ?? `${key}:item-${i + 1}`,
+            text: it.text ?? "",
+            required: it.required ?? false,
+            elevated: it.elevated ?? false,
+            grantMapping: it.grantMapping ?? null,
+          })),
+          fields: (d.fields ?? []).map((f, i) => ({
+            fieldType: f.fieldType ?? `field_${i + 1}`,
+            label: f.label ?? "",
+            inputType: toEditableInputType(f.inputType),
+            required: f.required ?? false,
+            fixed: f.fixed ?? false,
+          })),
+          pdfUrl: d.pdfUrl ?? "",
+          version: d.version ?? 0,
+          status: d.status === "published" ? "published" : "draft",
+          hasDraft: d.hasDraft ?? false,
+        };
+        return { editable, isSample: false };
+      }
+      if (res.status === 404) return { editable: null, isSample: false };
+    } catch {
+      /* fall through to sample */
+    }
+  }
+  return { editable: sampleEditable(key), isSample: true };
 }
