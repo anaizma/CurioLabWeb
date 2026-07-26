@@ -60,10 +60,11 @@ export default function FormEditor({ childId, entry, forms, isSample }: { childI
 
   const guardianForms = forms.filter((f) => f.schema.audience === 'guardian')
   return (
-    <div className="mx-auto max-w-5xl px-5 py-5 flex flex-col gap-4">
-      {/* Horizontal form switcher — jump between forms without leaving the page.
+    <div className="mx-auto max-w-7xl px-5 py-5 flex flex-col gap-4">
+      {/* Form switcher — jump between forms without leaving the page. Wraps onto
+          the next row (no horizontal scroll) so every form is visible at once.
           Completed forms show a green check. */}
-      <nav className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+      <nav className="flex flex-wrap gap-2">
         {guardianForms.map(({ schema: s, status }) => {
           const current = s.formId === schema.formId
           const done = status === 'complete'
