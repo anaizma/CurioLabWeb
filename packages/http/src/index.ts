@@ -191,6 +191,10 @@ export type {
   ApplicationFormPutInput,
 } from './controllers/application-form.js'
 
+// Ops back office — read-only consent-form catalog view (Consent Forms, Phase 1)
+export { listConsentForms, getConsentFormDetail } from './controllers/consent-forms-admin.js'
+export type { ConsentFormDetailInput } from './controllers/consent-forms-admin.js'
+
 // Organization structure (Platform administration: chapters / terms / pods)
 export {
   createChapter,
