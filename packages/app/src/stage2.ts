@@ -36,7 +36,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import type { Sql, JSONValue } from 'postgres'
 import { generateSessionToken, hashToken } from '@curiolab/runtime'
-import { type AppConfig, defaultConfig } from './config.js'
+import { type AppConfig, defaultConfig, normalizeGuardianName } from './config.js'
 import { type Mailer, defaultMailer } from './mail.js'
 import { resolvePublishedForm, type ResolvedForm } from './application-form.js'
 import { writeApplicationEvent } from './events.js'
@@ -425,6 +425,38 @@ export class Stage2Service {
           converted_application_id = ${appId}, submitted_at = now()
         where id = ${draft.id}
       `
+
+      // Non-blocking duplicate flag: if this child name + DOB matches an existing
+      // application in the same chapter, stamp a flag for the director to review.
+      // Additive only - never blocks the submit. Name is normalized (NFC/case/space);
+      // DOB is an exact match on the same date-input value. childDob is a required 2A
+      // field; guard defensively if absent.
+      const childDob = strOrNull(parent.childDob)
+      if (childDob !== null) {
+        const candidates = await tx`
+          select a.id, a.applicant_name
+          from application a
+          join application_draft d on d.converted_application_id = a.id
+          where a.chapter_id = ${chapterId}
+            and a.id <> ${appId}
+            and d.parent_answers->>'childDob' = ${childDob}
+          order by a.created_at asc
+        `
+        // childName was already checked non-null above (Stage2ParentFactsIncompleteError
+        // throws otherwise); the assertion is for the closure, which TS does not narrow.
+        const target = normalizeGuardianName(childName!)
+        const match = candidates.find(
+          (c) => normalizeGuardianName(c.applicant_name as string) === target,
+        )
+        if (match) {
+          await tx`
+            update application
+            set duplicate_flagged_at = now(), duplicate_of_application_id = ${match.id as string}
+            where id = ${appId}
+          `
+        }
+      }
+
       return appId
     })
 

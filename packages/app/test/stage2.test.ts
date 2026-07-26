@@ -76,6 +76,12 @@ async function setup(): Promise<Setup> {
   return { chapter, leadId, parentToken }
 }
 
+/** Like {@link setup}, but bound to a CALLER-supplied chapter (for duplicate-scope tests). */
+async function setupInChapter(chapterId: string): Promise<Setup> {
+  const { leadId, parentToken } = await makeLead(chapterId)
+  return { chapter: chapterId, leadId, parentToken }
+}
+
 const parentAnswers = {
   childName: 'Minor Testchild',
   grade: '7',
@@ -96,6 +102,42 @@ async function countApps(): Promise<number> {
 /** Push a lead's 30-day window into the past so it is expired at request time. */
 async function expireLead(leadId: string): Promise<void> {
   await h.sql`update application_lead set expires_at = now() - interval '1 second' where id = ${leadId}`
+}
+
+/**
+ * Seed an EXISTING converted application (plus the application_draft that
+ * "converted" it, carrying `childDob` in `parent_answers`) directly with SQL, so
+ * a duplicate-detection test doesn't have to drive two full funnels end to end.
+ * submitStage2's duplicate check reads existing apps via
+ * `application_draft.converted_application_id -> application`, keyed on
+ * `parent_answers->>'childDob'`, so both pieces must be present and linked.
+ */
+async function seedExistingApplication(
+  chapterId: string,
+  childName: string,
+  childDob: string,
+): Promise<string> {
+  const guardianEmail = `guardian-${randomUUID().slice(0, 8)}@example.test`
+  const [app] = await h.sql`
+    insert into application (
+      kind, chapter_id, status, applicant_name, applicant_contact_email,
+      guardian_name, guardian_email
+    ) values (
+      'student', ${chapterId}, 'submitted', ${childName}, ${guardianEmail},
+      'Parent Testperson', ${guardianEmail}
+    ) returning id
+  `
+  const appId = app!.id as string
+  const { leadId } = await makeLead(chapterId)
+  await h.sql`
+    insert into application_draft (
+      lead_id, parent_token_hash, phase, status, parent_answers, converted_application_id
+    ) values (
+      ${leadId}, ${randomUUID()}, 'submitted', 'submitted',
+      ${h.sql.json({ childName, childDob })}, ${appId}
+    )
+  `
+  return appId
 }
 
 // ===========================================================================
@@ -1020,5 +1062,83 @@ describe('FIX B — submitStage2 name derivation prefers split keys, falls back 
     }
     expect(caught).toBeInstanceOf(Stage2ParentFactsIncompleteError)
     expect(await countApps()).toBe(before)
+  })
+})
+
+// ===========================================================================
+// Duplicate detection at submit: a NEW application whose child name (normalized
+// via `normalizeGuardianName` — NFC/trim/collapse-whitespace/lowercase) plus
+// `childDob` (exact string match) matches an EXISTING application in the SAME
+// chapter is stamped with a non-blocking duplicate flag pointing at the earliest
+// matching existing application. It never blocks submit (additive columns only,
+// migration 0043): the flag is for the director to review manually.
+describe('submitStage2 — non-blocking duplicate flag (child name + DOB, same chapter)', () => {
+  async function fullSubmit(f: Setup, parent: Record<string, unknown>) {
+    await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parent)
+    const { studentToken } = await svc().createStudentLink(f.parentToken)
+    await svc().saveStudentSection(studentToken, studentAnswers)
+    return svc().submitStage2(f.parentToken)
+  }
+
+  test('same chapter, same child name + DOB: the SECOND app is flagged pointing at the FIRST; the first stays unflagged', async () => {
+    const chapter = await makeChapter(h.sql)
+    const firstAppId = await seedExistingApplication(chapter, 'Minor Testchild', '2015-06-01')
+
+    const f = await setupInChapter(chapter)
+    const submit = await fullSubmit(f, { ...parentAnswers, childDob: '2015-06-01' })
+
+    const [second] = await h.sql`
+      select duplicate_flagged_at, duplicate_of_application_id from application where id = ${submit.applicationId}
+    `
+    expect(second!.duplicate_flagged_at).not.toBeNull()
+    expect(second!.duplicate_of_application_id).toBe(firstAppId)
+
+    const [first] = await h.sql`select duplicate_flagged_at from application where id = ${firstAppId}`
+    expect(first!.duplicate_flagged_at).toBeNull()
+  })
+
+  test('same child name but a DIFFERENT childDob: the second app is NOT flagged', async () => {
+    const chapter = await makeChapter(h.sql)
+    await seedExistingApplication(chapter, 'Minor Testchild', '2015-06-01')
+
+    const f = await setupInChapter(chapter)
+    const submit = await fullSubmit(f, { ...parentAnswers, childDob: '2016-01-01' })
+
+    const [second] = await h.sql`
+      select duplicate_flagged_at, duplicate_of_application_id from application where id = ${submit.applicationId}
+    `
+    expect(second!.duplicate_flagged_at).toBeNull()
+    expect(second!.duplicate_of_application_id).toBeNull()
+  })
+
+  test('same name + same DOB but in a DIFFERENT chapter: NOT flagged (scope is per-chapter)', async () => {
+    const chapterA = await makeChapter(h.sql)
+    const chapterB = await makeChapter(h.sql)
+    await seedExistingApplication(chapterA, 'Minor Testchild', '2015-06-01')
+
+    const f = await setupInChapter(chapterB)
+    const submit = await fullSubmit(f, { ...parentAnswers, childDob: '2015-06-01' })
+
+    const [second] = await h.sql`select duplicate_flagged_at from application where id = ${submit.applicationId}`
+    expect(second!.duplicate_flagged_at).toBeNull()
+  })
+
+  test('name differing only in case/whitespace, same DOB: still flagged (normalization is case/space-insensitive)', async () => {
+    const chapter = await makeChapter(h.sql)
+    const firstAppId = await seedExistingApplication(chapter, 'Minor Testchild', '2015-06-01')
+
+    const f = await setupInChapter(chapter)
+    const submit = await fullSubmit(f, {
+      ...parentAnswers,
+      childName: '  minor   TESTCHILD  ',
+      childDob: '2015-06-01',
+    })
+
+    const [second] = await h.sql`
+      select duplicate_flagged_at, duplicate_of_application_id from application where id = ${submit.applicationId}
+    `
+    expect(second!.duplicate_flagged_at).not.toBeNull()
+    expect(second!.duplicate_of_application_id).toBe(firstAppId)
   })
 })
