@@ -4,26 +4,24 @@ import CommitGrid from "@/components/CommitGrid";
 import LadderScrollytelling from "@/components/LadderScrollytelling";
 import { tierColors, projects } from "@/lib/data";
 
-const evidence = [
+const growthModel = [
   {
     n: "01",
-    title: "Learner progression records",
-    desc: "Tier advancement, project completion, and attendance for every 6th–12th grade student.",
+    title: "Young people discover what they can become",
+    desc: "Students do more than complete a project. With continuous mentorship, they develop technical ability, confidence, and independence over multiple semesters, often reaching further than they initially believed they could.",
+    accent: "text-marigold",
   },
   {
     n: "02",
-    title: "Deployed project artifacts",
-    desc: "Real work that exists at a live URL — clickable evidence, not a slide.",
+    title: "University fellows grow by building something real",
+    desc: "University students take meaningful roles in mentorship, operations, and chapter leadership. They develop their own strengths by supporting younger students, solving real organizational challenges, and gradually taking responsibility for growing the program.",
+    accent: "text-teal",
   },
   {
     n: "03",
-    title: "Mentor hours & outcomes",
-    desc: "Documented student outcomes tied to each university mentor.",
-  },
-  {
-    n: "04",
-    title: "Cohort-over-cohort data",
-    desc: "Now in our 4th cohort at Case Western Reserve University, with outcomes tracked every semester.",
+    title: "A network built to multiply opportunity",
+    desc: "Our vision is a chapter-based organization spanning universities and communities. Each chapter develops new engineers, mentors, and leaders, who then create the same opportunities for those who come after them.",
+    accent: "text-lavender",
   },
 ];
 
@@ -154,32 +152,30 @@ export default function Home() {
         </Link>
       </section>
 
-      {/* Fundable — dark section */}
+      {/* Growth model — dark section */}
       <section className="bg-indigo text-white">
         <div className="mx-auto max-w-6xl px-6 py-20">
-          <p className="label text-white/60 mb-3">What makes this fundable</p>
           <h2 className="font-editorial font-light text-2xl md:text-4xl max-w-2xl mb-6">
-            A program that produces evidence, not anecdotes.
+            Growth that continues
           </h2>
-          <p className="text-white/70 max-w-2xl mb-8">
-            Most STEM grant narratives describe activities. CurioLab's
-            platform, Luminent, produces documented proof of work at every
-            level — which is rare in the 6th–12th grade STEM space, and the
-            reason CurioLab competes above its weight class for funding.
+          <p className="text-white/70 max-w-2xl mb-12">
+            CurioLab brings young people and university students into one
+            long-term cycle of mentorship, responsibility, and growth.
           </p>
-          <Link href="/support" className="inline-block bg-white text-indigo px-6 py-3 rounded-md font-medium hover:bg-white/90 transition-colors mb-12">
-            Partner with us →
-          </Link>
 
-          <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
-            {evidence.map((e) => (
-              <div key={e.n} className="border-t border-white/20 pt-4">
-                <p className="font-mono text-marigold text-sm mb-2">{e.n}</p>
-                <h3 className="font-bold text-lg mb-1">{e.title}</h3>
-                <p className="text-white/60 text-sm">{e.desc}</p>
+          <div className="grid md:grid-cols-3 gap-6 mb-12">
+            {growthModel.map((g) => (
+              <div key={g.n} className="bg-white/5 border border-white/10 rounded-xl p-6">
+                <p className={`font-mono text-sm mb-3 ${g.accent}`}>{g.n}</p>
+                <h3 className="font-bold text-lg mb-3">{g.title}</h3>
+                <p className="text-white/60 text-sm leading-relaxed">{g.desc}</p>
               </div>
             ))}
           </div>
+
+          <Link href="/chapter-model" className="inline-block bg-white text-indigo px-6 py-3 rounded-md font-medium hover:bg-white/90 transition-colors">
+            Explore the CurioLab model
+          </Link>
         </div>
       </section>
 
@@ -205,10 +201,10 @@ export default function Home() {
         </p>
         <div className="flex flex-wrap justify-center gap-4">
           <Link href="/apply" className="bg-coral text-white px-6 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
-            Start an application →
+            Start an application
           </Link>
           <Link href="/support" className="border border-ink/20 px-6 py-3 rounded-md font-medium hover:bg-ink/5 transition-colors">
-            Explore partnership options →
+            Explore partnership options
           </Link>
         </div>
       </section>
