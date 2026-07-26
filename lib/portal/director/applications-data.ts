@@ -17,6 +17,7 @@ export interface ApplicationRow {
   contactEmail?: string | null;
   fillerRole?: "parent" | "student" | null;
   isLead?: boolean;
+  duplicateFlag?: boolean;
 }
 
 export interface ApplicationDetail {
@@ -34,6 +35,12 @@ export interface ApplicationDetail {
   answers: { question: string; answer: string }[];
   interview?: { at: string; location: string | null } | null;
   history: { at: string; note: string }[];
+  duplicate: {
+    flagged: boolean;
+    ofApplicationId: string | null;
+    ofApplicantName: string | null;
+    clearedAt: string | null;
+  } | null;
 }
 
 export interface TermOption {
@@ -72,6 +79,7 @@ const SAMPLE: ApplicationDetail[] = [
       { question: "Why CurioLab?", answer: "Wants to meet other kids who like building things and get a mentor." },
     ],
     history: [{ at: "Jul 22", note: "Submitted by guardian" }],
+    duplicate: null,
   },
   {
     applicationId: "app_sample_2", status: "screening",
@@ -84,6 +92,7 @@ const SAMPLE: ApplicationDetail[] = [
       { question: "Why CurioLab?", answer: "Wants structure and a co-founder to ship an actual game." },
     ],
     history: [{ at: "Jul 21", note: "Submitted" }, { at: "Jul 22", note: "Moved to screening" }],
+    duplicate: null,
   },
   {
     applicationId: "app_sample_3", status: "interview",
@@ -96,6 +105,7 @@ const SAMPLE: ApplicationDetail[] = [
       { question: "Why CurioLab?", answer: "Loves taking things apart and wants to build something that helps the planet." },
     ],
     history: [{ at: "Jul 20", note: "Submitted" }, { at: "Jul 21", note: "Screened" }, { at: "Jul 23", note: "Interview scheduled" }],
+    duplicate: null,
   },
 ];
 
@@ -182,6 +192,7 @@ function toRow(a: ApplicationDetail): ApplicationRow {
     guardianName: a.guardianName,
     school: a.school,
     contactEmail: a.contactEmail,
+    duplicateFlag: false,
   };
 }
 
@@ -207,6 +218,7 @@ interface LiveListItem {
   contactEmail?: string | null;
   fillerRole?: "parent" | "student" | null;
   isLead?: boolean;
+  duplicateFlag?: boolean;
 }
 interface LiveListEnvelope {
   items?: LiveListItem[];
@@ -260,6 +272,7 @@ export async function getApplicationsView(opts?: { termId?: string }): Promise<A
       contactEmail: a.contactEmail ?? null,
       fillerRole: a.fillerRole ?? null,
       isLead: a.isLead ?? false,
+      duplicateFlag: a.duplicateFlag ?? false,
     }));
     return {
       applications,
@@ -285,6 +298,12 @@ interface LiveDetail {
   form?: { formId?: string; version?: number; definition?: unknown } | null;
   interview?: { at?: string | null; location?: string | null } | null;
   history?: { from?: string | null; to?: string; at?: string; note?: string | null }[];
+  duplicate?: {
+    flagged?: boolean;
+    ofApplicationId?: string | null;
+    ofApplicantName?: string | null;
+    clearedAt?: string | null;
+  };
 }
 
 export async function getApplicationDetail(id: string): Promise<{ detail: ApplicationDetail | null; isSample: boolean }> {
@@ -312,6 +331,14 @@ export async function getApplicationDetail(id: string): Promise<{ detail: Applic
             [...flatten(d.answers?.stage2a), ...flatten(d.answers?.stage2b)],
           interview: d.interview?.at ? { at: fmt(d.interview.at), location: d.interview.location ?? null } : null,
           history: (d.history ?? []).map((h) => ({ at: fmt(h.at), note: h.note ?? `${h.from ?? "—"} → ${h.to ?? "—"}` })),
+          duplicate: d.duplicate
+            ? {
+                flagged: Boolean(d.duplicate.flagged),
+                ofApplicationId: d.duplicate.ofApplicationId ?? null,
+                ofApplicantName: d.duplicate.ofApplicantName ?? null,
+                clearedAt: d.duplicate.clearedAt ?? null,
+              }
+            : null,
         };
         return { detail, isSample: false };
       }
