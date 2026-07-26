@@ -86,6 +86,10 @@ export interface ApplicationListItem {
   school?: string | null
   /** guardian_email ?? applicant_contact_email. */
   contactEmail?: string | null
+  /** Present on synthetic lead rows: 'parent' | 'student'. Absent on real applications. */
+  fillerRole?: 'parent' | 'student'
+  /** True on a synthetic Interested lead row (no application detail exists for it). */
+  isLead?: boolean
 }
 
 /** The list envelope: the items plus the resolved active (filtered) term, if any. */
@@ -359,6 +363,14 @@ export class OpsReadService {
     const full = query.view === 'full'
     const sql = this.sql
 
+    // 'interested' is a synthetic status for open leads — it is never a real
+    // application_status enum value, so it must never reach the `a.status in (...)`
+    // filter below (it would error). Strip it from the applications filter and use
+    // its presence (or the absence of any status filter) to decide whether to union
+    // in the Interested leads below.
+    const includeLeads = statuses === null || statuses.includes('interested')
+    const appStatuses = statuses === null ? null : statuses.filter((s) => s !== 'interested')
+
     // Resolve the term the list is filtered to.
     interface FilterTerm {
       id: string
@@ -399,7 +411,13 @@ export class OpsReadService {
         : null
     }
 
-    const rows = await sql`
+    // A status filter that (after stripping 'interested') is now empty means the
+    // caller asked ONLY for leads — no real application_status value can match, and
+    // an empty `in (...)` list is invalid SQL, so skip the applications query.
+    const rows =
+      appStatuses !== null && appStatuses.length === 0
+        ? []
+        : await sql`
       select a.id, a.status, a.applicant_name, a.guardian_name, a.guardian_email,
              a.applicant_contact_email, a.chapter_id, a.created_at,
              d.parent_answers,
@@ -417,7 +435,7 @@ export class OpsReadService {
         order by starts_on desc limit 1
       ) ct on true
       where ${chapters === null ? sql`true` : sql`a.chapter_id in ${sql(chapters)}`}
-        ${statuses ? sql`and a.status in ${sql(statuses)}` : sql``}
+        ${appStatuses ? sql`and a.status in ${sql(appStatuses)}` : sql``}
         ${
           filterTerm
             ? sql`and a.created_at::date between ${filterTerm.startsOn}::date and ${filterTerm.endsOn}::date`
@@ -446,8 +464,49 @@ export class OpsReadService {
       return item
     })
 
+    // ---- Interested leads: open (not-yet-converted, unexpired) application_leads.
+    // They carry no term, so they are shown regardless of the term filter; they are
+    // included unless a status filter is present that omits 'interested'.
+    let leadItems: ApplicationListItem[] = []
+    if (includeLeads) {
+      const leadRows = await sql`
+        select l.id, l.email, l.filler_role, l.chapter_id, l.created_at
+        from application_lead l
+        where l.converted_application_id is null
+          and l.deleted_at is null
+          and l.expires_at > now()
+          and ${chapters === null ? sql`true` : sql`l.chapter_id in ${sql(chapters)}`}
+        order by l.created_at desc
+      `
+      leadItems = leadRows.map((r) => {
+        const item: ApplicationListItem = {
+          applicationId: `lead:${r.id as string}`,
+          status: 'interested',
+          studentName: null,
+          gradeLevel: null,
+          submittedAt: iso(r.created_at),
+          chapterId: r.chapter_id as string,
+          termId: null,
+          termName: null,
+          fillerRole: r.filler_role as 'parent' | 'student',
+          isLead: true,
+        }
+        if (full) {
+          item.guardianName = null
+          item.school = null
+          item.contactEmail = r.email as string
+        }
+        return item
+      })
+    }
+
+    // Merge leads with applications, newest first by submittedAt (ISO strings sort lexically).
+    const merged = [...items, ...leadItems].sort((x, y) =>
+      x.submittedAt < y.submittedAt ? 1 : x.submittedAt > y.submittedAt ? -1 : 0,
+    )
+
     return {
-      items,
+      items: merged,
       activeTermId: filterTerm ? filterTerm.id : null,
       activeTermName: filterTerm ? filterTerm.name : null,
     }

@@ -106,6 +106,20 @@ async function attachDraft(
   `
 }
 
+/** An OPEN (not-yet-converted, unexpired) lead in `chapter`. Returns its lead id. */
+async function openLead(
+  chapter: string,
+  email = 'lead@example.test',
+  fillerRole: 'parent' | 'student' = 'parent',
+): Promise<string> {
+  const [lead] = await h.sql`
+    insert into application_lead (email, chapter, chapter_id, filler_role, status, expires_at)
+    values (${email}, 'code', ${chapter}, ${fillerRole}, 'new', now() + interval '30 days')
+    returning id
+  `
+  return lead!.id as string
+}
+
 // ===========================================================================
 describe('listApplications — the representative read matrix', () => {
   test('a director sees only their own chapter; another chapter director sees none', async () => {
@@ -603,5 +617,80 @@ describe('opsDashboard — the count-card summary', () => {
   test('no session -> opaque 403', async () => {
     const res = await opsDashboard({ sql: h.sql, query: {} })
     expect(res.status).toBe(403)
+  })
+})
+
+// ===========================================================================
+describe('listApplications — Interested leads (open, not-yet-converted)', () => {
+  test('an open lead appears as an interested item with email + fillerRole, non-converted', async () => {
+    const a = await seedDirector(h.sql)
+    await openLead(a.chapter, 'wants-in@example.test', 'student')
+    const res = await listApplications({
+      sql: h.sql,
+      sessionToken: a.directorToken,
+      query: { termId: 'all', view: 'full' },
+    })
+    const lead = res.body.items.find((i) => i.contactEmail === 'wants-in@example.test')
+    expect(lead).toBeDefined()
+    expect(lead!.status).toBe('interested')
+    expect(lead!.isLead).toBe(true)
+    expect(lead!.fillerRole).toBe('student')
+    expect(lead!.studentName).toBeNull()
+  })
+
+  test('converted, expired, and soft-deleted leads do NOT appear as interested', async () => {
+    const a = await seedDirector(h.sql)
+    const app = await submittedApplication(a.chapter)
+    // converted
+    await h.sql`insert into application_lead (email, chapter, chapter_id, filler_role, status, expires_at, converted_application_id)
+      values ('converted@example.test', 'code', ${a.chapter}, 'parent', 'converted', now() + interval '30 days', ${app})`
+    // expired
+    await h.sql`insert into application_lead (email, chapter, chapter_id, filler_role, status, expires_at)
+      values ('expired@example.test', 'code', ${a.chapter}, 'parent', 'new', now() - interval '1 day')`
+    // soft-deleted
+    await h.sql`insert into application_lead (email, chapter, chapter_id, filler_role, status, expires_at, deleted_at)
+      values ('deleted@example.test', 'code', ${a.chapter}, 'parent', 'new', now() + interval '30 days', now())`
+
+    const res = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: 'all', view: 'full' } })
+    const emails = res.body.items.map((i) => i.contactEmail)
+    expect(emails).not.toContain('converted@example.test')
+    expect(emails).not.toContain('expired@example.test')
+    expect(emails).not.toContain('deleted@example.test')
+  })
+
+  test('a lead is shown even under a specific-term filter (leads have no term)', async () => {
+    const a = await seedDirector(h.sql)
+    await openLead(a.chapter, 'termless@example.test')
+    // Any real term id from the seed; leads are not term-filtered.
+    const [term] = await h.sql`select id from term where chapter_id = ${a.chapter} limit 1`
+    const res = await listApplications({
+      sql: h.sql,
+      sessionToken: a.directorToken,
+      query: { termId: term!.id as string, view: 'full' },
+    })
+    expect(res.body.items.map((i) => i.contactEmail)).toContain('termless@example.test')
+  })
+
+  test('the status filter includes/excludes leads', async () => {
+    const a = await seedDirector(h.sql)
+    const submitted = await submittedApplication(a.chapter)
+    await openLead(a.chapter, 'statusfilter@example.test')
+
+    const onlySubmitted = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { status: 'submitted', termId: 'all', view: 'full' } })
+    expect(onlySubmitted.body.items.map((i) => i.contactEmail)).not.toContain('statusfilter@example.test')
+    expect(onlySubmitted.body.items.map((i) => i.applicationId)).toContain(submitted)
+
+    const onlyInterested = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { status: 'interested', termId: 'all', view: 'full' } })
+    const ids = onlyInterested.body.items.map((i) => i.applicationId)
+    expect(onlyInterested.body.items.map((i) => i.contactEmail)).toContain('statusfilter@example.test')
+    expect(ids).not.toContain(submitted)
+  })
+
+  test('a lead is confined to its own chapter', async () => {
+    const a = await seedDirector(h.sql)
+    const b = await seedDirector(h.sql)
+    await openLead(a.chapter, 'a-only@example.test')
+    const seenByB = await listApplications({ sql: h.sql, sessionToken: b.directorToken, query: { termId: 'all', view: 'full' } })
+    expect(seenByB.body.items.map((i) => i.contactEmail)).not.toContain('a-only@example.test')
   })
 })
