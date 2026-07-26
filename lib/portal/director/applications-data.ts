@@ -9,6 +9,8 @@ export interface ApplicationRow {
   gradeLevel: string | null;
   termName: string | null;
   submittedLabel: string;
+  /** Formatted effective time of the row's current status (from the backend statusDate). */
+  statusDateLabel: string;
   // Always populated: the list is always full view now.
   guardianName?: string | null;
   school?: string | null;
@@ -176,6 +178,7 @@ function toRow(a: ApplicationDetail): ApplicationRow {
     gradeLevel: a.gradeLevel,
     termName: a.termName,
     submittedLabel: a.submittedLabel,
+    statusDateLabel: a.submittedLabel,
     guardianName: a.guardianName,
     school: a.school,
     contactEmail: a.contactEmail,
@@ -197,6 +200,7 @@ interface LiveListItem {
   studentName?: string | null;
   gradeLevel?: string | null;
   submittedAt?: string;
+  statusDate?: string;
   termName?: string | null;
   guardianName?: string | null;
   school?: string | null;
@@ -250,6 +254,7 @@ export async function getApplicationsView(opts?: { termId?: string }): Promise<A
       gradeLevel: a.gradeLevel ?? null,
       termName: a.termName ?? null,
       submittedLabel: fmt(a.submittedAt),
+      statusDateLabel: fmt(a.statusDate),
       guardianName: a.guardianName ?? null,
       school: a.school ?? null,
       contactEmail: a.contactEmail ?? null,
