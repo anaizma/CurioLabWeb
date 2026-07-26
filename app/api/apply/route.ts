@@ -41,10 +41,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // Notify the director of every FRESH lead (an in-window duplicate is suppressed
-    // upstream, so no repeat alerts). Best-effort: a send failure must not lose the
-    // lead, so it is logged and swallowed - identical to the continue-link send above.
-    if (!result.suppressed && process.env.RESEND_API_KEY) {
+    // Notify the director only for a genuinely NEW lead (a resend reuses an open
+    // lead the director already saw, so it does not re-notify). Best-effort: a send
+    // failure must not lose the lead, so it is logged and swallowed - identical to
+    // the continue-link send above.
+    if (!result.resent && process.env.RESEND_API_KEY) {
       const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin
       try {
         await sendDirectorLeadNotification({ leadEmail: email, chapter, fillerRole, source, appUrl: origin })
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
     // parentToken: raw Stage-2 token for a parent-filler (frontend builds the
     // continue link); null for a student-filler and for a suppressed duplicate.
     return Response.json(
-      { leadId: result.leadId, suppressed: result.suppressed, parentToken: result.parentToken },
+      { leadId: result.leadId, suppressed: result.suppressed, parentToken: result.parentToken, resent: result.resent },
       { status: 201 },
     )
   } catch (err) {
