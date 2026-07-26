@@ -449,6 +449,12 @@ export const ROUTE_MANIFEST: RouteManifest = [
   // platform_admin via override). The GET read reuses application.read and is
   // GET-exempt from the manifest.
   { method: 'PUT', path: '/api/ops/application-form', capability: 'application.form.manage' },
+  // Director-editable consent forms (Consent Forms, Phase 2a). PUT saves a new
+  // version of one consent-form definition (PDF + items + fields), gated by
+  // consent.form.manage (chapter_director; platform_admin via override). The three
+  // GET reads (list, detail, editable) and the GET PDF serve reuse
+  // consent.form.read / consent.form.manage and are GET-exempt from the manifest.
+  { method: 'PUT', path: '/api/ops/consent-forms/[key]', capability: 'consent.form.manage' },
   { method: 'POST', path: '/api/ops/enrollments', capability: 'enrollment.create' },
   // Per-kind issuing authority (P2 §1): the handler authorizes member.invite for
   // guardian/mentor/staff, and member.invite_admin for admin + a direct director

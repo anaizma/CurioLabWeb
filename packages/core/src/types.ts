@@ -323,6 +323,17 @@ export type Capability =
   // distinct from the read-only application.read so a read-only platform_staff
   // cannot save a form. The GET read reuses application.read.
   | 'application.form.manage'
+  // the read-only consent-form catalog surface (director portal "Consent Forms",
+  // Phase 1). consent.form.read is the chapter-scoped READ a director uses to list
+  // and inspect the static consent catalog (the guardian/mentor/student forms, their
+  // PDF, checkbox items and detail fields) for THEIR chapter (another chapter denies
+  // out_of_scope; both platform overrides reach it, writes:false). consent.form.manage
+  // is the chapter-scoped WRITE reserved for the later edit/PDF-upload phase (a
+  // director edits their chapter's consent forms; platform_admin via the override,
+  // writes:true so a read-only platform_staff does not reach it) — it mirrors
+  // application.form.manage and is declared now even though Phase 1 ships read-only.
+  | 'consent.form.read'
+  | 'consent.form.manage'
   | 'invite.read'
   | 'membership.read'
   | 'guardianship.read'

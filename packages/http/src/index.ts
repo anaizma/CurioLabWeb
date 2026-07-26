@@ -191,6 +191,21 @@ export type {
   ApplicationFormPutInput,
 } from './controllers/application-form.js'
 
+// Ops back office — director-editable consent forms (Consent Forms, Phase 2a)
+export {
+  listConsentForms,
+  getConsentFormDetail,
+  getEditableConsentForm,
+  saveConsentForm,
+  getConsentFormPdf,
+} from './controllers/consent-forms-admin.js'
+export type {
+  ConsentFormDetailInput,
+  ConsentFormKeyInput,
+  ConsentFormPutInput,
+  ConsentFormPdfResult,
+} from './controllers/consent-forms-admin.js'
+
 // Organization structure (Platform administration: chapters / terms / pods)
 export {
   createChapter,
@@ -316,10 +331,11 @@ export {
   objectPublicationHold,
 } from './controllers/guardian.js'
 
-// Guardian consent-form flow (catalog forms, drafts, completions)
+// Guardian consent-form flow (resolved forms, drafts, completions)
 export {
-  listChildForms, getSavedFields, getFormDraft, saveFormDraft, submitFormCompletion,
+  listChildForms, getSavedFields, getFormDraft, saveFormDraft, submitFormCompletion, getChildFormPdf,
 } from './controllers/consent-forms.js'
+export type { ChildFormPdfResult } from './controllers/consent-forms.js'
 
 // Public newsletter subscribe/confirm/unsubscribe (Milestone 3.6).
 export {

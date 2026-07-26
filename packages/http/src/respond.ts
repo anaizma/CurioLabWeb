@@ -184,6 +184,10 @@ const BAD_REQUEST = new Set([
   // (student key off the allowlist, identifying key, fixed field restructured,
   // duplicate/empty/non-slug key, choice with no options).
   'ApplicationFormValidationError',
+  // A director-authored consent-form definition failed validation (bad audience,
+  // empty item text, unknown grant mapping, bad field/inputType, a removed locked
+  // default field, or a brand-new form with no PDF).
+  'ConsentFormValidationError',
   'EnrollmentDobRequiredError',
   'StudentSectionIdentifyingFieldError',
   'StudentSectionFieldNotAllowedError',

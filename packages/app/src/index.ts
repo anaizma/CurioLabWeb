@@ -492,6 +492,24 @@ export type {
   FixedFieldSpec,
   ValidateDeps,
 } from './application-form.js'
+// Director-portal EDITABLE consent forms (Consent Forms, Phase 2a): the read
+// overlay (DB-published-override-catalog), getEditable, the versioned saveForm,
+// and the PDF serve.
+export { ConsentFormAdminService, lockedFieldsFor, validateSaveInput } from './consent-form-admin.js'
+export type {
+  ConsentFormAdminServiceDeps,
+  ConsentFormAdminAuthorizeFn,
+  ConsentFormAdminCapability,
+  ConsentFormSummary,
+  ConsentFormDetail,
+  ConsentFormSource,
+  EditableField,
+  EditableFieldInputType,
+  EditableForm,
+  ConsentFormSaveInput,
+  ConsentFormSaveResult,
+  ConsentFormPdf,
+} from './consent-form-admin.js'
 export { ProjectService, projectExternalPublicationRevokeCascade } from './project.js'
 export type {
   ProjectServiceDeps,
@@ -682,6 +700,7 @@ export {
   FormFieldRequiredError,
   FormPdfHashMismatchError,
   FormElevatedVerificationRequiredError,
+  ConsentFormValidationError,
 } from './errors.js'
 export {
   MENTOR_DM_ENABLED,
@@ -734,6 +753,10 @@ export type {
 export { ConsentFormService } from './consent-form-service.js'
 export type { ConsentFormServiceDeps } from './consent-form-service.js'
 export { CATALOG, getCatalogForm, toClientSchema } from './consent-forms/catalog.js'
+export {
+  resolveConsentForm, resolveConsentForms, resolveConsentFormPdf, readCatalogPdf,
+} from './consent-forms/resolve.js'
+export type { ResolvedConsentForm } from './consent-forms/resolve.js'
 export type {
   FormAudience, FieldInputType, FormStatus, FormItemSchema, FormFieldSchema,
   FormClientSchema, CatalogItem, CatalogForm, FormListEntry, FormSubmitPayload,
