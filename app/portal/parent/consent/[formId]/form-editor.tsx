@@ -1,13 +1,14 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import type { FormListEntry } from '@/lib/portal/guardian/consent-forms'
 import FormViewer from '@/components/portal/guardian/FormViewer'
 import SignaturePad from '@/components/portal/guardian/SignaturePad'
 import AutofillField from '@/components/portal/guardian/AutofillField'
 import VerificationStep, { type VerificationResult } from '@/components/portal/guardian/VerificationStep'
 
-export default function FormEditor({ childId, entry, isSample }: { childId: string; entry: FormListEntry; isSample: boolean }) {
+export default function FormEditor({ childId, entry, forms, isSample }: { childId: string; entry: FormListEntry; forms: FormListEntry[]; isSample: boolean }) {
   const { schema } = entry
   const router = useRouter()
   const [itemStates, setItemStates] = useState<Record<string, boolean>>(() => Object.fromEntries(schema.items.map((i) => [i.itemKey, false])))
@@ -57,9 +58,38 @@ export default function FormEditor({ childId, entry, isSample }: { childId: stri
     else setError(`Could not submit (${res.status}). Check required items and try again.`)
   }
 
+  const guardianForms = forms.filter((f) => f.schema.audience === 'guardian')
   return (
-    <div className="mx-auto max-w-5xl px-5 py-5 grid gap-5 md:grid-cols-[minmax(0,1fr)_360px]">
-      <div>
+    <div className="mx-auto max-w-5xl px-5 py-5 flex flex-col gap-4">
+      {/* Horizontal form switcher — jump between forms without leaving the page.
+          Completed forms show a green check. */}
+      <nav className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        {guardianForms.map(({ schema: s, status }) => {
+          const current = s.formId === schema.formId
+          const done = status === 'complete'
+          const n = Number(s.formId.replace('form-', ''))
+          return (
+            <Link
+              key={s.formId}
+              href={`/portal/parent/consent/${s.formId}`}
+              title={s.title}
+              aria-current={current ? 'page' : undefined}
+              className="shrink-0 flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[12px] max-w-[190px] hover:bg-black/[.02]"
+              style={{
+                borderColor: current ? 'var(--pt-accent)' : done ? '#cfe6d6' : 'rgba(0,0,0,0.1)',
+                background: current ? 'var(--pt-accent-soft)' : done ? '#e7f2ea' : undefined,
+                color: current ? 'var(--pt-accent-fg)' : done ? '#2f7a4d' : undefined,
+                fontWeight: current || done ? 600 : 400,
+              }}
+            >
+              <span className="shrink-0 font-mono text-[10px] leading-none">{done ? '✓' : n}</span>
+              <span className="truncate">{s.title}</span>
+            </Link>
+          )
+        })}
+      </nav>
+      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_360px]">
+        <div>
         <h1 className="text-lg font-bold tracking-tight mb-1">{schema.title}</h1>
         <p className="font-mono text-[11px] text-muted mb-3">{schema.documentId} · v{schema.version}{schema.elevated && ' · Elevated'}</p>
         <FormViewer src={schema.pdfPath} onHash={setPdfSha256} />
@@ -94,6 +124,7 @@ export default function FormEditor({ childId, entry, isSample }: { childId: stri
           className="rounded-md px-3 py-2 text-[13px] font-semibold disabled:opacity-40" style={{ background: 'var(--pt-accent)', color: 'var(--pt-on-accent)' }}>
           {busy ? 'Submitting…' : 'Submit form'}
         </button>
+      </div>
       </div>
     </div>
   )

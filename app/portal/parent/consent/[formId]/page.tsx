@@ -8,5 +8,5 @@ export default async function ConsentFormPage(props: { params: Promise<{ formId:
   const forms = await getGuardianFormsForDisplay(v.child.id)
   const entry = forms.find((f) => f.schema.formId === formId)
   if (!entry) return <div className="mx-auto max-w-3xl px-5 py-8 text-sm text-muted">Form not found.</div>
-  return <FormEditor childId={v.child.id} entry={entry} isSample={v.isSample} />
+  return <FormEditor childId={v.child.id} entry={entry} forms={forms} isSample={v.isSample} />
 }
