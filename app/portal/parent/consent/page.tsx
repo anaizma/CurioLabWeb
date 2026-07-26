@@ -1,11 +1,11 @@
 import { getGuardianView } from '@/lib/portal/guardian/guardian-data'
-import { getChildForms } from '@/lib/portal/guardian/consent-forms'
+import { getGuardianFormsForDisplay } from '@/lib/portal/guardian/consent-forms-display'
 import NominationCard from '@/components/portal/guardian/NominationCard'
 import ConsentClient from './consent-client'
 
 export default async function GuardianConsentPage() {
   const v = await getGuardianView()
-  const forms = await getChildForms(v.child.id)
+  const forms = await getGuardianFormsForDisplay(v.child.id)
   return (
     <div className="mx-auto max-w-3xl px-5 py-5 flex flex-col gap-4">
       <div>
@@ -14,7 +14,7 @@ export default async function GuardianConsentPage() {
       </div>
       {v.isSample && <div className="text-[11px] font-mono text-muted border border-dashed border-black/15 rounded-md px-3 py-2">Sample data — sign in as a guardian to complete real forms.</div>}
       {v.nominations.map((n) => <NominationCard key={n.id} nomination={n} childName={v.child.displayName} />)}
-      <ConsentClient forms={forms ?? []} />
+      <ConsentClient forms={forms} />
     </div>
   )
 }
