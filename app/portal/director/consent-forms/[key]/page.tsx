@@ -14,21 +14,30 @@ export default async function ConsentFormDetailPage({ params }: { params: Promis
       <Link href="/portal/director/consent-forms" className="text-xs font-semibold" style={{ color: "var(--pt-accent)" }}>
         ← All consent forms
       </Link>
-      <div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="text-2xl font-bold">{detail.title}</h1>
-          {detail.elevated && (
-            <span
-              className="text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5"
-              style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}
-            >
-              Elevated
-            </span>
-          )}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold">{detail.title}</h1>
+            {detail.elevated && (
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5"
+                style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}
+              >
+                Elevated
+              </span>
+            )}
+          </div>
+          <p className="text-ink/60 text-sm mt-1 font-mono">
+            {AUDIENCE_LABELS[detail.audience]} · {detail.documentId} · v{detail.version}
+          </p>
         </div>
-        <p className="text-ink/60 text-sm mt-1 font-mono">
-          {AUDIENCE_LABELS[detail.audience]} · {detail.documentId} · v{detail.version}
-        </p>
+        <Link
+          href={`/portal/director/consent-forms/${detail.formKey}/edit`}
+          className="shrink-0 rounded-lg px-3.5 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          style={{ background: "var(--pt-accent)" }}
+        >
+          Edit
+        </Link>
       </div>
       {isSample && <SampleBanner />}
 
