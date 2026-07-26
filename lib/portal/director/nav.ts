@@ -14,6 +14,7 @@ export const DIRECTOR_NAV: PortalNavGroup[] = [
     items: [
       { label: "Applications", href: "/portal/director/applications" },
       { label: "Application form", href: "/portal/director/application-form" },
+      { label: "Consent forms", href: "/portal/director/consent-forms" },
       { label: "Invites", href: "/portal/director/invites" },
       { label: "Enrollments", href: "/portal/director/enrollments" },
     ],
