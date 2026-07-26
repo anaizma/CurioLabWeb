@@ -1112,6 +1112,25 @@ describe('submitStage2 — non-blocking duplicate flag (child name + DOB, same c
     expect(second!.duplicate_of_application_id).toBeNull()
   })
 
+  test('same chapter, same DOB, but DIFFERENT name (NON-EMPTY candidate set): NOT flagged', async () => {
+    // Two EXISTING applications share the same DOB as the new submit but neither
+    // shares its name, so the SQL WHERE returns 2 candidates and the JS name
+    // filter (guardianNamesMatch) must reject both — this is the case tests 2/3
+    // above cannot exercise, since their candidate set is empty.
+    const chapter = await makeChapter(h.sql)
+    await seedExistingApplication(chapter, 'Alex Someoneelse', '2015-06-01')
+    await seedExistingApplication(chapter, 'Jordan Different', '2015-06-01')
+
+    const f = await setupInChapter(chapter)
+    const submit = await fullSubmit(f, { ...parentAnswers, childName: 'Minor Testchild', childDob: '2015-06-01' })
+
+    const [second] = await h.sql`
+      select duplicate_flagged_at, duplicate_of_application_id from application where id = ${submit.applicationId}
+    `
+    expect(second!.duplicate_flagged_at).toBeNull()
+    expect(second!.duplicate_of_application_id).toBeNull()
+  })
+
   test('same name + same DOB but in a DIFFERENT chapter: NOT flagged (scope is per-chapter)', async () => {
     const chapterA = await makeChapter(h.sql)
     const chapterB = await makeChapter(h.sql)

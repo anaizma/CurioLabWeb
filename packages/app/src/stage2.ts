@@ -36,7 +36,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import type { Sql, JSONValue } from 'postgres'
 import { generateSessionToken, hashToken } from '@curiolab/runtime'
-import { type AppConfig, defaultConfig, normalizeGuardianName } from './config.js'
+import { type AppConfig, defaultConfig, guardianNamesMatch } from './config.js'
 import { type Mailer, defaultMailer } from './mail.js'
 import { resolvePublishedForm, type ResolvedForm } from './application-form.js'
 import { writeApplicationEvent } from './events.js'
@@ -444,10 +444,8 @@ export class Stage2Service {
         `
         // childName was already checked non-null above (Stage2ParentFactsIncompleteError
         // throws otherwise); the assertion is for the closure, which TS does not narrow.
-        const target = normalizeGuardianName(childName!)
-        const match = candidates.find(
-          (c) => normalizeGuardianName(c.applicant_name as string) === target,
-        )
+        // Reuse the guardian name-normalizer (NFC/case/space) for the child-name dedup match.
+        const match = candidates.find((c) => guardianNamesMatch(childName!, c.applicant_name as string))
         if (match) {
           await tx`
             update application
