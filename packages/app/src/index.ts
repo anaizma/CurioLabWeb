@@ -676,6 +676,11 @@ export {
   DmFlagNotFoundError,
   InvalidAccountEmailError,
   AccountFieldNotEditableError,
+  FormNotFoundError,
+  FormItemRequiredError,
+  FormFieldRequiredError,
+  FormPdfHashMismatchError,
+  FormElevatedVerificationRequiredError,
 } from './errors.js'
 export {
   MENTOR_DM_ENABLED,

@@ -87,6 +87,22 @@ const NOT_FOUND = new Set([
   // Mentor-student DM (Phase 3): acknowledge/review of an unknown suspension/flag.
   'DmSuspensionNotFoundError',
   'DmFlagNotFoundError',
+  // Guardian consent-form completion (0039): an unknown form id.
+  'FormNotFoundError',
+])
+
+/**
+ * Consent-form completion preconditions -> 422 (Unprocessable Entity). The
+ * request is well-formed but the form cannot be completed as submitted: a
+ * required item was left unchecked, a required field is missing, the client PDF
+ * hash does not match the catalog, or an elevated form was submitted without the
+ * required elevated verification.
+ */
+const UNPROCESSABLE = new Set([
+  'FormItemRequiredError',
+  'FormFieldRequiredError',
+  'FormPdfHashMismatchError',
+  'FormElevatedVerificationRequiredError',
 ])
 
 /** Illegal state-machine edges / phase conflicts -> 409. */
@@ -223,6 +239,7 @@ export function mapError(e: unknown): ControllerResult | null {
   if (NOT_FOUND.has(name)) return { status: 404, body: { error: 'not_found' } }
   if (TOO_MANY.has(name)) return { status: 429, body: { error: 'rate_limited' } }
   if (CONFLICT.has(name)) return { status: 409, body: { error: 'conflict' } }
+  if (UNPROCESSABLE.has(name)) return { status: 422, body: { error: 'unprocessable' } }
   if (BAD_REQUEST.has(name)) return { status: 400, body: { error: 'invalid_request' } }
   return null
 }

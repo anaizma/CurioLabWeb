@@ -1650,3 +1650,28 @@ export class AccountFieldNotEditableError extends Error {
     this.field = field
   }
 }
+
+// -------------------------------------------------------------------------
+// Guardian consent-form completion (migration 0039; the form catalog +
+// ConsentFormService). A FormNotFound is a 404; the four submission-precondition
+// failures (a required item unchecked, a required field missing, a client PDF
+// hash that does not match the catalog, an elevated form submitted without the
+// required elevated verification) are 422 — the request is well-formed but the
+// form cannot be completed as submitted.
+// -------------------------------------------------------------------------
+
+export class FormNotFoundError extends Error {
+  constructor(public formId: string) { super(`unknown form: ${formId}`); this.name = 'FormNotFoundError' }
+}
+export class FormItemRequiredError extends Error {
+  constructor(public itemKey: string) { super(`required item not checked: ${itemKey}`); this.name = 'FormItemRequiredError' }
+}
+export class FormFieldRequiredError extends Error {
+  constructor(public fieldType: string) { super(`required field missing: ${fieldType}`); this.name = 'FormFieldRequiredError' }
+}
+export class FormPdfHashMismatchError extends Error {
+  constructor(public formId: string) { super(`pdf hash mismatch for ${formId}`); this.name = 'FormPdfHashMismatchError' }
+}
+export class FormElevatedVerificationRequiredError extends Error {
+  constructor(public formId: string) { super(`elevated verification required for ${formId}`); this.name = 'FormElevatedVerificationRequiredError' }
+}
