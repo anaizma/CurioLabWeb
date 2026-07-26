@@ -492,14 +492,23 @@ export type {
   FixedFieldSpec,
   ValidateDeps,
 } from './application-form.js'
-// Director-portal READ-ONLY consent-form catalog view (Consent Forms, Phase 1).
-export { ConsentFormAdminService } from './consent-form-admin.js'
+// Director-portal EDITABLE consent forms (Consent Forms, Phase 2a): the read
+// overlay (DB-published-override-catalog), getEditable, the versioned saveForm,
+// and the PDF serve.
+export { ConsentFormAdminService, lockedFieldsFor, validateSaveInput } from './consent-form-admin.js'
 export type {
   ConsentFormAdminServiceDeps,
   ConsentFormAdminAuthorizeFn,
   ConsentFormAdminCapability,
   ConsentFormSummary,
   ConsentFormDetail,
+  ConsentFormSource,
+  EditableField,
+  EditableFieldInputType,
+  EditableForm,
+  ConsentFormSaveInput,
+  ConsentFormSaveResult,
+  ConsentFormPdf,
 } from './consent-form-admin.js'
 export { ProjectService, projectExternalPublicationRevokeCascade } from './project.js'
 export type {
@@ -691,6 +700,7 @@ export {
   FormFieldRequiredError,
   FormPdfHashMismatchError,
   FormElevatedVerificationRequiredError,
+  ConsentFormValidationError,
 } from './errors.js'
 export {
   MENTOR_DM_ENABLED,

@@ -1675,3 +1675,22 @@ export class FormPdfHashMismatchError extends Error {
 export class FormElevatedVerificationRequiredError extends Error {
   constructor(public formId: string) { super(`elevated verification required for ${formId}`); this.name = 'FormElevatedVerificationRequiredError' }
 }
+
+/**
+ * A director-authored consent-form DEFINITION failed server-side validation
+ * (migration 0042; PUT /api/ops/consent-forms/:key). Maps to a 400. `code` names
+ * the rule that bit (bad_audience / empty_item_text / bad_item_flag /
+ * bad_grant_mapping / bad_field / bad_input_type / non_slug_field /
+ * locked_field_missing / pdf_required / malformed); `detail` carries the
+ * offending item/field references (never PII). Mirrors ApplicationFormValidationError.
+ */
+export class ConsentFormValidationError extends Error {
+  readonly code: string
+  readonly detail: Record<string, unknown>
+  constructor(code: string, message: string, detail: Record<string, unknown> = {}) {
+    super(message)
+    this.name = 'ConsentFormValidationError'
+    this.code = code
+    this.detail = detail
+  }
+}
