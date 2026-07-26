@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import type { Sql } from 'postgres'
 import type { AuthContext, Resource } from '@curiolab/core'
-import { CATALOG, getCatalogForm, toClientSchema } from './consent-forms/catalog.js'
+import { toClientSchema } from './consent-forms/catalog.js'
+import {
+  resolveConsentForm, resolveConsentForms, resolveConsentFormPdf, type ResolvedConsentForm,
+} from './consent-forms/resolve.js'
 import type { FormListEntry, FormSubmitPayload, FormStatus } from './consent-forms/types.js'
 import { ConsentGrantService, type GrantResult } from './consent-grant.js'
 import { STRONG_GRANT_METHODS, type ConsentGrantMethod, type ConsentGrantType } from './config.js'
@@ -46,6 +49,34 @@ export class ConsentFormService {
    *  (else one child's name/DOB is suggested on a sibling's legal form). */
   private static readonly CHILD_SCOPED_FIELDS: ReadonlySet<string> = new Set(['child_name', 'child_dob'])
 
+  /** The child's chapter, which selects the director-published override to read. */
+  private async chapterForChild(childId: string): Promise<string | null> {
+    const [row] = await this.sql`
+      select chapter_id from membership
+      where account_id = ${childId} and status = 'active'
+      order by created_at desc limit 1`
+    return row === undefined ? null : ((row.chapter_id as string | null) ?? null)
+  }
+
+  /**
+   * The form the guardian actually sees: the chapter's published override, else
+   * the platform default, else the catalog. An override's PDF lives in the
+   * database, so its display path is the per-child serve route rather than the
+   * committed public file.
+   */
+  private async resolveForm(childId: string, formId: string): Promise<ResolvedConsentForm | undefined> {
+    const form = await resolveConsentForm(this.sql, await this.chapterForChild(childId), formId)
+    return form === undefined ? undefined : this.withPdfPath(childId, form)
+  }
+
+  private withPdfPath(childId: string, form: ResolvedConsentForm): ResolvedConsentForm {
+    if (form.source === 'catalog') return form
+    return {
+      ...form,
+      pdfPath: `/api/guardian/children/${childId}/forms/${form.formId}/pdf?v=${form.definitionVersion}`,
+    }
+  }
+
   /** Decode + validate a required drawn/reused signature data URL. Bounds the size
    *  so an oversized body cannot be stored as a bytea. */
   private decodeSignature(signature: string | undefined): Buffer {
@@ -64,10 +95,21 @@ export class ConsentFormService {
       where guardian_account_id = ${ctx.account.id} and subject_student_account_id = ${childId}`
     const done = new Set(completions.map((r) => r.form_id))
     const started = new Set(drafts.map((r) => r.form_id))
-    return CATALOG.map((f) => {
+    const forms = await resolveConsentForms(this.sql, await this.chapterForChild(childId))
+    return forms.map((f) => {
       const status: FormStatus = done.has(f.formId) ? 'complete' : started.has(f.formId) ? 'in_progress' : 'not_started'
-      return { schema: toClientSchema(f), status }
+      return { schema: toClientSchema(this.withPdfPath(childId, f)), status }
     })
+  }
+
+  /**
+   * The PDF bytes the guardian reads and binds their completion to: the
+   * chapter's published override, else the platform default, else the committed
+   * catalog file. Guardian-scoped read (guardian.view_grants), like listForms.
+   */
+  async getFormPdf(childId: string, formId: string, ctx: AuthContext): Promise<{ bytes: Buffer; sha256: string }> {
+    await this.authorize(ctx, 'guardian.view_grants', await this.childResource(childId), { sql: this.sql })
+    return resolveConsentFormPdf(this.sql, await this.chapterForChild(childId), formId)
   }
 
   async getSavedFields(ctx: AuthContext): Promise<{ fields: Record<string, string>; signature: string | null }> {
@@ -97,11 +139,12 @@ export class ConsentFormService {
   }
 
   async saveDraft(childId: string, formId: string, ctx: AuthContext, payload: FormSubmitPayload): Promise<void> {
-    if (!getCatalogForm(formId)) throw new Error(`unknown form: ${formId}`)
-    // Guardian-scope the write: the acting guardian must have authority over this
-    // child (matched against ctx.guardianOf, minor-child age bar) before we persist
-    // even scratch draft state referencing them.
+    // Guardian-scope the write FIRST: the acting guardian must have authority over
+    // this child (matched against ctx.guardianOf, minor-child age bar) before we
+    // persist even scratch draft state referencing them — and before the resolve
+    // below, so an unauthorized caller cannot tell a missing form from a denial.
     await this.authorize(ctx, 'consent.grant', await this.childResource(childId), { sql: this.sql })
+    if (!(await this.resolveForm(childId, formId))) throw new FormNotFoundError(formId)
     const sigBuf = payload.signature?.startsWith('data:') ? Buffer.from(payload.signature.split(',')[1] ?? '', 'base64') : null
     await this.sql`
       insert into consent_form_draft (guardian_account_id, subject_student_account_id, form_id, item_states, field_values, signature)
@@ -113,14 +156,16 @@ export class ConsentFormService {
   async submitCompletion(
     childId: string, formId: string, ctx: AuthContext, payload: FormSubmitPayload, now: Date = new Date(),
   ): Promise<{ completionId: string; grants: GrantResult[] }> {
-    const form = getCatalogForm(formId)
-    if (!form) throw new FormNotFoundError(formId)
-
     // Guardian-scope the whole submission up front: the acting guardian must have
     // authority over this child (consent.grant is guardian-scoped, writes:true, with
     // the age-18 bar). captureGrant re-authorizes per grant, but this gate also
     // covers a submission whose checked items map to NO grant (audit-only write).
+    // It precedes the resolve so an unauthorized caller cannot tell a missing form
+    // from a denial.
     await this.authorize(ctx, 'consent.grant', await this.childResource(childId), { sql: this.sql })
+
+    const form = await this.resolveForm(childId, formId)
+    if (!form) throw new FormNotFoundError(formId)
 
     // 1. Completeness (every required item checked; every required field present).
     for (const item of form.items) {

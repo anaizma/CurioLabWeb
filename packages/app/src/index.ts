@@ -753,6 +753,10 @@ export type {
 export { ConsentFormService } from './consent-form-service.js'
 export type { ConsentFormServiceDeps } from './consent-form-service.js'
 export { CATALOG, getCatalogForm, toClientSchema } from './consent-forms/catalog.js'
+export {
+  resolveConsentForm, resolveConsentForms, resolveConsentFormPdf, readCatalogPdf,
+} from './consent-forms/resolve.js'
+export type { ResolvedConsentForm } from './consent-forms/resolve.js'
 export type {
   FormAudience, FieldInputType, FormStatus, FormItemSchema, FormFieldSchema,
   FormClientSchema, CatalogItem, CatalogForm, FormListEntry, FormSubmitPayload,

@@ -29,19 +29,17 @@
 // -------------------------------------------------------------------------
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type { Sql, JSONValue } from 'postgres'
 import type { AuthContext, Resource } from '@curiolab/core'
 import { assertAuthorized, writeAudit, type AuthorizeDeps } from '@curiolab/runtime'
 import { CATALOG } from './consent-forms/catalog.js'
+import { readCatalogPdf, type ConsentFormSource } from './consent-forms/resolve.js'
 import type { CatalogForm, CatalogItem, FormAudience } from './consent-forms/types.js'
 import { GRANT_RENEWAL_MS_BY_TYPE, type ConsentGrantType } from './config.js'
 import { ConsentFormValidationError, FormNotFoundError } from './errors.js'
 
 export type ConsentFormAdminCapability = 'consent.form.read' | 'consent.form.manage'
-export type ConsentFormSource = 'catalog' | 'platform' | 'chapter'
+export type { ConsentFormSource }
 
 /** The detail-field input types a director may pick (adds `signature` to the client set). */
 export type EditableFieldInputType = 'text' | 'date' | 'tel' | 'email' | 'signature'
@@ -206,27 +204,6 @@ function mergeLockedFields(audience: FormAudience, fields: EditableField[]): Edi
     if (!present.has(locked.fieldType)) merged.push({ ...locked })
   }
   return merged
-}
-
-/** Read a committed catalog PDF (public/consent-forms/<formKey>.pdf) from the repo. */
-function readCatalogPdf(formKey: string): Buffer {
-  const starts = [process.cwd()]
-  try {
-    starts.push(dirname(fileURLToPath(import.meta.url)))
-  } catch {
-    /* import.meta.url unavailable (unlikely under ESM); process.cwd() suffices */
-  }
-  for (const start of starts) {
-    let dir = start
-    for (let i = 0; i < 8; i++) {
-      const candidate = join(dir, 'public', 'consent-forms', `${formKey}.pdf`)
-      if (existsSync(candidate)) return readFileSync(candidate)
-      const parent = dirname(dir)
-      if (parent === dir) break
-      dir = parent
-    }
-  }
-  throw new FormNotFoundError(formKey)
 }
 
 /** A consent_form row as the service reads it back (definition columns). */
