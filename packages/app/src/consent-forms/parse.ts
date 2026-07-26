@@ -11,7 +11,7 @@ export function parseFormItems(formId: string, markdown: string): ParsedItem[] {
     const m = line.match(/^\s*[-*]\s+\[\s?\]\s+(.*\S)\s*$/)
     if (m) {
       n += 1
-      out.push({ itemKey: `${formId}:item-${n}`, text: m[1] })
+      out.push({ itemKey: `${formId}:item-${n}`, text: m[1]! })
     }
   }
   return out
