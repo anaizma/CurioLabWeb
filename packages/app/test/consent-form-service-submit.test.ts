@@ -45,6 +45,20 @@ describe('submitCompletion drives the grant ledger', () => {
     }))).rejects.toThrow(/required item/i)
   })
 
+  test('an empty or malformed signature is rejected (a completion is a legal artifact)', async () => {
+    const { child, ctx } = await seedGuardianChild()
+    const svc = new ConsentFormService({ sql: h.sql, authorize })
+    const form = getCatalogForm('form-05')!
+    const base = {
+      itemStates: Object.fromEntries(form.items.map((i) => [i.itemKey, true])),
+      fieldValues: { guardian_name: 'A', relationship: 'P', date: '2026-07-25' }, pdfSha256: form.pdfSha256,
+    }
+    await expect(withRequest(() => svc.submitCompletion(child, 'form-05', ctx, { ...base, signature: '' })))
+      .rejects.toThrow(/signature/i)
+    await expect(withRequest(() => svc.submitCompletion(child, 'form-05', ctx, { ...base, signature: 'not-a-data-url' })))
+      .rejects.toThrow(/signature/i)
+  })
+
   test('pdf hash mismatch is rejected', async () => {
     const { child, ctx } = await seedGuardianChild()
     const svc = new ConsentFormService({ sql: h.sql, authorize })

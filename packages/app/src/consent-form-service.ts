@@ -29,9 +29,29 @@ export class ConsentFormService {
 
   private async childResource(childId: string): Promise<Resource> {
     const [row] = await this.sql`select date_of_birth as dob from account where id = ${childId}`
-    const dob = row ? new Date(row.dob as string) : new Date()
-    const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 864e5))
+    // Birthday-accurate age (UTC), matching ConsentGrantService.ageInYears — a
+    // 365.25-day approximation disagreed by up to a day near the 18th birthday,
+    // which could authorize an 18-year-old as a minor here and then have
+    // captureGrant deny post-commit. A missing row leaves the far-future default,
+    // which authorize rejects out_of_scope (a non-owned/unknown child).
+    const now = new Date()
+    const dob = row ? new Date(row.dob as string) : now
+    let age = now.getUTCFullYear() - dob.getUTCFullYear()
+    const m = now.getUTCMonth() - dob.getUTCMonth()
+    if (m < 0 || (m === 0 && now.getUTCDate() < dob.getUTCDate())) age -= 1
     return { subjectAccountId: childId, subjectAge: age, subjectIsMinor: age < 18, ownerAccountId: childId }
+  }
+
+  /** The autofill store is per-guardian; child-scoped fields must NOT persist there
+   *  (else one child's name/DOB is suggested on a sibling's legal form). */
+  private static readonly CHILD_SCOPED_FIELDS: ReadonlySet<string> = new Set(['child_name', 'child_dob'])
+
+  /** Decode + validate a required drawn/reused signature data URL. Bounds the size
+   *  so an oversized body cannot be stored as a bytea. */
+  private decodeSignature(signature: string | undefined): Buffer {
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(signature ?? '')
+    if (!m || m[1]!.length > 1_400_000) throw new FormFieldRequiredError('signature')
+    return Buffer.from(m[1]!, 'base64')
   }
 
   async listForms(childId: string, ctx: AuthContext): Promise<FormListEntry[]> {
@@ -112,6 +132,10 @@ export class ConsentFormService {
     // 2. Bind to the exact bytes the guardian saw.
     if (payload.pdfSha256 !== form.pdfSha256) throw new FormPdfHashMismatchError(formId)
 
+    // 2b. A completion is a legal artifact — require a well-formed, bounded signature
+    //     server-side (the client "must sign" rule is not trusted).
+    const sigBuf = this.decodeSignature(payload.signature)
+
     // 3. Elevated gate: any elevated form OR any checked elevated item requires a
     //    strong-method verification result. A reused signature alone never suffices.
     const anyCheckedElevated = form.elevated || form.items.some((i) => i.elevated && payload.itemStates[i.itemKey] === true)
@@ -128,7 +152,6 @@ export class ConsentFormService {
     )]
     const method: ConsentGrantMethod = anyCheckedElevated ? (payload.verification!.method) : 'click'
     const completionId = randomUUID()
-    const sigBuf = Buffer.from(payload.signature.split(',')[1] ?? '', 'base64')
 
     // The immutable audit + signature + autofill + draft-delete write atomically.
     // The grant captures run POST-COMMIT: this postgres.js build does not expose a
@@ -146,6 +169,7 @@ export class ConsentFormService {
           ${form.audience}, ${tx.json(payload.itemStates)}, ${tx.json(payload.fieldValues)}, ${sig!.id},
           ${payload.verification ? tx.json(payload.verification) : null}, ${now})`
       for (const [fieldType, value] of Object.entries(payload.fieldValues)) {
+        if (ConsentFormService.CHILD_SCOPED_FIELDS.has(fieldType)) continue
         await tx`insert into guardian_saved_field (guardian_account_id, field_type, value_text)
           values (${ctx.account.id}, ${fieldType}, ${value})
           on conflict (guardian_account_id, field_type) do update set value_text = excluded.value_text, updated_at = now()`
