@@ -413,6 +413,22 @@ export const ROUTE_MANIFEST: RouteManifest = [
     path: '/api/guardian/children/[id]/setup-credential',
     capability: 'guardian.provision_child',
   },
+  // Guardian consent-form completion flow (migration 0039). The form editor's two
+  // mutating writes both guardian-scope through consent.grant (matched against
+  // ctx.guardianOf, with the minor-child age bar): the draft autosave persists
+  // in-progress form state, and the completion write records the immutable per-form
+  // audit + signature and captures the mapped grant(s). The three GET reads (forms
+  // list, guardian saved-fields, draft GET) are read-exempt from the manifest.
+  {
+    method: 'PUT',
+    path: '/api/guardian/children/[id]/forms/[formId]/draft',
+    capability: 'consent.grant',
+  },
+  {
+    method: 'POST',
+    path: '/api/guardian/children/[id]/forms/[formId]/completions',
+    capability: 'consent.grant',
+  },
 
   // ---- Operations back office (05 §Operations back office) ----
   { method: 'PATCH', path: '/api/ops/applications/[id]', capability: 'application.transition' },

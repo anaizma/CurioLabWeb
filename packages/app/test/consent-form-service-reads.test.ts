@@ -31,10 +31,10 @@ describe('ConsentFormService saved fields + draft', () => {
   test('saveDraft then getDraft round-trips; getSavedFields reads upserted values', async () => {
     const { child, ctx } = await seedGuardianChild()
     const svc = new ConsentFormService({ sql: h.sql, authorize })
-    await svc.saveDraft(child, 'form-02', ctx, {
+    await withRequest(() => svc.saveDraft(child, 'form-02', ctx, {
       itemStates: { 'form-02:item-1': true }, fieldValues: { guardian_name: 'Ada' },
       signature: '', pdfSha256: '',
-    })
+    }))
     const d = await svc.getDraft(child, 'form-02', ctx)
     expect(d!.fieldValues.guardian_name).toBe('Ada')
     const draftForm = (await withRequest(() => svc.listForms(child, ctx))).find((f) => f.schema.formId === 'form-02')!

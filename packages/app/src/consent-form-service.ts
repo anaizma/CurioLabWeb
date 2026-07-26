@@ -78,6 +78,10 @@ export class ConsentFormService {
 
   async saveDraft(childId: string, formId: string, ctx: AuthContext, payload: FormSubmitPayload): Promise<void> {
     if (!getCatalogForm(formId)) throw new Error(`unknown form: ${formId}`)
+    // Guardian-scope the write: the acting guardian must have authority over this
+    // child (matched against ctx.guardianOf, minor-child age bar) before we persist
+    // even scratch draft state referencing them.
+    await this.authorize(ctx, 'consent.grant', await this.childResource(childId), { sql: this.sql })
     const sigBuf = payload.signature?.startsWith('data:') ? Buffer.from(payload.signature.split(',')[1] ?? '', 'base64') : null
     await this.sql`
       insert into consent_form_draft (guardian_account_id, subject_student_account_id, form_id, item_states, field_values, signature)
@@ -91,6 +95,12 @@ export class ConsentFormService {
   ): Promise<{ completionId: string; grants: GrantResult[] }> {
     const form = getCatalogForm(formId)
     if (!form) throw new FormNotFoundError(formId)
+
+    // Guardian-scope the whole submission up front: the acting guardian must have
+    // authority over this child (consent.grant is guardian-scoped, writes:true, with
+    // the age-18 bar). captureGrant re-authorizes per grant, but this gate also
+    // covers a submission whose checked items map to NO grant (audit-only write).
+    await this.authorize(ctx, 'consent.grant', await this.childResource(childId), { sql: this.sql })
 
     // 1. Completeness (every required item checked; every required field present).
     for (const item of form.items) {
