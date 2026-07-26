@@ -163,6 +163,10 @@ const TOO_MANY = new Set(['InviteRateLimitError', 'TotpRateLimitedError'])
 /** Opaque, single-signal token failures -> 401 (reveals nothing; 05-api-surface). */
 const INVALID_TOKEN = new Set([
   'InvalidStage2TokenError',
+  // An expired Stage-2 lead: the link is no longer valid. 401 (not an unmapped
+  // 500) so the funnel shows the "this link may have expired" copy, matching the
+  // opaque single-signal posture of the other token failures.
+  'Stage2LeadExpiredError',
   'InvalidInviteError',
   // The newsletter confirm/unsubscribe token surface reveals nothing (M3.6).
   'InvalidSubscriberTokenError',

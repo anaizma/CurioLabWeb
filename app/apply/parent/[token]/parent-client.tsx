@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { errorCopy, postJson, SS_LEAD_EMAIL, studentLinkUrl } from "../../funnel";
+import ApplyLoading from "../../ApplyLoading";
 
 type Mode = "loading" | "form" | "invalid" | "error";
 type SaveStatus = "idle" | "submitting" | "saved" | "conflict" | "error";
@@ -216,11 +217,7 @@ export default function ParentClient({ token }: { token: string }) {
   }
 
   if (mode === "loading") {
-    return (
-      <div className="mx-auto max-w-2xl px-6 py-20">
-        <p className="text-muted">Checking your application link…</p>
-      </div>
-    );
+    return <ApplyLoading message="Checking your application link…" />;
   }
 
   if (mode === "invalid") {

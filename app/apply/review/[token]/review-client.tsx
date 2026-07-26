@@ -8,6 +8,7 @@ import {
   PARENT_FIELD_LABELS,
   STUDENT_QUESTIONS,
 } from "../../funnel";
+import ApplyLoading from "../../ApplyLoading";
 
 type Mode =
   | "loading"
@@ -118,11 +119,7 @@ export default function ReviewClient({ token }: { token: string }) {
   }
 
   if (mode === "loading") {
-    return (
-      <div className="mx-auto max-w-2xl px-6 py-20">
-        <p className="text-muted">Checking your application…</p>
-      </div>
-    );
+    return <ApplyLoading message="Checking your application…" />;
   }
 
   if (mode === "invalid") {
