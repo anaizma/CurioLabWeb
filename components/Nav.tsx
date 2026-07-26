@@ -160,7 +160,7 @@ export default function Nav() {
               href="/students"
               className="inline-block whitespace-nowrap bg-coral text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-coral-dark transition-colors"
             >
-              Apply →
+              Apply
             </Link>
 
             <button

@@ -8,9 +8,15 @@ export default function StudentsPage() {
       <p className="text-black max-w-2xl mb-16">
         Every student in grades 6 through 12 starts as an Explorer and
         advances on demonstrated output, not time served. 
-        As they progress, they learn from more experienced mentors and eventually become a 
+        As they progress, they learn from more experienced mentors and eventually become a
         qualified junior mentor to help teach newer students.
       </p>
+
+      <div className="mb-16">
+        <a href="/apply" className="inline-block bg-coral text-white px-8 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
+          Apply Now
+        </a>
+      </div>
 
       <TierLadder />
 
@@ -18,7 +24,7 @@ export default function StudentsPage() {
 
       <div className="mt-16 text-center">
         <a href="/apply" className="inline-block bg-coral text-white px-8 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
-          Apply →
+          Apply Now
         </a>
       </div>
     </div>
