@@ -314,6 +314,11 @@ export {
   objectPublicationHold,
 } from './controllers/guardian.js'
 
+// Guardian consent-form flow (catalog forms, drafts, completions)
+export {
+  listChildForms, getSavedFields, getFormDraft, saveFormDraft, submitFormCompletion,
+} from './controllers/consent-forms.js'
+
 // Public newsletter subscribe/confirm/unsubscribe (Milestone 3.6).
 export {
   subscribeNewsletter,
