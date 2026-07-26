@@ -730,6 +730,8 @@ export type {
   RunDmFreezeOnDepartureArgs,
   RunDmFreezeOnDepartureResult,
 } from './dm-oversight.js'
+export { ConsentFormService } from './consent-form-service.js'
+export type { ConsentFormServiceDeps } from './consent-form-service.js'
 export { CATALOG, getCatalogForm, toClientSchema } from './consent-forms/catalog.js'
 export type {
   FormAudience, FieldInputType, FormStatus, FormItemSchema, FormFieldSchema,

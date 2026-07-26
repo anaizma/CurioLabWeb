@@ -1,8 +1,15 @@
+import { randomUUID } from 'node:crypto'
 import type { Sql } from 'postgres'
 import type { AuthContext, Resource } from '@curiolab/core'
 import { CATALOG, getCatalogForm, toClientSchema } from './consent-forms/catalog.js'
 import type { FormListEntry, FormSubmitPayload, FormStatus } from './consent-forms/types.js'
+import { ConsentGrantService, type GrantResult } from './consent-grant.js'
+import { STRONG_GRANT_METHODS, type ConsentGrantMethod, type ConsentGrantType } from './config.js'
 import type { AppConfig } from './config.js'
+import {
+  FormNotFoundError, FormItemRequiredError, FormFieldRequiredError,
+  FormPdfHashMismatchError, FormElevatedVerificationRequiredError,
+} from './errors.js'
 
 export interface ConsentFormServiceDeps {
   sql: Sql
@@ -77,5 +84,75 @@ export class ConsentFormService {
       values (${ctx.account.id}, ${childId}, ${formId}, ${this.sql.json(payload.itemStates)}, ${this.sql.json(payload.fieldValues)}, ${sigBuf})
       on conflict (guardian_account_id, subject_student_account_id, form_id)
       do update set item_states = excluded.item_states, field_values = excluded.field_values, signature = excluded.signature, updated_at = now()`
+  }
+
+  async submitCompletion(
+    childId: string, formId: string, ctx: AuthContext, payload: FormSubmitPayload, now: Date = new Date(),
+  ): Promise<{ completionId: string; grants: GrantResult[] }> {
+    const form = getCatalogForm(formId)
+    if (!form) throw new FormNotFoundError(formId)
+
+    // 1. Completeness (every required item checked; every required field present).
+    for (const item of form.items) {
+      if (item.required && payload.itemStates[item.itemKey] !== true) throw new FormItemRequiredError(item.itemKey)
+    }
+    for (const field of form.fields) {
+      if (field.required && !(payload.fieldValues[field.fieldType]?.trim())) throw new FormFieldRequiredError(field.fieldType)
+    }
+    // 2. Bind to the exact bytes the guardian saw.
+    if (payload.pdfSha256 !== form.pdfSha256) throw new FormPdfHashMismatchError(formId)
+
+    // 3. Elevated gate: any elevated form OR any checked elevated item requires a
+    //    strong-method verification result. A reused signature alone never suffices.
+    const anyCheckedElevated = form.elevated || form.items.some((i) => i.elevated && payload.itemStates[i.itemKey] === true)
+    if (anyCheckedElevated) {
+      const v = payload.verification
+      if (!v || !STRONG_GRANT_METHODS.includes(v.method) || !v.evidenceArtifactRef) {
+        throw new FormElevatedVerificationRequiredError(formId)
+      }
+    }
+
+    // 4. Which grants to capture: distinct grantMappings on CHECKED items.
+    const grantTypes = [...new Set(
+      form.items.filter((i) => i.grantMapping && payload.itemStates[i.itemKey] === true).map((i) => i.grantMapping as ConsentGrantType),
+    )]
+    const method: ConsentGrantMethod = anyCheckedElevated ? (payload.verification!.method) : 'click'
+    const completionId = randomUUID()
+    const sigBuf = Buffer.from(payload.signature.split(',')[1] ?? '', 'base64')
+
+    // The immutable audit + signature + autofill + draft-delete write atomically.
+    // The grant captures run POST-COMMIT: this postgres.js build does not expose a
+    // nested `.begin` on the transaction handle (captureGrant opens its own
+    // savepoint transaction), so the grants cannot be captured inside this tx.
+    await this.sql.begin(async (tx) => {
+      await tx`
+        insert into consent_signature (completion_id, image, binding)
+        values (${completionId}, ${sigBuf}, ${tx.json({ formId, formVersion: form.version, pdfSha256: form.pdfSha256, timestamp: now.toISOString() })})`
+      const [sig] = await tx`select id from consent_signature where completion_id = ${completionId} order by seq desc limit 1`
+      await tx`
+        insert into consent_form_completion (id, form_id, form_version, pdf_sha256, subject_student_account_id,
+          signer_account_id, audience, item_states, field_values, signature_ref, verification, submitted_at)
+        values (${completionId}, ${formId}, ${form.version}, ${form.pdfSha256}, ${childId}, ${ctx.account.id},
+          ${form.audience}, ${tx.json(payload.itemStates)}, ${tx.json(payload.fieldValues)}, ${sig!.id},
+          ${payload.verification ? tx.json(payload.verification) : null}, ${now})`
+      for (const [fieldType, value] of Object.entries(payload.fieldValues)) {
+        await tx`insert into guardian_saved_field (guardian_account_id, field_type, value_text)
+          values (${ctx.account.id}, ${fieldType}, ${value})
+          on conflict (guardian_account_id, field_type) do update set value_text = excluded.value_text, updated_at = now()`
+      }
+      await tx`insert into guardian_saved_field (guardian_account_id, field_type, value_blob)
+        values (${ctx.account.id}, 'signature', ${sigBuf})
+        on conflict (guardian_account_id, field_type) do update set value_blob = excluded.value_blob, updated_at = now()`
+      await tx`delete from consent_form_draft
+        where guardian_account_id = ${ctx.account.id} and subject_student_account_id = ${childId} and form_id = ${formId}`
+    })
+
+    const grantSvc = new ConsentGrantService({ sql: this.sql, authorize: this.authorize as never })
+    const grants: GrantResult[] = []
+    for (const grantType of grantTypes) {
+      grants.push(await grantSvc.captureGrant(childId, grantType, ctx, { method, evidenceArtifactRef: completionId, now }))
+    }
+
+    return { completionId, grants }
   }
 }
