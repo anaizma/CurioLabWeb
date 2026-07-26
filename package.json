@@ -12,7 +12,8 @@
     "lint": "eslint",
     "test": "npm run test --workspaces --if-present",
     "test:web": "vitest run",
-    "consent:pdfs": "node scripts/consent-forms/generate-pdfs.mjs"
+    "consent:pdfs": "node scripts/consent-forms/generate-pdfs.mjs",
+    "db:migrate": "npm run db:migrate -w @curiolab/db --"
   },
   "dependencies": {
     "next": "16.2.10",
