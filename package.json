@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "predev": "node packages/db/migrate.mjs || exit 0",
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
