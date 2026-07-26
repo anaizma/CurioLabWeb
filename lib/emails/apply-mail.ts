@@ -46,3 +46,67 @@ export async function sendParentContinueEmail(to: string, continueUrl: string): 
   const { subject, text, html } = buildParentContinueEmail(continueUrl);
   await new Resend(key).emails.send({ from: FROM, to, subject, text, html });
 }
+
+export interface DirectorLeadNotificationInput {
+  /** The parent/guardian email captured on the Apply form. */
+  leadEmail: string;
+  /** The selected chapter CODE (may be "another-school"). */
+  chapter: string;
+  /** Who filled Stage 1. */
+  fillerRole: "parent" | "student";
+  /** "How did you hear" (optional). */
+  source: string | null;
+  /** Site origin used to build the applications-page link. */
+  appUrl: string;
+}
+
+/** The internal "someone applied" alert sent to the director on every fresh lead. */
+export function buildDirectorLeadNotification(input: DirectorLeadNotificationInput): BuiltEmail {
+  const applicationsUrl = `${input.appUrl}/portal/director/applications`;
+  const source = input.source && input.source.trim() ? input.source.trim() : "-";
+  const subject = `New CurioLab lead: ${input.leadEmail}`;
+  const text = [
+    "Someone just started an application on CurioLab.",
+    "",
+    `Email: ${input.leadEmail}`,
+    `Chapter: ${input.chapter}`,
+    `Started by: ${input.fillerRole}`,
+    `How did you hear: ${source}`,
+    "",
+    "They show up as Interested in the applications list until they finish:",
+    applicationsUrl,
+    "",
+    "CurioLab",
+  ].join("\n");
+  const html = [
+    "<p>Someone just started an application on CurioLab.</p>",
+    `<p><strong>Email:</strong> ${input.leadEmail}<br>`,
+    `<strong>Chapter:</strong> ${input.chapter}<br>`,
+    `<strong>Started by:</strong> ${input.fillerRole}<br>`,
+    `<strong>How did you hear:</strong> ${source}</p>`,
+    `<p>They show up as Interested in the applications list until they finish:<br>`,
+    `<a href="${applicationsUrl}">${applicationsUrl}</a></p>`,
+    "<p>CurioLab</p>",
+  ].join("");
+  return { subject, text, html };
+}
+
+/**
+ * The recipient of the director notification: DIRECTOR_NOTIFY_EMAIL, or the
+ * director's address as the default. Exported for reuse by the route.
+ */
+export function directorNotifyRecipient(): string {
+  return process.env.DIRECTOR_NOTIFY_EMAIL ?? "esong@acuriolab.org";
+}
+
+/**
+ * Send the director the "someone applied" alert. Throws on failure (Resend error
+ * or missing key) — the caller treats sending as best-effort so a delivery
+ * failure never loses the already-created lead.
+ */
+export async function sendDirectorLeadNotification(input: DirectorLeadNotificationInput): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new Error("RESEND_API_KEY is not set");
+  const { subject, text, html } = buildDirectorLeadNotification(input);
+  await new Resend(key).emails.send({ from: FROM, to: directorNotifyRecipient(), subject, text, html });
+}

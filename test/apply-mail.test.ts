@@ -1,0 +1,34 @@
+import { describe, expect, test } from 'vitest'
+import { buildDirectorLeadNotification } from '../lib/emails/apply-mail'
+
+describe('buildDirectorLeadNotification', () => {
+  test('includes the lead email, chapter, filler role, source, and a portal link', () => {
+    const email = buildDirectorLeadNotification({
+      leadEmail: 'parent@example.test',
+      chapter: 'cwru',
+      fillerRole: 'parent',
+      source: 'A friend told me',
+      appUrl: 'https://curiolab.test',
+    })
+    expect(email.subject).toContain('parent@example.test')
+    for (const body of [email.text, email.html]) {
+      expect(body).toContain('parent@example.test')
+      expect(body).toContain('cwru')
+      expect(body).toContain('parent')
+      expect(body).toContain('A friend told me')
+      expect(body).toContain('https://curiolab.test/portal/director/applications')
+    }
+  })
+
+  test('renders a dash for a missing source and never uses an em dash', () => {
+    const email = buildDirectorLeadNotification({
+      leadEmail: 'p@example.test',
+      chapter: 'another-school',
+      fillerRole: 'student',
+      source: null,
+      appUrl: 'https://curiolab.test',
+    })
+    expect(email.text).toContain('student')
+    expect(`${email.subject}${email.text}${email.html}`).not.toContain('—') // no em dash (Emily's preference)
+  })
+})
