@@ -7,6 +7,16 @@ import { Resend } from "resend";
 
 const FROM = process.env.APPLY_FROM_EMAIL ?? "CurioLab <onboarding@resend.dev>";
 
+/** Escape the five HTML-significant characters so untrusted form input can't inject markup. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export interface BuiltEmail {
   subject: string;
   text: string;
@@ -80,10 +90,10 @@ export function buildDirectorLeadNotification(input: DirectorLeadNotificationInp
   ].join("\n");
   const html = [
     "<p>Someone just started an application on CurioLab.</p>",
-    `<p><strong>Email:</strong> ${input.leadEmail}<br>`,
-    `<strong>Chapter:</strong> ${input.chapter}<br>`,
+    `<p><strong>Email:</strong> ${escapeHtml(input.leadEmail)}<br>`,
+    `<strong>Chapter:</strong> ${escapeHtml(input.chapter)}<br>`,
     `<strong>Started by:</strong> ${input.fillerRole}<br>`,
-    `<strong>How did you hear:</strong> ${source}</p>`,
+    `<strong>How did you hear:</strong> ${escapeHtml(source)}</p>`,
     `<p>They show up as Interested in the applications list until they finish:<br>`,
     `<a href="${applicationsUrl}">${applicationsUrl}</a></p>`,
     "<p>CurioLab</p>",

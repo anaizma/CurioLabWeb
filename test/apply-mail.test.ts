@@ -31,4 +31,18 @@ describe('buildDirectorLeadNotification', () => {
     expect(email.text).toContain('student')
     expect(`${email.subject}${email.text}${email.html}`).not.toContain('—') // no em dash (Emily's preference)
   })
+
+  test('escapes HTML-significant characters from untrusted fields in the html body', () => {
+    const email = buildDirectorLeadNotification({
+      leadEmail: '<b>x</b>@e.test',
+      chapter: 'a&b',
+      fillerRole: 'parent',
+      source: '<script>alert(1)</script>',
+      appUrl: 'https://curiolab.test',
+    })
+    expect(email.html).not.toContain('<script>')
+    expect(email.html).toContain('&lt;script&gt;')
+    expect(email.html).toContain('&lt;b&gt;x&lt;/b&gt;')
+    expect(email.html).toContain('a&amp;b')
+  })
 })
