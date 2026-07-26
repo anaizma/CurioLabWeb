@@ -1,23 +1,23 @@
-const evidence = [
+const impact = [
   {
     n: "01",
-    title: "Learner progression records",
-    desc: "Tier advancement, project completion, and attendance for every 6th–12th grade student.",
+    title: "Consistent mentorship",
+    desc: "Support mentors who work closely with students each week, understand their progress, and help them take on increasingly ambitious challenges.",
   },
   {
     n: "02",
-    title: "Deployed project artifacts",
-    desc: "Real work that exists at a live URL — clickable evidence, not a slide.",
+    title: "Accessible learning opportunities",
+    desc: "Help provide equipment, software, materials, meals, transportation support, and program access for students regardless of their financial circumstances.",
   },
   {
     n: "03",
-    title: "Mentor hours & outcomes",
-    desc: "Documented student outcomes tied to each university mentor.",
+    title: "Projects students can call their own",
+    desc: "Give students the resources and guidance to move beyond classroom exercises and build complete projects that reflect their interests, ideas, and abilities.",
   },
   {
     n: "04",
-    title: "Cohort-over-cohort data",
-    desc: "Now in our 4th cohort at Case Western Reserve University, with outcomes tracked every semester.",
+    title: "Stronger university chapters",
+    desc: "Help CurioLab train university mentors, strengthen local chapter operations, and bring the program to more students and communities.",
   },
 ];
 
@@ -53,24 +53,44 @@ export default function SupportPage() {
   return (
     <div>
       <section className="bg-indigo text-white">
-        <div className="mx-auto max-w-6xl px-6 py-20">
-          <p className="label text-white/60 mb-3">What makes this fundable</p>
-          <h1 className="font-editorial font-light text-3xl md:text-5xl max-w-2xl mb-6">
-            A program that produces evidence, not anecdotes.
+        <div className="mx-auto max-w-6xl px-6 pt-20 pb-24">
+          <p className="label text-white/60 mb-3">Support Our Mission</p>
+          <h1 className="font-editorial font-light text-3xl md:text-5xl leading-tight max-w-2xl mb-8">
+            Help young people discover what they are capable of.
           </h1>
-          <p className="text-white/70 max-w-2xl mb-12">
-            Most STEM grant narratives describe activities. CurioLab's
-            platform, Luminent, produces documented proof of work at every
-            level — which is rare in the 6th–12th grade STEM space, and the
-            reason CurioLab competes above its weight class for funding.
-          </p>
+          <div className="max-w-2xl space-y-5">
+            <p className="text-white/70">
+              CurioLab gives students in grades 6–12 the time, mentorship,
+              and tools to grow from curious beginners into independent
+              builders.
+            </p>
+            <p className="text-white/70">
+              Through consistent, multi-semester support, students learn to
+              design, program, solve difficult problems, and turn their own
+              ideas into real projects. At the same time, university
+              students grow as mentors, leaders, and community builders by
+              helping deliver the program.
+            </p>
+            <p className="text-white font-medium pt-2">
+              Your support helps us make this long-term growth possible.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* What support makes possible — darker navy, distinct from the mission statement above */}
+      <section className="bg-ink text-white">
+        <div className="mx-auto max-w-6xl px-6 py-20">
+          <h2 className="font-editorial font-light text-2xl md:text-4xl max-w-2xl mb-12">
+            What your support makes possible
+          </h2>
 
           <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
-            {evidence.map((e) => (
-              <div key={e.n} className="border-t border-white/20 pt-4">
-                <p className="font-mono text-marigold text-sm mb-2">{e.n}</p>
-                <h3 className="font-bold text-lg mb-1">{e.title}</h3>
-                <p className="text-white/60 text-sm">{e.desc}</p>
+            {impact.map((i) => (
+              <div key={i.n} className="border-t border-white/20 pt-4">
+                <p className="font-mono text-marigold text-sm mb-2">{i.n}</p>
+                <h3 className="font-bold text-lg mb-1">{i.title}</h3>
+                <p className="text-white/60 text-sm">{i.desc}</p>
               </div>
             ))}
           </div>
@@ -79,13 +99,18 @@ export default function SupportPage() {
 
       {/* Sponsorship tiers */}
       <section className="mx-auto max-w-6xl px-6 py-20">
-        <p className="label-blue mb-3">Sponsor a cohort</p>
-        <h2 className="text-2xl md:text-4xl font-bold mb-4">
-          Fund a project track, meet builders before anyone else recruits them
+        <h2 className="text-2xl md:text-4xl font-bold mb-6 max-w-2xl">
+          Support that creates lasting growth
         </h2>
-        <p className="text-black max-w-2xl mb-12">
-          Put your name on real, deployed student work — not a flyer.
-        </p>
+        <div className="max-w-2xl space-y-4 mb-12">
+          <p className="text-black">
+            A contribution to CurioLab does more than fund a single workshop
+            or activity. It supports relationships that continue across
+            semesters, projects that become more ambitious over time, and
+            young people who begin to recognize new strengths and
+            possibilities within themselves.
+          </p>
+        </div>
         <div className="grid md:grid-cols-3 gap-6">
           {tiers.map((t) => (
             <div key={t.name} className="bg-white border border-black/10 rounded-xl p-6">
@@ -98,9 +123,18 @@ export default function SupportPage() {
             </div>
           ))}
         </div>
-        <a href="mailto:aizma@curiolab.org" className="text-coral font-medium hover:underline block mt-8">
-          Sponsor inquiry →
-        </a>
+
+        <div className="mt-16 pt-10 border-t border-black/10">
+          <h3 className="text-xl md:text-2xl font-bold mb-3">Build the next generation with us</h3>
+          <p className="text-black max-w-2xl mb-6">
+            Partner with CurioLab to help more young people find the
+            guidance, confidence, and opportunity to turn their curiosity
+            into something real.
+          </p>
+          <a href="mailto:aizma@curiolab.org" className="inline-block bg-coral text-white px-6 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors">
+            Sponsor inquiry →
+          </a>
+        </div>
       </section>
 
       {/* Other ways to get involved */}
