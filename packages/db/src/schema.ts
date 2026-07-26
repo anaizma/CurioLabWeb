@@ -375,6 +375,10 @@ export const applicationLead = pgTable(
     // The design's conversion marker, set when a Stage-2 application submits at 2C.
     convertedAt: timestamp('converted_at', { withTimezone: true }),
     createdAt: createdAt(),
+    // The most recent time this lead requested its application link (0041). Set
+    // to now() on create and on every re-apply resend; the dashboard "Date"
+    // column reads it as an Interested row's current-status time.
+    lastRequestedAt: timestamp('last_requested_at', { withTimezone: true }).notNull().defaultNow(),
     // created_at + 30 days — the § 312.4(c)(1)(vii) retention/deletion floor.
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
