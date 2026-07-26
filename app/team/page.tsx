@@ -1,32 +1,38 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 
 const staff = [
   {
     name: "Emily Song",
     role: "Founder, CEO & Co-President",
     bio: "Emily sets CurioLab's long-term vision, organizational strategy, and standards for program quality. She leads partnerships, chapter expansion, and the development of a sustainable model that supports both young learners and university fellows.",
+    image: "/images/Website/Emily.PNG",
   },
   {
     name: "Ana Izma",
     role: "COO & Co-President",
     bio: "Ana oversees CurioLab's day-to-day operations and ensures that its programs, teams, and university chapters run effectively. She translates organizational goals into clear systems, coordinated execution, and a consistent experience across the organization.",
+    image: "/images/Website/Ana.png",
   },
   {
     name: "Vinh-Khang Luu",
     role: "Chief Financial Officer",
     bio: "Vinh-Khang leads CurioLab's financial planning, budgeting, and resource management. He works to maintain responsible financial practices and ensure that the organization's growth remains sustainable and aligned with its mission.",
+    image: "/images/Website/Khang.png",
   },
   {
     name: "Esmerelda Qiang",
     role: "Chief Marketing Officer",
     bio: "Esmerelda leads CurioLab's brand, communications, and community outreach. She shapes how the organization shares its mission, engages families and partners, and builds awareness among students, universities, and supporters.",
+    image: "/images/Website/Esme.png",
   },
   {
     name: "Tienna Zeng",
     role: "Director of Mentor & Student Relations",
     bio: "Tienna oversees the experience and development of CurioLab's students and mentors. She supports onboarding, relationship-building, and ongoing communication to create a welcoming, dependable, and growth-oriented program community.",
+    image: "/images/Website/Tienna.png",
   },
 ];
 
@@ -80,7 +86,13 @@ export default function TeamPage() {
               ${expandedName === s.name ? 'md:col-span-3' : ''}
             `}
           >
-            <div className="w-12 h-12 rounded-full bg-ivory mb-4" />
+            <Image
+              src={s.image}
+              alt={s.name}
+              width={48}
+              height={48}
+              className="w-12 h-12 rounded-full object-cover mb-4"
+            />
             <h3 className="font-bold text-lg">{s.name}</h3>
             <p className="label mb-3">{s.role}</p>
             <p className="text-sm text-muted">{s.bio}</p>
