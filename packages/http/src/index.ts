@@ -191,9 +191,20 @@ export type {
   ApplicationFormPutInput,
 } from './controllers/application-form.js'
 
-// Ops back office — read-only consent-form catalog view (Consent Forms, Phase 1)
-export { listConsentForms, getConsentFormDetail } from './controllers/consent-forms-admin.js'
-export type { ConsentFormDetailInput } from './controllers/consent-forms-admin.js'
+// Ops back office — director-editable consent forms (Consent Forms, Phase 2a)
+export {
+  listConsentForms,
+  getConsentFormDetail,
+  getEditableConsentForm,
+  saveConsentForm,
+  getConsentFormPdf,
+} from './controllers/consent-forms-admin.js'
+export type {
+  ConsentFormDetailInput,
+  ConsentFormKeyInput,
+  ConsentFormPutInput,
+  ConsentFormPdfResult,
+} from './controllers/consent-forms-admin.js'
 
 // Organization structure (Platform administration: chapters / terms / pods)
 export {
