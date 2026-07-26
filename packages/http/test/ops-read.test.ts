@@ -693,4 +693,28 @@ describe('listApplications — Interested leads (open, not-yet-converted)', () =
     const seenByB = await listApplications({ sql: h.sql, sessionToken: b.directorToken, query: { termId: 'all', view: 'full' } })
     expect(seenByB.body.items.map((i) => i.contactEmail)).not.toContain('a-only@example.test')
   })
+
+  test('an interested lead statusDate equals its last_requested_at', async () => {
+    const a = await seedDirector(h.sql)
+    const [lead] = await h.sql`
+      insert into application_lead (email, chapter, chapter_id, filler_role, status, expires_at, last_requested_at)
+      values ('sd-lead@example.test', 'code', ${a.chapter}, 'parent', 'new', now() + interval '30 days', now() - interval '2 days')
+      returning id, last_requested_at`
+    const res = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: 'all', view: 'full' } })
+    const item = res.body.items.find((i) => i.contactEmail === 'sd-lead@example.test')
+    expect(item).toBeDefined()
+    expect(new Date(item!.statusDate).getTime()).toBe(new Date(lead!.last_requested_at as string).getTime())
+  })
+
+  test('an application statusDate reflects its latest status-change event', async () => {
+    const a = await seedDirector(h.sql)
+    const appId = await submittedApplication(a.chapter)
+    await h.sql`update application set status = 'screening' where id = ${appId}`
+    const at = new Date(Date.now() - 60_000)
+    await h.sql`insert into application_event (application_id, from_status, to_status, at) values (${appId}, 'submitted', 'screening', ${at})`
+    const res = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: 'all', view: 'full' } })
+    const item = res.body.items.find((i) => i.applicationId === appId)
+    expect(item).toBeDefined()
+    expect(new Date(item!.statusDate).getTime()).toBe(at.getTime())
+  })
 })

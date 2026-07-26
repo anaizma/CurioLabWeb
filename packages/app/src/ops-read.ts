@@ -75,6 +75,9 @@ export interface ApplicationListItem {
   /** From the draft's parentAnswers `gradeEntering`; null when absent / no draft. */
   gradeLevel: string | null
   submittedAt: string
+  /** The effective time of the row's CURRENT status: for a lead, last_requested_at;
+   *  for an application, the latest status-change event.at (fallback created_at). */
+  statusDate: string
   chapterId: string
   /** The term whose [starts_on, ends_on] window contains created_at (date-containment). */
   termId: string | null
@@ -421,7 +424,8 @@ export class OpsReadService {
       select a.id, a.status, a.applicant_name, a.guardian_name, a.guardian_email,
              a.applicant_contact_email, a.chapter_id, a.created_at,
              d.parent_answers,
-             ct.id as term_id, ct.name as term_name
+             ct.id as term_id, ct.name as term_name,
+             se.at as status_at
       from application a
       left join lateral (
         select parent_answers from application_draft
@@ -434,6 +438,11 @@ export class OpsReadService {
           and a.created_at::date between starts_on and ends_on
         order by starts_on desc limit 1
       ) ct on true
+      left join lateral (
+        select at from application_event
+        where application_id = a.id and to_status = a.status
+        order by at desc limit 1
+      ) se on true
       where ${chapters === null ? sql`true` : sql`a.chapter_id in ${sql(chapters)}`}
         ${appStatuses ? sql`and a.status in ${sql(appStatuses)}` : sql``}
         ${
@@ -451,6 +460,7 @@ export class OpsReadService {
         studentName: (r.applicant_name as string | null) ?? null,
         gradeLevel: answerString(r.parent_answers, PARENT_GRADE_KEY),
         submittedAt: iso(r.created_at),
+        statusDate: iso((r.status_at as Date | null) ?? (r.created_at as Date)),
         chapterId: r.chapter_id as string,
         termId: (r.term_id as string | null) ?? null,
         termName: (r.term_name as string | null) ?? null,
@@ -470,7 +480,7 @@ export class OpsReadService {
     let leadItems: ApplicationListItem[] = []
     if (includeLeads) {
       const leadRows = await sql`
-        select l.id, l.email, l.filler_role, l.chapter_id, l.created_at
+        select l.id, l.email, l.filler_role, l.chapter_id, l.created_at, l.last_requested_at
         from application_lead l
         where l.converted_application_id is null
           and l.deleted_at is null
@@ -485,6 +495,7 @@ export class OpsReadService {
           studentName: null,
           gradeLevel: null,
           submittedAt: iso(r.created_at),
+          statusDate: iso(r.last_requested_at as Date),
           chapterId: r.chapter_id as string,
           termId: null,
           termName: null,
