@@ -38,7 +38,10 @@ export default function PortalShell({
   const body = (
     <>
       <header className="bg-ink text-white">
-        <div className="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between gap-6">
+        {/* Sidebar (ops) shell goes full-width so the brand pins to the far-left
+            above the rail and the avatar to the far-right; nav mode (student/
+            parent) keeps the centered max-width. */}
+        <div className={`${sidebar ? "w-full" : "mx-auto max-w-6xl"} px-6 h-14 flex items-center justify-between gap-6`}>
           <div className="flex items-center gap-2 font-bold">
             {/* Sidebar collapse toggle, pinned to the top-left corner (self-hides in nav mode). */}
             <SidebarToggle />

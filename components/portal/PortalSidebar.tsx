@@ -57,7 +57,10 @@ export default function PortalSidebar({
   const open = useContext(SidebarContext)?.open ?? true;
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    // Full-bleed (no centered max-width cap): the rail sticks to the left edge at
+    // every screen size and the main region flexes to fill all remaining width,
+    // so there is no dead space on the right.
+    <div className="w-full px-6 py-8">
       <div className={`flex items-start ${open ? "md:gap-8" : "md:gap-0"}`}>
         <aside className={`hidden md:block shrink-0 overflow-hidden transition-[width] duration-200 ${open ? "w-52" : "w-0"}`}>
           <nav className="flex flex-col gap-6 text-sm w-52">
