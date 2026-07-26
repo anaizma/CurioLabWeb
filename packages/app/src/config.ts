@@ -99,6 +99,15 @@ export const INVITE_RATE_LIMIT_MAX = 30
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000 // 1 hour
 
 /**
+ * The forced-password-change pending token lifetime (migration 0040): a
+ * password was proven but the account's must_change_password flag withholds
+ * a session until it is replaced. Longer than the TOTP pending window (5 min)
+ * because the operator is composing a new password, not reading a 6-digit
+ * code off a device.
+ */
+export const PASSWORD_CHANGE_REQUIRED_TTL_MS = 15 * 60 * 1000 // 15 minutes
+
+/**
  * §10 TOTP two-factor tunables (admin/director backend). Values, not literals,
  * per compliance-coppa.md Part 3 "Configuration, not code" — a policy change is a
  * config edit. The step/digits/window are RFC 6238 standards (interoperate with
@@ -515,6 +524,8 @@ export interface AppConfig {
   inviteRateLimitMax: number
   /** Password-reset token lifetime in ms (1 hour), evaluated at decision time. */
   passwordResetTtlMs: number
+  /** Forced-password-change pending token lifetime in ms (15 min), decision-time. */
+  passwordChangeRequiredTtlMs: number
   /** §10 TOTP: RFC 6238 time-step seconds (30). */
   totpStepSeconds: number
   /** §10 TOTP: number of digits in a code (6). */
@@ -582,6 +593,7 @@ export const defaultConfig: AppConfig = {
   inviteRateLimitWindowMs: INVITE_RATE_LIMIT_WINDOW_MS,
   inviteRateLimitMax: INVITE_RATE_LIMIT_MAX,
   passwordResetTtlMs: PASSWORD_RESET_TTL_MS,
+  passwordChangeRequiredTtlMs: PASSWORD_CHANGE_REQUIRED_TTL_MS,
   totpStepSeconds: TOTP_STEP_SECONDS,
   totpDigits: TOTP_DIGITS,
   totpWindowSteps: TOTP_WINDOW_STEPS,

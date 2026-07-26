@@ -182,3 +182,95 @@ describe('consumePasswordReset', () => {
     )
   })
 })
+
+// ===========================================================================
+// The forced-password-change gate (migration 0040). Keyed by accountId
+// directly (the caller — login() — already resolved the account), unlike
+// issuePasswordReset's identifier lookup. Independent purpose slot from
+// password_reset: an account could in principle hold one live token of each.
+describe('issuePasswordChangeRequired', () => {
+  test('mints a token, stores only its hash, purpose password_change_required', async () => {
+    const acct = await makeAdult(h.sql)
+    const r = await svc().issuePasswordChangeRequired(acct)
+    expect(r.token).toBeTruthy()
+    expect(r.accountId).toBe(acct)
+
+    const [row] = await h.sql`
+      select token_hash, purpose, consumed_at from credential_token where account_id = ${acct}
+    `
+    expect(row!.token_hash).toBe(hashToken(r.token))
+    expect(row!.purpose).toBe('password_change_required')
+    expect(row!.consumed_at).toBeNull()
+  })
+
+  test('a regenerate supersedes the prior live token', async () => {
+    const acct = await makeAdult(h.sql)
+    const first = await svc().issuePasswordChangeRequired(acct)
+    const second = await svc().issuePasswordChangeRequired(acct)
+    expect(second.token).not.toBe(first.token)
+    await expect(
+      svc().consumePasswordChangeRequired(first.token, 'NewPass!234'),
+    ).rejects.toBeInstanceOf(InvalidCredentialTokenError)
+  })
+
+  test('expires_at honours the configured TTL', async () => {
+    const acct = await makeAdult(h.sql)
+    const now = new Date('2026-07-01T00:00:00Z')
+    const r = await new CredentialTokenService({
+      sql: h.sql,
+      config: { passwordChangeRequiredTtlMs: 60_000 },
+    }).issuePasswordChangeRequired(acct, { now })
+    expect(r.expiresAt.getTime()).toBe(now.getTime() + 60_000)
+  })
+})
+
+describe('consumePasswordChangeRequired', () => {
+  test('sets the new password, clears must_change_password, consumes the token, revokes prior sessions', async () => {
+    const acct = await makeAdult(h.sql)
+    await h.sql`update account set must_change_password = true where id = ${acct}`
+    const { token: sessionToken } = await createSession(h.sql, {
+      accountId: acct,
+      expiresAt: new Date(Date.now() + 3_600_000),
+    })
+
+    const issued = await svc().issuePasswordChangeRequired(acct)
+    const newPassword = 'BrandNewSecret!42'
+    const res = await svc().consumePasswordChangeRequired(issued.token, newPassword)
+    expect(res.accountId).toBe(acct)
+
+    const [a] = await h.sql`select password_hash, must_change_password from account where id = ${acct}`
+    expect(await verifyPassword(a!.password_hash as string, newPassword)).toBe(true)
+    expect(a!.must_change_password).toBe(false)
+
+    const [t] = await h.sql`select consumed_at from credential_token where account_id = ${acct}`
+    expect(t!.consumed_at).not.toBeNull()
+    expect(await validateSession(h.sql, sessionToken)).toBeNull()
+  })
+
+  test('a second consume of the same token is rejected', async () => {
+    const acct = await makeAdult(h.sql)
+    const issued = await svc().issuePasswordChangeRequired(acct)
+    await svc().consumePasswordChangeRequired(issued.token, 'FirstPass!11')
+    await expect(
+      svc().consumePasswordChangeRequired(issued.token, 'SecondPass!22'),
+    ).rejects.toBeInstanceOf(InvalidCredentialTokenError)
+  })
+
+  test('an expired token is rejected', async () => {
+    const acct = await makeAdult(h.sql)
+    const past = new Date('2020-01-01T00:00:00Z')
+    const issued = await new CredentialTokenService({
+      sql: h.sql,
+      config: { passwordChangeRequiredTtlMs: 60_000 },
+    }).issuePasswordChangeRequired(acct, { now: past })
+    await expect(
+      svc().consumePasswordChangeRequired(issued.token, 'AnyPass!33'),
+    ).rejects.toBeInstanceOf(InvalidCredentialTokenError)
+  })
+
+  test('an unknown token is rejected', async () => {
+    await expect(
+      svc().consumePasswordChangeRequired(`forged-${randomUUID()}`, 'AnyPass!44'),
+    ).rejects.toBeInstanceOf(InvalidCredentialTokenError)
+  })
+})

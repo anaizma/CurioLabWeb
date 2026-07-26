@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto'
 import { beforeAll, afterAll, describe, expect, test } from 'vitest'
 import { hashPassword, totp, validateSession } from '@curiolab/runtime'
-import { TwoFactorService, bootstrapPlatformAdmin } from '@curiolab/app'
+import { TwoFactorService } from '@curiolab/app'
 import { startHarness, type Harness } from './helpers/pg.js'
 import { makeChapter } from './helpers/fixtures.js'
 import {
@@ -200,26 +200,9 @@ describe('privileged login with active TOTP', () => {
   })
 })
 
-describe('the bootstrapped platform admin can complete the TOTP login flow', () => {
-  test('login -> totpRequired -> submit the bootstrap secret code -> session', async () => {
-    const now = new Date('2026-07-24T12:00:00Z')
-    const boot = await bootstrapPlatformAdmin(
-      h.sql,
-      { legalName: 'Ada Founder', email: 'founder@acuriolab.org', password: PW },
-      { now },
-    )
-    expect(boot.created).toBe(true)
-
-    const later = new Date(now.getTime() + 60_000)
-    const step1 = await login({ sql: h.sql, body: { identifier: 'founder@acuriolab.org', password: PW }, now: later })
-    expect(step1.body).toMatchObject({ totpRequired: true })
-    const pendingToken = (step1.body as { pendingToken: string }).pendingToken
-    const submit = await submitTotp({
-      sql: h.sql,
-      body: { pendingToken, code: totp(boot.secret!, later.getTime()) },
-      now: later,
-    })
-    expect(submit.status).toBe(200)
-    expect(submit.body.accountId).toBe(boot.adminAccountId)
-  })
-})
+// The bootstrapped-platform-admin login flow (forced password change +
+// TOTP) moved to its own file (bootstrap-admin-login-flow.test.ts) with an
+// isolated harness: bootstrapPlatformAdmin's non-empty-database guard means
+// it can only run against a database with no account rows yet, which this
+// file's shared DB no longer is by the time earlier describe blocks above
+// have run.

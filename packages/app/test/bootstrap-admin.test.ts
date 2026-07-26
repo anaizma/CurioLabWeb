@@ -9,7 +9,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { verifyPassword } from '@curiolab/runtime'
 import { startHarness, type Harness } from './helpers/pg.js'
-import { bootstrapPlatformAdmin } from '../src/bootstrap-admin.js'
+import { bootstrapPlatformAdmin, BootstrapDatabaseNotEmptyError } from '../src/bootstrap-admin.js'
 
 let h: Harness
 
@@ -37,13 +37,17 @@ describe('bootstrapPlatformAdmin on an empty DB', () => {
     expect(res.backupCodes).toHaveLength(10)
 
     const [acct] = await h.sql`
-      select password_hash, totp_secret, totp_activated_at, status, maturation_state
+      select password_hash, totp_secret, totp_activated_at, status, maturation_state,
+             must_change_password
       from account where id = ${res.adminAccountId!}
     `
     expect(await verifyPassword(acct!.password_hash as string, INPUT.password)).toBe(true)
     expect(acct!.totp_secret).toBeTruthy()
     expect(acct!.totp_activated_at).not.toBeNull()
     expect(acct!.status).toBe('active')
+    // Forced-password-change gate (migration 0040): the operator-supplied
+    // seed password must be replaced before the admin gets a session.
+    expect(acct!.must_change_password).toBe(true)
 
     const mems = await h.sql`
       select role, status from membership where account_id = ${res.adminAccountId!}

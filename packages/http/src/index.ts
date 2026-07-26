@@ -66,6 +66,7 @@ export {
   confirmTotpEnrollment,
   requestPasswordReset,
   resetPassword,
+  completeRequiredPasswordChange,
   startImpersonation,
   endImpersonation,
 } from './controllers/auth.js'
@@ -81,6 +82,7 @@ export type {
   PasswordResetDelivery,
   RequestPasswordResetInput,
   ResetPasswordInput,
+  CompleteRequiredPasswordChangeInput,
   StartImpersonationInput,
   StartImpersonationResult,
 } from './controllers/auth.js'

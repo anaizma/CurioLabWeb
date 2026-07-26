@@ -62,6 +62,17 @@ export interface ConsumePasswordResetResult {
   accountId: string
 }
 
+export interface IssuePasswordChangeRequiredResult {
+  accountId: string
+  /** The opaque token, returned to the caller exactly once. Never stored raw. */
+  token: string
+  expiresAt: Date
+}
+
+export interface ConsumePasswordChangeRequiredResult {
+  accountId: string
+}
+
 export class CredentialTokenService {
   private readonly sql: Sql
   private readonly config: AppConfig
@@ -166,5 +177,79 @@ export class CredentialTokenService {
 
       return { accountId }
     }) as Promise<ConsumePasswordResetResult>
+  }
+
+  // ---- forced password change (migration 0040) -----------------------------
+  /**
+   * Mint a short-lived 'password_change_required' token for `accountId` (the
+   * caller — login() — already resolved the account; unlike issuePasswordReset
+   * there is no identifier lookup or no-oracle concern here, since the caller
+   * is not exposed to an unauthenticated actor). A regenerate supersedes any
+   * prior live token of this purpose, mirroring issuePasswordReset.
+   */
+  async issuePasswordChangeRequired(
+    accountId: string,
+    opts: { now?: Date } = {},
+  ): Promise<IssuePasswordChangeRequiredResult> {
+    const now = opts.now ?? new Date()
+    const token = generateSessionToken()
+    const tokenHash = hashToken(token)
+    const expiresAt = new Date(now.getTime() + this.config.passwordChangeRequiredTtlMs)
+
+    await this.sql.begin(async (tx) => {
+      await tx`
+        update credential_token set consumed_at = ${now}
+        where account_id = ${accountId} and purpose = 'password_change_required' and consumed_at is null
+      `
+      await tx`
+        insert into credential_token (account_id, token_hash, purpose, expires_at)
+        values (${accountId}, ${tokenHash}, 'password_change_required', ${expiresAt})
+      `
+    })
+
+    return { accountId, token, expiresAt }
+  }
+
+  /**
+   * Validate (live, unexpired, unconsumed) at request time; set the account's
+   * argon2id password_hash; CLEAR must_change_password; mark consumed_at;
+   * revoke the account's existing sessions (mirrors consumePasswordReset — in
+   * the ordinary bootstrap-admin case no session exists yet, but the revoke is
+   * harmless and keeps the two consume paths symmetric). Mints NO session: the
+   * caller must log in again with the new password.
+   */
+  async consumePasswordChangeRequired(
+    token: string,
+    newPassword: string,
+    opts: { now?: Date } = {},
+  ): Promise<ConsumePasswordChangeRequiredResult> {
+    const now = opts.now ?? new Date()
+    const tokenHash = hashToken(token)
+    const [row] = await this.sql`
+      select id, account_id from credential_token
+      where token_hash = ${tokenHash} and purpose = 'password_change_required'
+        and consumed_at is null and expires_at > ${now}
+    `
+    if (row === undefined) throw new InvalidCredentialTokenError()
+
+    const accountId = row.account_id as string
+    const passwordHash = await hashPassword(newPassword)
+
+    return this.sql.begin(async (tx) => {
+      const claimed = await tx`
+        update credential_token set consumed_at = ${now}
+        where id = ${row.id} and consumed_at is null and expires_at > ${now}
+        returning account_id
+      `
+      if (claimed.length === 0) throw new InvalidCredentialTokenError()
+
+      await tx`
+        update account set password_hash = ${passwordHash}, must_change_password = false
+        where id = ${accountId}
+      `
+      await revokeAllSessionsForAccount(tx, accountId, now)
+
+      return { accountId }
+    }) as Promise<ConsumePasswordChangeRequiredResult>
   }
 }

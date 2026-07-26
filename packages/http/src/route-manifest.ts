@@ -247,6 +247,18 @@ export const ROUTE_MANIFEST: RouteManifest = [
     inert: 'token-gated; consumes a reset token, no enumeration signal (05 inert table)',
     specEnumerated: true,
   },
+  // Forced password change (migration 0040). Pending-token-gated exactly like
+  // the §10 pending-2FA continuation below (credential_token purpose
+  // password_change_required, minted by login() when must_change_password is
+  // set) — not a session, no actor, runPublic. Mints no session itself: the
+  // operator logs in again with the new password. Not in 05's enumerated set,
+  // like /auth/totp/*.
+  {
+    method: 'POST',
+    path: '/api/auth/password/change-required',
+    inert: 'pending-password-change-token-gated; sets the new password, clears must_change_password, mints no session, no actor',
+    specEnumerated: false,
+  },
   {
     method: 'POST',
     path: '/api/auth/email/add',

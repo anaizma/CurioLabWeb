@@ -210,6 +210,11 @@ export const account = pgTable(
     totpSecret: text('totp_secret'),
     totpActivatedAt: timestamp('totp_activated_at', { withTimezone: true }),
     totpLastStep: bigint('totp_last_step', { mode: 'number' }),
+    // A forced-password-change gate (migration 0040). True only for an account
+    // holding a temporary/operator-set credential (today: the bootstrap
+    // platform_admin) — login() withholds a session until it is cleared via
+    // POST /api/auth/password/change-required.
+    mustChangePassword: boolean('must_change_password').notNull().default(false),
   },
   (t) => [
     // Exactly one of email or username.

@@ -64,8 +64,15 @@ export interface LoginInput extends PublicInputBase {
 }
 
 /**
- * The login result is a discriminated union (§10 two-step login):
+ * The login result is a discriminated union (§10 two-step login; migration
+ * 0040 forced password change):
  *   - `{ accountId }`             — a full session was minted (session cookie set).
+ *   - `{ passwordChangeRequired, pendingToken }`
+ *       — the account's must_change_password flag is set (today: only the
+ *         bootstrap platform_admin): the password was correct but it is a
+ *         temporary/operator-set credential. Checked BEFORE the 2FA branch —
+ *         no totpRequired, no session, until POST /api/auth/password/
+ *         change-required replaces it. The operator then logs in again.
  *   - `{ totpRequired, pendingToken }`
  *       — a privileged account WITH active TOTP: the password was correct but no
  *         session exists yet. Submit the TOTP/backup code + pendingToken to
@@ -73,15 +80,17 @@ export interface LoginInput extends PublicInputBase {
  *   - `{ totpEnrollmentRequired, pendingToken }`
  *       — a privileged account WITHOUT TOTP yet: enrollment is forced before any
  *         session. Call POST /api/auth/totp/enroll then /confirm with the token.
- * The pendingToken is a SHORT-LIVED pending-2FA state (5 min), NOT a session — it
- * confers no authority; only the totp/confirm step mints the session cookie.
+ * Both pendingToken kinds are SHORT-LIVED pending states, NOT a session — they
+ * confer no authority; only totp/confirm or password/change-required's *next*
+ * login mints the session cookie.
  */
 export type LoginResult =
   | { accountId: string }
+  | { passwordChangeRequired: true; pendingToken: string }
   | { totpRequired: true; pendingToken: string }
   | { totpEnrollmentRequired: true; pendingToken: string }
 
-/** POST /api/auth/login — verify credentials; mint a session OR a pending-2FA state; else opaque 401. */
+/** POST /api/auth/login — verify credentials; mint a session OR a pending state; else opaque 401. */
 export function login(input: LoginInput): Promise<ControllerResult<LoginResult>> {
   return runPublic(async () => {
     const identifier = reqStr(input.body?.identifier, 'identifier')
@@ -90,7 +99,7 @@ export function login(input: LoginInput): Promise<ControllerResult<LoginResult>>
 
     // Resolve the account by email OR username (both citext, case-insensitive).
     const [acct] = await input.sql`
-      select id, password_hash, status from account
+      select id, password_hash, status, must_change_password from account
       where (email = ${identifier} or username = ${identifier})
       limit 1
     `
@@ -102,6 +111,18 @@ export function login(input: LoginInput): Promise<ControllerResult<LoginResult>>
     if (!ok) return unauthorized<LoginResult>()
 
     const accountId = acct.id as string
+
+    // Migration 0040, checked BEFORE the 2FA branch: a temporary/operator-set
+    // credential must be replaced before anything else, including proving a
+    // second factor. The password just proven IS the authentication for this
+    // step; no session, no totpRequired, until the change-required token is
+    // consumed and the operator logs in again.
+    if (acct.must_change_password === true) {
+      const { token: pendingToken } = await new CredentialTokenService({
+        sql: input.sql,
+      }).issuePasswordChangeRequired(accountId, { now })
+      return { status: 200, body: { passwordChangeRequired: true, pendingToken } }
+    }
 
     // §10 gating: a privileged account (any membership role but student/alumni)
     // needs a second factor. Password alone yields a pending-2FA state, NOT a
@@ -344,6 +365,37 @@ export function resetPassword(input: ResetPasswordInput): Promise<ControllerResu
       now: input.now,
     })
     return { status: 200, body: { reset: true } }
+  })
+}
+
+// ---- forced password change consume (POST /api/auth/password/change-required) ----
+
+export interface CompleteRequiredPasswordChangeInput extends PublicInputBase {
+  body: { pendingToken?: unknown; newPassword?: unknown }
+}
+
+/**
+ * POST /api/auth/password/change-required — pending-token-gated (migration
+ * 0040), unauthenticated, no actor (runPublic), like /auth/totp. Consumes the
+ * password-change-required token minted by login(): sets the account's
+ * argon2id password, clears must_change_password, marks the token consumed,
+ * and revokes any existing sessions. Mints NO session — the operator must
+ * call POST /api/auth/login again with the new password. An expired,
+ * consumed, or unknown token is one opaque 401 (InvalidCredentialTokenError ->
+ * invalid_token via mapError, same as /auth/password/reset).
+ */
+export function completeRequiredPasswordChange(
+  input: CompleteRequiredPasswordChangeInput,
+): Promise<ControllerResult<{ passwordChanged: true }>> {
+  return runPublic(async () => {
+    const pendingToken = reqStr(input.body?.pendingToken, 'pendingToken')
+    const newPassword = reqStr(input.body?.newPassword, 'newPassword')
+    await new CredentialTokenService({ sql: input.sql }).consumePasswordChangeRequired(
+      pendingToken,
+      newPassword,
+      { now: input.now },
+    )
+    return { status: 200, body: { passwordChanged: true } }
   })
 }
 

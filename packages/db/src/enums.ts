@@ -366,6 +366,12 @@ export const credentialTokenPurposeEnum = pgEnum('credential_token_purpose', [
   // session — it confers no authority. Independent one-live slot (a re-login
   // supersedes the prior).
   'totp_pending',
+  // The short-lived forced-password-change pending state (migration 0040):
+  // minted by login when account.must_change_password is set, in place of a
+  // session or a totp_pending token. Consumed by POST /api/auth/password/
+  // change-required, which sets the new password, clears the flag, and mints
+  // NO session — the operator logs in again with the new password.
+  'password_change_required',
 ])
 
 // --- Newsletter subscriber (Milestone 3.6) ---
