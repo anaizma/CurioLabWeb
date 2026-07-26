@@ -9,7 +9,7 @@ export interface ApplicationRow {
   gradeLevel: string | null;
   termName: string | null;
   submittedLabel: string;
-  // Only populated in the full-view list (?view=full) and in sample data.
+  // Always populated: the list is always full view now.
   guardianName?: string | null;
   school?: string | null;
   contactEmail?: string | null;
