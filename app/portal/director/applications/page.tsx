@@ -93,6 +93,15 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                         {grade && <span className="text-[10.5px] font-mono rounded px-1.5 py-0.5 bg-ink/5 text-ink/60 shrink-0">{grade}</span>}
                       </>
                     )}
+                    {a.duplicateFlag && (
+                      <span
+                        className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 whitespace-nowrap shrink-0"
+                        style={{ background: "#FBF0DA", color: "#8A5A00" }}
+                        title="Possible duplicate applicant (name + date of birth match)"
+                      >
+                        Possible duplicate
+                      </span>
+                    )}
                   </div>
                   {/* Full columns */}
                   <div className="text-xs text-ink/55 truncate">{a.school || "—"}</div>
