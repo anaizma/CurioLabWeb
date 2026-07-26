@@ -492,6 +492,15 @@ export type {
   FixedFieldSpec,
   ValidateDeps,
 } from './application-form.js'
+// Director-portal READ-ONLY consent-form catalog view (Consent Forms, Phase 1).
+export { ConsentFormAdminService } from './consent-form-admin.js'
+export type {
+  ConsentFormAdminServiceDeps,
+  ConsentFormAdminAuthorizeFn,
+  ConsentFormAdminCapability,
+  ConsentFormSummary,
+  ConsentFormDetail,
+} from './consent-form-admin.js'
 export { ProjectService, projectExternalPublicationRevokeCascade } from './project.js'
 export type {
   ProjectServiceDeps,

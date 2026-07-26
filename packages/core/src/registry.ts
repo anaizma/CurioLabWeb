@@ -617,6 +617,24 @@ export const REGISTRY: Record<Capability, CapabilityDef> = {
     roles: ['chapter_director'],
     writes: true,
   },
+  // the read-only consent-form catalog surface (director portal "Consent Forms",
+  // Phase 1). consent.form.read is the chapter-scoped READ a director uses to list
+  // and inspect the static consent catalog for THEIR chapter (another chapter denies
+  // out_of_scope; writes:false, so both platform overrides reach it), mirroring
+  // application.read. consent.form.manage is the chapter-scoped WRITE reserved for
+  // the later edit/PDF-upload phase — declared now (the consent.form DB table exists
+  // for it), writes:true so a read-only platform_staff does NOT reach it, mirroring
+  // application.form.manage. platform_admin reaches chapter scope via the override.
+  'consent.form.read': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: false,
+  },
+  'consent.form.manage': {
+    scope: 'chapter',
+    roles: ['chapter_director'],
+    writes: true,
+  },
   'invite.read': {
     scope: 'chapter',
     roles: ['chapter_director'],
