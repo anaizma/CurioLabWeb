@@ -1631,3 +1631,29 @@ export const consentFormDraft = pgTable(
   },
   (t) => [primaryKey({ columns: [t.guardianAccountId, t.subjectStudentAccountId, t.formId] })],
 )
+
+// --- The editable consent-form DEFINITION (0042) ---------------------------
+// Director-editable, versioned, per-chapter consent-form definitions (the
+// authored form: a display PDF + app-layer checkbox items + typed detail
+// fields). Mirrors application_form (0034): a new version is a NEW row; a
+// published row is never mutated (SELECT+INSERT grant). chapter_id NULL = the
+// platform default. Distinct from 0039's consent_form_* SUBMISSION tables.
+export const consentForm = pgTable('consent_form', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  seq: bigserial('seq', { mode: 'bigint' }).notNull().unique(),
+  formKey: text('form_key').notNull(),
+  chapterId: uuid('chapter_id').references(() => chapter.id),
+  version: integer('version').notNull(),
+  status: text('status').notNull(),
+  audience: text('audience').notNull(),
+  documentId: text('document_id'),
+  title: text('title').notNull(),
+  elevated: boolean('elevated').notNull().default(false),
+  pdf: bytea('pdf').notNull(),
+  pdfSha256: text('pdf_sha256').notNull(),
+  items: jsonb('items').notNull(),
+  fields: jsonb('fields').notNull(),
+  createdBy: uuid('created_by').references(() => account.id),
+  createdAt: createdAt(),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+}, (t) => [index('consent_form_lookup_idx').on(t.audience, t.chapterId, t.formKey, t.version)])
