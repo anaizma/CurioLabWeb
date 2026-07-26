@@ -309,6 +309,13 @@ export const application = pgTable('application', {
   // transition. Both nullable — interviewAt is optional (the slot may be filled later).
   interviewAt: timestamp('interview_at', { withTimezone: true }),
   interviewLocation: text('interview_location'),
+  // Non-blocking duplicate-applicant flag (0043). Stamped at submit when the
+  // child name + DOB matches an existing same-chapter application; cleared by a
+  // director dismissing a false positive. Flagged = flaggedAt set & clearedAt null.
+  duplicateFlaggedAt: timestamp('duplicate_flagged_at', { withTimezone: true }),
+  duplicateOfApplicationId: uuid('duplicate_of_application_id').references((): AnyPgColumn => application.id),
+  duplicateClearedAt: timestamp('duplicate_cleared_at', { withTimezone: true }),
+  duplicateClearedBy: uuid('duplicate_cleared_by').references(() => account.id),
   createdAt: createdAt(),
 })
 
