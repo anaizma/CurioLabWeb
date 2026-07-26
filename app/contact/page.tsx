@@ -28,15 +28,15 @@ export default function ContactPage() {
       <p className="label-blue mb-3">Get in touch</p>
       <h1 className="text-3xl md:text-5xl font-bold mb-6">Contact</h1>
       <p className="text-black max-w-xl mb-12">
-        Questions about applying, mentoring, sponsoring, or starting a
-        chapter — reach out and a real person will get back to you.
+        Questions about applying, mentoring, sponsoring, or starting a chapter?
+        Reach out and a real person will get back to you.
       </p>
 
       <div className="grid md:grid-cols-2 gap-8 mb-16">
         <div className="bg-white border border-black/10 rounded-xl p-6">
           <p className="label mb-2">Email</p>
-          <a href="mailto:anaizma16@gmail.com" className="font-medium hover:underline">
-            anaizma16@gmail.com
+          <a href="mailto:team@acuriolab.org" className="font-medium hover:underline">
+            team@acuriolab.org
           </a>
         </div>
         <div className="bg-white border border-black/10 rounded-xl p-6">
@@ -85,12 +85,12 @@ export default function ContactPage() {
         </button>
         {status === "sent" && (
           <p className="text-sm text-sage font-medium">
-            Message sent — we'll get back to you soon.
+            Message sent. We'll get back to you soon.
           </p>
         )}
         {status === "error" && (
           <p className="text-sm text-coral font-medium">
-            Something went wrong. Please email us directly at anaizma16@gmail.com.
+            Something went wrong. Please email us directly at team@acuriolab.org.
           </p>
         )}
       </form>
