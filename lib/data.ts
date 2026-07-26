@@ -27,18 +27,21 @@ export const tiers = [
     meta: "SEMESTER 1-2",
     builds: "Learn foundational programming and engineering concepts. Focused on understanding and practice to consolidate skills.",
     gains: "Complete small checkpoint projects, and learn from personal mentor throughout the program.",
+    image: "/images/Website/exploration.jpg",
   },
   {
     name: "Builder",
     meta: "SEMESTER 3-4",
     builds: "Chooses a practical project and builds independently, with weekly mentor support.",
     gains: "Full ownership of a complete project and a portfolio-ready artifact.",
+    image: "/images/Website/builder.png",
   },
   {
     name: "Innovator",
     meta: "multi-semester commitment",
     builds: "Develop a real solution to a chosen community problem — deployed, or entered in an external competition.",
     gains: "Experience the full product development cycle, from ideation to deployment, and gain real-world experience in problem-solving and innovation.",
+    image: "/images/Website/innovation.png",
   },
 ];
 
@@ -65,7 +68,7 @@ export const projects = [
     desc: "A small playable piano with physical keys that produce different musical notes through a buzzer.",
     skills: "Generating tones at specific frequencies in Arduino C++, reading multiple button inputs at once, and designing a compact key layout in CAD.",
     stack: ["Arduino", "C++", "CAD", "Piezo Buzzer", "Push Buttons", "Tone Generation"],
-    image: "/images/projects/projects.jpeg",
+    image: "/images/projects/CurioLab_piano.png",
   },
   {
     tier: "Builder",
@@ -73,7 +76,7 @@ export const projects = [
     desc: "A 3D-modeled safe enclosure with a working locking mechanism and passcode entry, built piece by piece from the circuit to the CAD model.",
     skills: "Constructing individual mechanical parts — the locking mechanism, enclosure, and keypad housing — based on a CAD model, and writing the passcode logic in Arduino C++.",
     stack: ["Arduino", "C++", "CAD", "Servo Motor", "Keypad", "Locking Mechanism"],
-    image: "/images/projects/safe.jpeg",
+    image: "/images/projects/CurioLab_safe.png",
   },
   {
     tier: "Builder",
@@ -81,7 +84,7 @@ export const projects = [
     desc: "A remote-controlled car students wired and programmed to drive forward and backward on command.",
     skills: "Motor control and driver circuits, receiving and interpreting remote signals, and debugging real hardware behavior in real time.",
     stack: ["Arduino Nano", "C++", "CAD", "Motors", "Motor Driver", "Remote Control"],
-    image: "/images/projects/projects.jpeg",
+    image: "/images/projects/CurioLab_car.png",
   },
   {
     tier: "Builder",
@@ -89,7 +92,8 @@ export const projects = [
     desc: "A controller that drives high-power LED lighting with adjustable brightness, switching real power loads safely.",
     skills: "Switching high-power loads with a MOSFET, dimming with PWM, and learning the basics of power electronics and LED driving.",
     stack: ["Arduino", "C++", "CAD", "MOSFET", "PWM Dimming", "LED Driver", "Power Electronics"],
-    image: "/images/projects/projects.jpeg",
+    image: "/images/projects/CurioLab_led.png",
+    imagePosition: "object-[center_85%]",
   },
   {
     tier: "Builder",
@@ -97,6 +101,6 @@ export const projects = [
     desc: "A small desktop companion robot that reacts to its surroundings with movement and simple expressions.",
     skills: "Driving servo motors for movement, reading sensor input, and showing status on an LCD display, all housed in a custom CAD enclosure.",
     stack: ["Arduino", "C++", "CAD", "Servo Motors", "Sensors", "LCD Display"],
-    image: "/images/projects/projects.jpeg",
+    image: "/images/projects/CurioLab_robot.png",
   },
 ];

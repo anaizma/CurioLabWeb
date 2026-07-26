@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import Image from "next/image";
 import { tiers, heroVerbHex } from "@/lib/data";
 
 const TIER_VH = 150;
@@ -215,12 +216,10 @@ export default function LadderScrollytelling() {
             if (unlocked) {
               const image = (
                 <div
-                  className="aspect-[4/3] rounded-2xl border-2 border-dashed bg-white/5 flex items-center justify-center p-6"
+                  className="relative aspect-[4/3] rounded-2xl border-2 overflow-hidden bg-white/5"
                   style={{ borderColor: `${accent}59` }}
                 >
-                  <span className="font-mono text-xs uppercase tracking-widest text-center opacity-70 text-white/60">
-                    [Photo placeholder — {t.name}-tier students]
-                  </span>
+                  <Image src={t.image} alt={`${t.name}-tier students`} fill className="object-cover" />
                 </div>
               );
 
@@ -271,17 +270,15 @@ export default function LadderScrollytelling() {
             // own line — easier to scan than one wrapped block.
             const buildsLines = t.builds.split(/(?<=\.)\s+/).filter(Boolean);
 
-            const figure = (label: string) => (
+            const figure = (
               <div
-                className="rounded-2xl border-2 border-dashed bg-white/5 flex items-center justify-center p-6 h-full min-h-[160px]"
+                className="relative rounded-2xl border-2 overflow-hidden bg-white/5 h-full min-h-[160px]"
                 style={{
                   borderColor: "var(--tier-fig-border)",
                   transition: "border-color 0.6s ease",
                 }}
               >
-                <span className="font-mono text-[11px] uppercase tracking-widest text-center opacity-70 text-white/50">
-                  {label}
-                </span>
+                <Image src={t.image} alt={`${t.name}-tier students`} fill className="object-cover" />
               </div>
             );
 
@@ -349,10 +346,7 @@ export default function LadderScrollytelling() {
                       </div>
                     </div>
 
-                    <div className="grid grid-rows-2 gap-5 h-full min-h-0">
-                      {figure(`[Photo — ${t.name}-tier students]`)}
-                      {figure(`[Photo — ${t.name} project]`)}
-                    </div>
+                    <div className="h-full min-h-0">{figure}</div>
                   </div>
                 </div>
               </div>

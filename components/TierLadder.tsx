@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { tiers, tierColors, heroVerbColors } from "@/lib/data";
 
 export default function TierLadder({ dark = false }: { dark?: boolean }) {
@@ -9,13 +10,11 @@ export default function TierLadder({ dark = false }: { dark?: boolean }) {
 
         const image = (
           <div
-            className={`relative aspect-[4/3] rounded-2xl border-2 border-dashed ${c.border} flex items-center justify-center p-6 ${
+            className={`relative aspect-[4/3] rounded-2xl border-2 overflow-hidden ${c.border} ${
               dark ? "bg-white/5" : c.badge
             }`}
           >
-            <span className={`font-mono text-xs uppercase tracking-widest text-center opacity-70 ${dark ? "text-white/60" : "text-muted"}`}>
-              [Photo placeholder — {t.name}-tier students]
-            </span>
+            <Image src={t.image} alt={`${t.name}-tier students`} fill className="object-cover" />
           </div>
         );
 

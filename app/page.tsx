@@ -118,7 +118,7 @@ export default function Home() {
           {projects.map((p) => (
             <div key={p.name} className="bg-white border border-black/10 rounded-xl overflow-hidden">
               <div className="relative w-full aspect-video bg-ivory">
-                <Image src={p.image} alt={p.name} fill className="object-cover" />
+                <Image src={p.image} alt={p.name} fill className={`object-cover ${p.imagePosition ?? ""}`} />
               </div>
               <div className="p-6">
               <div className="mb-4">
