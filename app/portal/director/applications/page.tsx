@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { getApplicationsView, getTerms, gradeLabel, type ApplicationStatus } from "@/lib/portal/director/applications-data";
 import ApplicationsControls from "@/components/portal/director/ApplicationsControls";
+import AutoRefresh from "@/components/portal/director/AutoRefresh";
 import SampleBanner from "@/components/portal/SampleBanner";
 
 const STATUS_LABEL: Record<ApplicationStatus, string> = {
+  interested: "Interested",
   submitted: "Submitted",
   screening: "Screening",
   interview: "Interview",
@@ -11,40 +13,47 @@ const STATUS_LABEL: Record<ApplicationStatus, string> = {
   declined: "Declined",
 };
 
-// Shared column templates — the header row and every applicant row use the same
-// template so the columns line up. No gridlines; alignment does the work.
-const COLS_PARTIAL = "minmax(0,1fr) 6rem 5.5rem";
-const COLS_FULL = "minmax(0,1.5fr) 5.5rem minmax(0,1.5fr) minmax(0,2fr) minmax(0,1.3fr) 5.5rem";
+// Each status carries its own soft-badge color (bg + readable fg). Interested is
+// neutral gray; the rest are distinct so the list scans at a glance.
+const STATUS_COLOR: Record<ApplicationStatus, { bg: string; fg: string }> = {
+  interested: { bg: "#EEF0F2", fg: "#55606B" },
+  submitted: { bg: "#E4EDFB", fg: "#2456B8" },
+  screening: { bg: "#FBF0DA", fg: "#8A5A00" },
+  interview: { bg: "#EEE7FB", fg: "#6B39B6" },
+  accepted: { bg: "#E1F3E7", fg: "#1E7A45" },
+  declined: { bg: "#FBE6E8", fg: "#B23345" },
+};
+
+// Single (full) column template - the header row and every row share it so columns line up.
+const COLS = "minmax(0,1.5fr) 5.5rem minmax(0,1.5fr) minmax(0,2fr) minmax(0,1.3fr) 5.5rem";
 
 function StatusBadge({ status }: { status: ApplicationStatus }) {
+  const c = STATUS_COLOR[status];
   return (
-    <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 whitespace-nowrap" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
+    <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 whitespace-nowrap" style={{ background: c.bg, color: c.fg }}>
       {STATUS_LABEL[status]}
     </span>
   );
 }
 
-export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<{ term?: string; view?: string }> }) {
-  const { term, view } = await searchParams;
-  const full = view === "full";
+export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<{ term?: string }> }) {
+  const { term } = await searchParams;
   const [{ terms }, appsView] = await Promise.all([
     getTerms(),
-    getApplicationsView({ termId: term, full }),
+    getApplicationsView({ termId: term }),
   ]);
   const { applications, activeTermId, activeTermName, isSample } = appsView;
   const showingAll = term === "all";
 
-  const cols = full ? COLS_FULL : COLS_PARTIAL;
-  const minWidth = full ? "56rem" : "28rem";
-
   return (
     <div className="flex flex-col gap-6">
+      <AutoRefresh intervalMs={20000} />
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Applications</h1>
           <p className="text-ink/60 text-sm mt-1">Review and advance applications for this chapter.</p>
         </div>
-        <ApplicationsControls terms={terms} activeTermId={activeTermId} view={full ? "full" : "partial"} />
+        <ApplicationsControls terms={terms} activeTermId={activeTermId} />
       </div>
       {isSample && <SampleBanner />}
       {applications.length === 0 ? (
@@ -53,45 +62,65 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
         </p>
       ) : (
         <div className="rounded-sm border border-ink/10 bg-white overflow-x-auto">
-          <div style={{ minWidth }}>
+          <div style={{ minWidth: "56rem" }}>
             {/* Header row */}
-            <div className="grid items-center gap-3 px-4 py-2.5" style={{ gridTemplateColumns: cols }}>
+            <div className="grid items-center gap-3 px-4 py-2.5" style={{ gridTemplateColumns: COLS }}>
               <div className="label text-[10.5px]">Name</div>
               <div className="label text-[10.5px]">Applied</div>
-              {full && <div className="label text-[10.5px]">School</div>}
-              {full && <div className="label text-[10.5px]">Email</div>}
-              {full && <div className="label text-[10.5px]">Parent</div>}
+              <div className="label text-[10.5px]">School</div>
+              <div className="label text-[10.5px]">Email</div>
+              <div className="label text-[10.5px]">Parent</div>
               <div className="label text-[10.5px] justify-self-end">Status</div>
             </div>
 
-            {/* Applicant rows */}
+            {/* Rows: real applications link to their detail; Interested leads are informational (no detail page). */}
             {applications.map((a) => {
               const grade = gradeLabel(a.gradeLevel);
-              return (
-                <Link
-                  key={a.applicationId}
-                  href={`/portal/director/applications/${a.applicationId}`}
-                  className="grid items-center gap-3 px-4 py-3 hover:bg-cream transition-colors"
-                  style={{ gridTemplateColumns: cols }}
-                >
-                  {/* Name */}
+              const cells = (
+                <>
+                  {/* Name - a lead has no student name yet, so show its email + a parent/student tag. */}
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium truncate">{a.studentName}</span>
-                    {grade && <span className="text-[10.5px] font-mono rounded px-1.5 py-0.5 bg-ink/5 text-ink/60 shrink-0">{grade}</span>}
+                    {a.isLead ? (
+                      <>
+                        <span className="text-sm font-mono truncate">{a.contactEmail || "—"}</span>
+                        {a.fillerRole && (
+                          <span className="text-[10.5px] font-semibold rounded px-1.5 py-0.5 bg-ink/5 text-ink/60 shrink-0 capitalize">{a.fillerRole}</span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm font-medium truncate">{a.studentName}</span>
+                        {grade && <span className="text-[10.5px] font-mono rounded px-1.5 py-0.5 bg-ink/5 text-ink/60 shrink-0">{grade}</span>}
+                      </>
+                    )}
                   </div>
                   {/* Applied */}
                   <div className="text-xs text-ink/55 whitespace-nowrap">
                     {a.submittedLabel}
                     {showingAll && a.termName ? <span className="block text-ink/40">{a.termName}</span> : null}
                   </div>
-                  {/* Full-view columns: non-answer applicant info */}
-                  {full && <div className="text-xs text-ink/55 truncate">{a.school || "—"}</div>}
-                  {full && <div className="text-xs text-ink/55 font-mono truncate">{a.contactEmail || "—"}</div>}
-                  {full && <div className="text-xs text-ink/55 truncate">{a.guardianName || "—"}</div>}
+                  {/* Full columns */}
+                  <div className="text-xs text-ink/55 truncate">{a.school || "—"}</div>
+                  <div className="text-xs text-ink/55 font-mono truncate">{a.contactEmail || "—"}</div>
+                  <div className="text-xs text-ink/55 truncate">{a.guardianName || "—"}</div>
                   {/* Status */}
                   <div className="justify-self-end">
                     <StatusBadge status={a.status} />
                   </div>
+                </>
+              );
+              return a.isLead ? (
+                <div key={a.applicationId} className="grid items-center gap-3 px-4 py-3" style={{ gridTemplateColumns: COLS }}>
+                  {cells}
+                </div>
+              ) : (
+                <Link
+                  key={a.applicationId}
+                  href={`/portal/director/applications/${a.applicationId}`}
+                  className="grid items-center gap-3 px-4 py-3 hover:bg-cream transition-colors"
+                  style={{ gridTemplateColumns: COLS }}
+                >
+                  {cells}
                 </Link>
               );
             })}
