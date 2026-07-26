@@ -3,18 +3,18 @@ import { tierColors } from "@/lib/data";
 const ladderStages = [
   {
     n: "01",
-    name: "Explorer",
+    name: "Explore",
     desc: "Students build foundational skills, learn how technical systems work, and complete guided projects with close mentor support.",
   },
   {
     n: "02",
-    name: "Builder",
-    desc: "Students begin making more decisions for themselves, combining their skills to solve larger and less-defined problems.",
+    name: "Build",
+    desc: "Students apply the skills and knowledge they have developed to complete a larger project with close guidance from their mentors.",
   },
   {
     n: "03",
-    name: "Innovator",
-    desc: "Students lead ambitious projects of their own, work with greater independence, and begin supporting students who are earlier in the journey.",
+    name: "Innovate",
+    desc: "Students lead community projects of their own that solves a problem they identified. They work with greater autonomy and creativity, and is eligible to support their peers who are earlier in the journey.",
   },
 ] as const;
 
