@@ -1,6 +1,6 @@
 import { getDirectorContext } from "./session";
 
-export type ApplicationStatus = "submitted" | "screening" | "interview" | "accepted" | "declined";
+export type ApplicationStatus = "interested" | "submitted" | "screening" | "interview" | "accepted" | "declined";
 
 export interface ApplicationRow {
   applicationId: string;
@@ -13,6 +13,8 @@ export interface ApplicationRow {
   guardianName?: string | null;
   school?: string | null;
   contactEmail?: string | null;
+  fillerRole?: "parent" | "student" | null;
+  isLead?: boolean;
 }
 
 export interface ApplicationDetail {
@@ -42,7 +44,6 @@ export interface ApplicationsView {
   /** The term the backend filtered to (most-recent by default, or the one requested); null when showing all terms. */
   activeTermId: string | null;
   activeTermName: string | null;
-  full: boolean;
   isSample: boolean;
 }
 
@@ -117,6 +118,7 @@ function humanizeKey(k: string): string {
 }
 
 function mapAppStatus(s: string | undefined): ApplicationStatus {
+  if (s === "interested") return "interested";
   if (s === "screening") return "screening";
   if (s === "interview" || s === "interview_scheduled") return "interview";
   if (s === "accepted" || s === "enrolled") return "accepted";
@@ -199,6 +201,8 @@ interface LiveListItem {
   guardianName?: string | null;
   school?: string | null;
   contactEmail?: string | null;
+  fillerRole?: "parent" | "student" | null;
+  isLead?: boolean;
 }
 interface LiveListEnvelope {
   items?: LiveListItem[];
@@ -218,9 +222,8 @@ export async function getTerms(): Promise<{ terms: TermOption[]; isSample: boole
   } catch { return { terms: SAMPLE_TERMS, isSample: true }; }
 }
 
-export async function getApplicationsView(opts?: { termId?: string; full?: boolean }): Promise<ApplicationsView> {
+export async function getApplicationsView(opts?: { termId?: string }): Promise<ApplicationsView> {
   const termId = opts?.termId;
-  const full = opts?.full ?? false;
   const ctx = await getDirectorContext();
   if (!ctx) {
     const selected = termId && termId !== "all" ? termId : SAMPLE_TERM_ID;
@@ -228,7 +231,6 @@ export async function getApplicationsView(opts?: { termId?: string; full?: boole
       applications: sampleRows(termId),
       activeTermId: termId === "all" ? null : selected,
       activeTermName: termId === "all" ? null : (SAMPLE_TERMS.find((t) => t.termId === selected)?.name ?? null),
-      full,
       isSample: true,
     };
   }
@@ -236,10 +238,10 @@ export async function getApplicationsView(opts?: { termId?: string; full?: boole
     // No termId → backend defaults to the most-recent term. ?termId=all shows every term.
     const params = new URLSearchParams();
     if (termId) params.set("termId", termId);
-    if (full) params.set("view", "full");
+    params.set("view", "full");
     const qs = params.toString() ? `?${params.toString()}` : "";
     const res = await fetch(`${ctx.origin}/api/ops/applications${qs}`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
-    if (!res.ok) return { applications: sampleRows(termId), activeTermId: null, activeTermName: null, full, isSample: true };
+    if (!res.ok) return { applications: sampleRows(termId), activeTermId: null, activeTermName: null, isSample: true };
     const data = (await res.json()) as LiveListEnvelope;
     const applications: ApplicationRow[] = (data.items ?? []).map((a, i) => ({
       applicationId: a.applicationId ?? `app${i}`,
@@ -248,19 +250,20 @@ export async function getApplicationsView(opts?: { termId?: string; full?: boole
       gradeLevel: a.gradeLevel ?? null,
       termName: a.termName ?? null,
       submittedLabel: fmt(a.submittedAt),
-      guardianName: full ? (a.guardianName ?? null) : undefined,
-      school: full ? (a.school ?? null) : undefined,
-      contactEmail: full ? (a.contactEmail ?? null) : undefined,
+      guardianName: a.guardianName ?? null,
+      school: a.school ?? null,
+      contactEmail: a.contactEmail ?? null,
+      fillerRole: a.fillerRole ?? null,
+      isLead: a.isLead ?? false,
     }));
     return {
       applications,
       activeTermId: data.activeTermId ?? null,
       activeTermName: data.activeTermName ?? null,
-      full,
       isSample: false,
     };
   } catch {
-    return { applications: sampleRows(termId), activeTermId: null, activeTermName: null, full, isSample: true };
+    return { applications: sampleRows(termId), activeTermId: null, activeTermName: null, isSample: true };
   }
 }
 
