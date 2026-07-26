@@ -25,7 +25,7 @@ const STATUS_COLOR: Record<ApplicationStatus, { bg: string; fg: string }> = {
 };
 
 // Single (full) column template - the header row and every row share it so columns line up.
-const COLS = "minmax(0,1.5fr) 5.5rem minmax(0,1.5fr) minmax(0,2fr) minmax(0,1.3fr) 5.5rem";
+const COLS = "minmax(0,1.5fr) minmax(0,1.5fr) minmax(0,2fr) minmax(0,1.3fr) 6rem 5.5rem";
 
 function StatusBadge({ status }: { status: ApplicationStatus }) {
   const c = STATUS_COLOR[status];
@@ -66,10 +66,10 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
             {/* Header row */}
             <div className="grid items-center gap-3 px-4 py-2.5" style={{ gridTemplateColumns: COLS }}>
               <div className="label text-[10.5px]">Name</div>
-              <div className="label text-[10.5px]">Applied</div>
               <div className="label text-[10.5px]">School</div>
               <div className="label text-[10.5px]">Email</div>
               <div className="label text-[10.5px]">Parent</div>
+              <div className="label text-[10.5px]">Date</div>
               <div className="label text-[10.5px] justify-self-end">Status</div>
             </div>
 
@@ -94,15 +94,15 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                       </>
                     )}
                   </div>
-                  {/* Applied */}
-                  <div className="text-xs text-ink/55 whitespace-nowrap">
-                    {a.submittedLabel}
-                    {showingAll && a.termName ? <span className="block text-ink/40">{a.termName}</span> : null}
-                  </div>
                   {/* Full columns */}
                   <div className="text-xs text-ink/55 truncate">{a.school || "—"}</div>
                   <div className="text-xs text-ink/55 font-mono truncate">{a.contactEmail || "—"}</div>
                   <div className="text-xs text-ink/55 truncate">{a.guardianName || "—"}</div>
+                  {/* Date - effective time of the current status */}
+                  <div className="text-xs text-ink/55 whitespace-nowrap">
+                    {a.statusDateLabel}
+                    {showingAll && a.termName ? <span className="block text-ink/40">{a.termName}</span> : null}
+                  </div>
                   {/* Status */}
                   <div className="justify-self-end">
                     <StatusBadge status={a.status} />
