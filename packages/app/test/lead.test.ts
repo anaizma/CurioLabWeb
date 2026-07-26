@@ -15,7 +15,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { startHarness, type Harness } from './helpers/pg.js'
 import { makeChapter } from './helpers/fixtures.js'
 import { LeadService, Stage2Service } from '../src/index.js'
-import { LEAD_DEDUPE_WINDOW_MS } from '../src/config.js'
 
 let h: Harness
 
@@ -110,24 +109,60 @@ describe('createLead — the inert Stage 1 lead write', () => {
     expect(row!.chapter_id).toBe(chapter)
   })
 
-  test('a duplicate on email within the window is suppressed (no second row, no second token)', async () => {
-    const email = `dupe-${Date.now()}@example.test`
+  test('a repeat email on an OPEN lead resends: same row, fresh token, advanced last_requested_at, no duplicate', async () => {
+    const email = `resend-${Date.now()}@example.test`
     const first = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
-    const second = await service().createLead({ email, chapter: 'c', fillerRole: 'student' })
+    const [before] = await h.sql`select token_hash, last_requested_at from application_lead where id = ${first.leadId}`
 
-    expect(first.suppressed).toBe(false)
-    expect(second.suppressed).toBe(true)
+    const second = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
+    expect(second.suppressed).toBe(false)
+    expect(second.resent).toBe(true)
     expect(second.leadId).toBe(first.leadId)
-
+    expect(second.parentToken).not.toBeNull()
+    const [after] = await h.sql`select token_hash, last_requested_at from application_lead where id = ${first.leadId}`
+    expect(after!.token_hash).not.toBe(before!.token_hash)
+    expect(new Date(after!.last_requested_at).getTime()).toBeGreaterThanOrEqual(new Date(before!.last_requested_at).getTime())
     const [row] = await h.sql`select count(*)::int as n from application_lead where email = ${email}`
     expect(row!.n).toBe(1)
   })
 
-  test('the dedupe is case-insensitive on email (citext)', async () => {
+  test('the resent parentToken drives startStage2 (fresh link works); the old token no longer resolves', async () => {
+    const email = `resend-token-${Date.now()}@example.test`
+    const first = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
+    const oldToken = first.parentToken!
+    const second = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
+    const newToken = second.parentToken!
+    expect(newToken).not.toBe(oldToken)
+    const started = await new Stage2Service({ sql: h.sql }).startStage2(newToken)
+    expect(started.leadId).toBe(first.leadId)
+    await expect(new Stage2Service({ sql: h.sql }).startStage2(oldToken)).rejects.toThrow()
+  })
+
+  test('a repeat email whose only prior lead is CONVERTED creates a NEW lead (fresh interest)', async () => {
+    const chapter = await makeChapter(h.sql)
+    const email = `converted-reapply-${Date.now()}@example.test`
+    const first = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
+    // A real application row to satisfy the converted_application_id fk, then mark converted.
+    const [app] = await h.sql`
+      insert into application (kind, chapter_id, status, applicant_name, applicant_contact_email)
+      values ('student', ${chapter}, 'submitted', 'Test Child', 'student@example.test')
+      returning id
+    `
+    await h.sql`update application_lead set status = 'converted', converted_application_id = ${app!.id}, converted_at = now() where id = ${first.leadId}`
+
+    const second = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
+    expect(second.resent).toBe(false)
+    expect(second.suppressed).toBe(false)
+    expect(second.leadId).not.toBe(first.leadId)
+    const [row] = await h.sql`select count(*)::int as n from application_lead where email = ${email}`
+    expect(row!.n).toBe(2)
+  })
+
+  test('re-apply matches the email case-insensitively (citext): same lead, resent', async () => {
     const base = `Case-${Date.now()}@Example.Test`
     const first = await service().createLead({ email: base, chapter: 'c', fillerRole: 'parent' })
     const second = await service().createLead({ email: base.toLowerCase(), chapter: 'c', fillerRole: 'parent' })
-    expect(second.suppressed).toBe(true)
+    expect(second.resent).toBe(true)
     expect(second.leadId).toBe(first.leadId)
   })
 
@@ -139,26 +174,6 @@ describe('createLead — the inert Stage 1 lead write', () => {
     expect(b.leadId).not.toBe(a.leadId)
   })
 
-  test('a resubmission OUTSIDE the dedupe window is not suppressed (the window is honored)', async () => {
-    const email = `stale-${Date.now()}@example.test`
-    const first = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
-
-    const past = new Date(Date.now() - LEAD_DEDUPE_WINDOW_MS - 60_000)
-    await h.sql`update application_lead set created_at = ${past} where id = ${first.leadId}`
-
-    const second = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
-    expect(second.suppressed).toBe(false)
-    expect(second.leadId).not.toBe(first.leadId)
-  })
-
-  test('the dedupe window comes from config: a tighter window stops deduping a backdated lead', async () => {
-    const email = `cfg-${Date.now()}@example.test`
-    const first = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
-    await h.sql`update application_lead set created_at = ${new Date(Date.now() - 120_000)} where id = ${first.leadId}`
-    const second = await service({ config: { leadDedupeWindowMs: 60_000 } }).createLead({ email, chapter: 'c', fillerRole: 'parent' })
-    expect(second.suppressed).toBe(false)
-    expect(second.leadId).not.toBe(first.leadId)
-  })
 })
 
 // ===========================================================================
@@ -200,12 +215,12 @@ describe('createLead — the returned parentToken (Stage-2 entry seam)', () => {
     expect(typeof lead!.token_hash).toBe('string')
   })
 
-  test('a suppressed duplicate returns parentToken: null (no new token minted)', async () => {
+  test('a re-apply returns a FRESH non-null parentToken (a new link is minted)', async () => {
     const email = `dupe-token-${Date.now()}@example.test`
     const first = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
     const second = await service().createLead({ email, chapter: 'c', fillerRole: 'parent' })
-    expect(first.suppressed).toBe(false)
-    expect(second.suppressed).toBe(true)
-    expect(second.parentToken).toBeNull()
+    expect(second.resent).toBe(true)
+    expect(second.parentToken).not.toBeNull()
+    expect(second.parentToken).not.toBe(first.parentToken)
   })
 })

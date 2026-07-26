@@ -49,14 +49,15 @@ export interface CreateLeadInput {
 
 export interface CreateLeadResult {
   leadId: string
-  /** True when an in-window duplicate suppressed the write; no new row created. */
+  /** Retired: always false now (re-apply resends rather than suppressing). Kept for callers. */
   suppressed: boolean
+  /** True when a repeat email reused an open lead and re-minted its link. */
+  resent: boolean
   /**
    * The raw Stage-2 token, returned ONLY for a parent-filled Stage 1 (the person
    * who submits Stage 1 receives the response). It is `null` for a student-filler
-   * (the parent gets the token by email later) and `null` for a suppressed
-   * duplicate (no new token is minted). This is the seam startStage2 consumes to
-   * enter the application funnel.
+   * (the parent gets the token by email later). This is the seam startStage2
+   * consumes to enter the application funnel.
    */
   parentToken: string | null
 }
@@ -73,33 +74,72 @@ export class LeadService {
   }
 
   /**
-   * The unauthenticated, INERT Stage 1 write. Dedupes on `email` within the
-   * configured window; on a fresh lead it issues a hashed Stage-2 token, resolves
-   * the optional `chapter_id` fk when the chapter code maps to a real chapter,
-   * stamps `expires_at = created_at + 30d`, inserts one `application_lead` in
-   * status `new`, and returns `{ leadId, suppressed, parentToken }` — where
-   * `parentToken` is the raw Stage-2 token for a parent-filler (so they can proceed
-   * straight into Stage 2) and `null` for a student-filler or a suppressed dupe.
-   * Creates NO account and NO application. Safe to call with no AuthContext.
+   * The unauthenticated, INERT Stage 1 write. A repeat email on an OPEN lead
+   * (not converted, not deleted — any age) is a RE-APPLY: it reuses that same
+   * row, mints a fresh Stage-2 token (the old link goes stale), refreshes
+   * `expires_at`, stamps `last_requested_at = now()`, and carries the fresh
+   * token onto any in-progress draft's `parent_token_hash`. Only when no open
+   * lead exists (all prior converted/deleted) does it issue a hashed Stage-2
+   * token, resolve the optional `chapter_id` fk when the chapter code maps to a
+   * real chapter, stamp `expires_at = created_at + 30d`, and insert one fresh
+   * `application_lead` in status `new`. Returns `{ leadId, suppressed, resent,
+   * parentToken }` — where `parentToken` is the raw Stage-2 token for a
+   * parent-filler (so they can proceed straight into Stage 2) and `null` for a
+   * student-filler. Creates NO account and NO application. Safe to call with no
+   * AuthContext.
    */
   async createLead(input: CreateLeadInput): Promise<CreateLeadResult> {
     const source = input.source ?? null
 
-    // Duplicate suppression: the same email (citext, case-insensitive) captured
-    // within the window. A soft-deleted lead (deleted_at set) is not a match, so
-    // a re-enquiry after deletion starts a fresh lead.
-    const cutoff = new Date(Date.now() - this.config.leadDedupeWindowMs)
-    const existing = await this.sql`
+    // Re-apply: reuse the most recent OPEN (not-yet-converted, not-deleted) lead
+    // for this email, regardless of age. A parent who lost the link gets a FRESH
+    // one (the old goes stale) without a duplicate row. Only when no open lead
+    // exists (all prior converted/deleted) do we create a new lead below.
+    const [openLead] = await this.sql`
       select id from application_lead
       where email = ${input.email}
         and deleted_at is null
-        and created_at >= ${cutoff}
+        and converted_application_id is null
       order by created_at desc
       limit 1
     `
-    if (existing.length > 0) {
-      // A suppressed duplicate mints no new token: nothing to return.
-      return { leadId: existing[0]!.id as string, suppressed: true, parentToken: null }
+    if (openLead) {
+      const leadId = openLead.id as string
+      const rawToken = generateSessionToken()
+      const tokenHash = hashToken(rawToken)
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + this.config.leadExpiryWindowMs)
+      await this.sql`
+        update application_lead
+        set token_hash = ${tokenHash}, expires_at = ${expiresAt}, last_requested_at = ${now}
+        where id = ${leadId}
+      `
+      // If a draft was already started, carry the fresh token onto it so the new
+      // link resolves the in-progress draft (answers preserved) and the old dies.
+      await this.sql`
+        update application_draft set parent_token_hash = ${tokenHash} where lead_id = ${leadId}
+      `
+      const parentToken = input.fillerRole === 'parent' ? rawToken : null
+      if (input.fillerRole === 'student') {
+        const link = `${this.config.appUrl}/apply/parent/${rawToken}`
+        try {
+          await this.mailer.send({
+            to: input.email,
+            subject: 'Your CurioLab application link',
+            text:
+              'Here is a fresh link to continue the CurioLab application:\n\n' +
+              `${link}\n\n` +
+              'This link is personal to you - please do not share it. Any earlier link is now inactive.',
+            html:
+              '<p>Here is a fresh link to continue the CurioLab application:</p>' +
+              `<p><a href="${link}">${link}</a></p>` +
+              '<p>This link is personal to you - please do not share it. Any earlier link is now inactive.</p>',
+          })
+        } catch (err) {
+          console.error(`[LeadService] resend Stage-2 link email failed for lead ${leadId}:`, err)
+        }
+      }
+      return { leadId, suppressed: false, resent: true, parentToken }
     }
 
     // Resolve the optional 2C linkage: a chapter code that matches a chapter slug
@@ -120,10 +160,10 @@ export class LeadService {
 
     const [row] = await this.sql`
       insert into application_lead
-        (email, chapter, chapter_id, source, filler_role, status, token_hash, created_at, expires_at)
+        (email, chapter, chapter_id, source, filler_role, status, token_hash, created_at, expires_at, last_requested_at)
       values
         (${input.email}, ${input.chapter}, ${chapterId}, ${source}, ${input.fillerRole},
-         'new', ${tokenHash}, ${now}, ${expiresAt})
+         'new', ${tokenHash}, ${now}, ${expiresAt}, ${now})
       returning id
     `
     // Return the raw token ONLY to a parent-filler: the person who submits Stage 1
@@ -160,6 +200,6 @@ export class LeadService {
       }
     }
 
-    return { leadId: row!.id as string, suppressed: false, parentToken }
+    return { leadId: row!.id as string, suppressed: false, resent: false, parentToken }
   }
 }
