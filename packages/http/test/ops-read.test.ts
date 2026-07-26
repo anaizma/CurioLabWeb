@@ -306,6 +306,42 @@ describe('listApplications — term filter + most-recent default', () => {
 })
 
 // ===========================================================================
+describe('listApplications — duplicateFlag (0043 duplicate-applicant flag)', () => {
+  test('a flagged application is true; clearing it flips to false; an unflagged app is false', async () => {
+    const a = await seedDirector(h.sql)
+    const original = await submittedApplication(a.chapter, 'Original Kid')
+    const flagged = await submittedApplication(a.chapter, 'Flagged Kid')
+    const clean = await submittedApplication(a.chapter, 'Clean Kid')
+    await h.sql`
+      update application set duplicate_flagged_at = now(), duplicate_of_application_id = ${original}
+      where id = ${flagged}
+    `
+
+    const res = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: 'all' } })
+    expect(res.status).toBe(200)
+    expect(res.body.items.find((i) => i.applicationId === flagged)!.duplicateFlag).toBe(true)
+    expect(res.body.items.find((i) => i.applicationId === clean)!.duplicateFlag).toBe(false)
+
+    await h.sql`update application set duplicate_cleared_at = now() where id = ${flagged}`
+    const afterClear = await listApplications({ sql: h.sql, sessionToken: a.directorToken, query: { termId: 'all' } })
+    expect(afterClear.body.items.find((i) => i.applicationId === flagged)!.duplicateFlag).toBe(false)
+  })
+
+  test('an interested lead row always has duplicateFlag false', async () => {
+    const a = await seedDirector(h.sql)
+    await openLead(a.chapter, 'dup-lead@example.test')
+    const res = await listApplications({
+      sql: h.sql,
+      sessionToken: a.directorToken,
+      query: { termId: 'all', view: 'full' },
+    })
+    const lead = res.body.items.find((i) => i.contactEmail === 'dup-lead@example.test')!
+    expect(lead.isLead).toBe(true)
+    expect(lead.duplicateFlag).toBe(false)
+  })
+})
+
+// ===========================================================================
 describe('getApplication — full record + complete 2A/2B answers + history', () => {
   test('returns full name/grade/school/contact/parent + the raw answer blobs and history', async () => {
     const a = await seedDirector(h.sql)
@@ -373,6 +409,43 @@ describe('getApplication — full record + complete 2A/2B answers + history', ()
     const a = await seedDirector(h.sql)
     const res = await getApplication({ sql: h.sql, sessionToken: a.directorToken, params: { id: randomUUID() } })
     expect(res.status).toBe(404)
+  })
+})
+
+// ===========================================================================
+describe('getApplication — duplicate object (0043 duplicate-applicant flag)', () => {
+  test('a flagged application returns duplicate.flagged/ofApplicationId/ofApplicantName; clearing sets clearedAt', async () => {
+    const a = await seedDirector(h.sql)
+    const original = await submittedApplication(a.chapter, 'Original Kid')
+    const flagged = await submittedApplication(a.chapter, 'Flagged Kid')
+    await h.sql`
+      update application set duplicate_flagged_at = now(), duplicate_of_application_id = ${original}
+      where id = ${flagged}
+    `
+
+    const res = await getApplication({ sql: h.sql, sessionToken: a.directorToken, params: { id: flagged } })
+    expect(res.status).toBe(200)
+    expect(res.body.duplicate.flagged).toBe(true)
+    expect(res.body.duplicate.ofApplicationId).toBe(original)
+    expect(res.body.duplicate.ofApplicantName).toBe('Original Kid')
+    expect(res.body.duplicate.clearedAt).toBeNull()
+
+    await h.sql`update application set duplicate_cleared_at = now() where id = ${flagged}`
+    const afterClear = await getApplication({ sql: h.sql, sessionToken: a.directorToken, params: { id: flagged } })
+    expect(afterClear.body.duplicate.flagged).toBe(false)
+    expect(afterClear.body.duplicate.clearedAt).toBeTruthy()
+    expect(afterClear.body.duplicate.ofApplicationId).toBe(original) // retained as the audit trail
+  })
+
+  test('an unflagged application returns duplicate.flagged false and ofApplicationId/ofApplicantName null', async () => {
+    const a = await seedDirector(h.sql)
+    const appId = await submittedApplication(a.chapter)
+    const res = await getApplication({ sql: h.sql, sessionToken: a.directorToken, params: { id: appId } })
+    expect(res.status).toBe(200)
+    expect(res.body.duplicate.flagged).toBe(false)
+    expect(res.body.duplicate.ofApplicationId).toBeNull()
+    expect(res.body.duplicate.ofApplicantName).toBeNull()
+    expect(res.body.duplicate.clearedAt).toBeNull()
   })
 })
 

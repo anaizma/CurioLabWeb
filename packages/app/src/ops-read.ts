@@ -82,6 +82,8 @@ export interface ApplicationListItem {
   /** The term whose [starts_on, ends_on] window contains created_at (date-containment). */
   termId: string | null
   termName: string | null
+  /** True when actively duplicate-flagged (0043): duplicate_flagged_at set AND duplicate_cleared_at null. Always false on a synthetic lead row. */
+  duplicateFlag: boolean
   // ---- `?view=full` only (data-minimized by default) ----
   /** FULL parent/guardian name (application.guardian_name). */
   guardianName?: string | null
@@ -124,6 +126,21 @@ export interface ApplicationDetail {
    * free text (room / video link). Both null on an application not yet scheduled.
    */
   interview: { at: string | null; location: string | null }
+  /**
+   * The non-blocking duplicate-applicant flag (0043): set at submit when the
+   * child name + DOB matched an existing same-chapter application, dismissible
+   * by a director. `flagged` = duplicate_flagged_at set AND duplicate_cleared_at
+   * null; `ofApplicationId`/`ofApplicantName` name the matched application (via a
+   * left join) so the director portal can link to it; `clearedAt` is set once a
+   * director dismisses the flag (permanently — `flagged` then reads false, but
+   * `ofApplicationId` is retained as the audit trail).
+   */
+  duplicate: {
+    flagged: boolean
+    ofApplicationId: string | null
+    ofApplicantName: string | null
+    clearedAt: string | null
+  }
   answers: {
     stage2a: Record<string, unknown>
     stage2b: Record<string, unknown>
@@ -423,6 +440,7 @@ export class OpsReadService {
         : await sql`
       select a.id, a.status, a.applicant_name, a.guardian_name, a.guardian_email,
              a.applicant_contact_email, a.chapter_id, a.created_at,
+             a.duplicate_flagged_at, a.duplicate_cleared_at,
              d.parent_answers,
              ct.id as term_id, ct.name as term_name,
              se.at as status_at
@@ -464,6 +482,8 @@ export class OpsReadService {
         chapterId: r.chapter_id as string,
         termId: (r.term_id as string | null) ?? null,
         termName: (r.term_name as string | null) ?? null,
+        duplicateFlag:
+          (r.duplicate_flagged_at as Date | null) != null && (r.duplicate_cleared_at as Date | null) == null,
       }
       if (full) {
         item.guardianName = (r.guardian_name as string | null) ?? null
@@ -499,6 +519,7 @@ export class OpsReadService {
           chapterId: r.chapter_id as string,
           termId: null,
           termName: null,
+          duplicateFlag: false,
           fillerRole: r.filler_role as 'parent' | 'student',
           isLead: true,
         }
@@ -532,10 +553,14 @@ export class OpsReadService {
   async getApplication(ctx: AuthContext, applicationId: string): Promise<ApplicationDetail> {
     const sql = this.sql
     const [app] = await sql`
-      select id, status, chapter_id, applicant_name, applicant_contact_email,
-             guardian_name, guardian_email, created_at, student_section,
-             form_id, form_version, interview_at, interview_location
-      from application where id = ${applicationId}
+      select a.id, a.status, a.chapter_id, a.applicant_name, a.applicant_contact_email,
+             a.guardian_name, a.guardian_email, a.created_at, a.student_section,
+             a.form_id, a.form_version, a.interview_at, a.interview_location,
+             a.duplicate_flagged_at, a.duplicate_of_application_id, a.duplicate_cleared_at,
+             dup.applicant_name as duplicate_of_name
+      from application a
+      left join application dup on dup.id = a.duplicate_of_application_id
+      where a.id = ${applicationId}
     `
     if (app === undefined) throw new ApplicationNotFoundError(applicationId)
     await this.authorize(
@@ -608,6 +633,15 @@ export class OpsReadService {
       interview: {
         at: app.interview_at != null ? iso(app.interview_at) : null,
         location: (app.interview_location as string | null) ?? null,
+      },
+      duplicate: {
+        flagged:
+          (app.duplicate_flagged_at as Date | null) != null &&
+          (app.duplicate_cleared_at as Date | null) == null,
+        ofApplicationId: (app.duplicate_of_application_id as string | null) ?? null,
+        ofApplicantName: (app.duplicate_of_name as string | null) ?? null,
+        clearedAt:
+          (app.duplicate_cleared_at as Date | null) != null ? iso(app.duplicate_cleared_at as Date) : null,
       },
       answers: {
         stage2a: parentAnswers,
