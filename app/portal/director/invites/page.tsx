@@ -1,8 +1,11 @@
 import { getInvitesView } from "@/lib/portal/director/invites-data";
 import SampleBanner from "@/components/portal/SampleBanner";
 import InvitesClient from "./invites-client";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function DirectorInvitesPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const view = await getInvitesView();
   return (
     <div className="flex flex-col gap-6">

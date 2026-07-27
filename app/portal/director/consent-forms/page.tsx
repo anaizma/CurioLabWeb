@@ -2,8 +2,11 @@ import Link from "next/link";
 import { getConsentFormsForDirector } from "@/lib/portal/director/consent-forms-data";
 import SampleBanner from "@/components/portal/SampleBanner";
 import ConsentFormsBrowser from "@/components/portal/director/ConsentFormsBrowser";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function ConsentFormsPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const { forms, isSample } = await getConsentFormsForDirector();
   return (
     <div className="flex flex-col gap-6 max-w-3xl">

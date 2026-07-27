@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { getApplicationDetail, gradeLabel } from "@/lib/portal/director/applications-data";
-import SampleBanner from "@/components/portal/SampleBanner";
+import LoadFailed from "@/components/portal/LoadFailed";
 import OpsActionButton from "@/components/portal/director/OpsActionButton";
-
-const ACTIONS = ["Screen", "Schedule interview", "Accept", "Decline"];
+import { requireDirector } from "@/lib/portal/director/guard";
 
 function InfoField({ label, value }: { label: string; value: string | null }) {
   if (!value) return null;
@@ -16,8 +15,17 @@ function InfoField({ label, value }: { label: string; value: string | null }) {
 }
 
 export default async function ApplicationDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const { id } = await params;
-  const { detail, isSample } = await getApplicationDetail(id);
+  const { detail, state } = await getApplicationDetail(id);
+
+  // requireDirector() above is the ONE place that decides who may be here, so the
+  // "not signed in" redirect this page used to carry is gone. Past the gate, any
+  // non-ok state means the ops read itself was refused or failed.
+  if (state !== "ok") {
+    return <LoadFailed what="this application" retryHref={`/portal/director/applications/${id}`} />;
+  }
   if (!detail) {
     return <p className="text-sm text-ink/50">Application not found.</p>;
   }
@@ -37,7 +45,6 @@ export default async function ApplicationDetailPage({ params }: { params: Promis
           {detail.termName ? ` · ${detail.termName}` : ""}
         </p>
       </div>
-      {isSample && <SampleBanner />}
       {detail.interview?.at && (
         <div className="rounded-sm px-4 py-2.5 text-[13px]" style={{ background: "var(--pt-accent-soft)", color: "var(--pt-accent-fg)" }}>
           <span className="font-semibold">Interview scheduled</span> · {detail.interview.at}
@@ -65,16 +72,14 @@ export default async function ApplicationDetailPage({ params }: { params: Promis
               </>
             )}
           </div>
-          {!isSample && (
-            <OpsActionButton
-              method="PATCH"
-              url={`/api/ops/applications/${detail.applicationId}`}
-              body={{ action: "clear-duplicate-flag" }}
-              label="Not a duplicate"
-              variant="outline"
-              confirmText="Dismiss the duplicate flag for this application?"
-            />
-          )}
+          <OpsActionButton
+            method="PATCH"
+            url={`/api/ops/applications/${detail.applicationId}`}
+            body={{ action: "clear-duplicate-flag" }}
+            label="Not a duplicate"
+            variant="outline"
+            confirmText="Dismiss the duplicate flag for this application?"
+          />
         </div>
       )}
       {/* Applicant info the director needs to process the application (full PII, own chapter only). */}
@@ -93,25 +98,12 @@ export default async function ApplicationDetailPage({ params }: { params: Promis
         ))}
       </div>
       <div className="flex flex-col gap-2">
-        {isSample ? (
-          <>
-            <div className="flex flex-wrap gap-2">
-              {ACTIONS.map((label) => (
-                <button key={label} type="button" disabled className="rounded-lg px-3 py-1.5 text-sm font-semibold border border-ink/15 text-ink/40 disabled:opacity-60">
-                  {label}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-ink/40">Actions activate once GET /api/ops/applications connects live data.</p>
-          </>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "screen" }} label="Screen" variant="outline" />
-            <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "schedule-interview" }} label="Schedule interview" variant="outline" />
-            <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "accept" }} label="Accept" variant="accent" />
-            <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "decline" }} label="Decline" variant="outline" confirmText="Decline this application?" />
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "screen" }} label="Screen" variant="outline" />
+          <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "schedule-interview" }} label="Schedule interview" variant="outline" />
+          <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "accept" }} label="Accept" variant="accent" />
+          <OpsActionButton method="PATCH" url={`/api/ops/applications/${detail.applicationId}`} body={{ action: "decline" }} label="Decline" variant="outline" confirmText="Decline this application?" />
+        </div>
       </div>
     </div>
   );

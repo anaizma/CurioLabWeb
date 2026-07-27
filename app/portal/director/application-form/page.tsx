@@ -1,6 +1,9 @@
 import ApplicationFormEditor from "@/components/portal/director/ApplicationFormEditor";
+import { requireDirector } from "@/lib/portal/director/guard";
 
-export default function ApplicationFormPage() {
+export default async function ApplicationFormPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   return (
     <div className="flex flex-col gap-6 max-w-3xl">
       <div>

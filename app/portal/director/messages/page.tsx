@@ -1,8 +1,11 @@
 import { getDirectorMailView } from "@/lib/portal/director/mail-data";
 import DirectorMessagesClient from "@/components/portal/director/DirectorMessagesClient";
 import SampleBanner from "@/components/portal/SampleBanner";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function DirectorMessagesPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const view = await getDirectorMailView();
   return (
     <div className="flex flex-col gap-4">

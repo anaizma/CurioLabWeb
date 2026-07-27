@@ -18,10 +18,15 @@ import {
   authorize,
   createImpersonationSession,
   createSession,
+  fingerprintDevice,
+  generateSessionToken,
+  hasAnyPriorSession,
+  hasSeenDevice,
   revokeSession,
   validateSession,
   verifyPassword,
   writeAccessLedger,
+  type DeviceFingerprint,
 } from '@curiolab/runtime'
 import { CredentialTokenService, TwoFactorService } from '@curiolab/app'
 import { resolveAuthContext } from '../context.js'
@@ -29,8 +34,108 @@ import { runAuthed, runPublic } from '../run.js'
 import { reqStr } from '../respond.js'
 import type { AuthedInputBase, ControllerResult, PublicInputBase } from '../types.js'
 
-/** How long a fresh login session lasts. */
+// -------------------------------------------------------------------------
+// Session lifetime. Two values, because the two populations carry wildly
+// different consequences if a session is stolen or a laptop is left open.
+//
+// A PRIVILEGED account (chapter_director, platform_admin, and every other staff
+// or teaching role — the same set that already mandates TOTP, PRIVILEGED_ROLES in
+// @curiolab/core) can read minors' applications, guardian contact details and the
+// audit log. A month-long cookie on that account is a month-long window for a
+// stolen laptop or an exfiltrated cookie, and there is no cost to shortening it:
+// re-authenticating means a password plus a 6-digit code, and 12 hours covers a
+// whole working day without a mid-afternoon interruption.
+//
+// An UNPRIVILEGED account (student, guardian, alumni) sees only its own family's
+// data, and the people holding these accounts are children and busy parents for
+// whom a frequent forced re-login is a real barrier to participating at all. They
+// keep the long window.
+//
+// Impersonation is a third case and is NOT governed here: it is pinned to 30
+// minutes by IMPERSONATION_TTL_MS, with a database trigger as the floor.
+// -------------------------------------------------------------------------
+
+/** Session lifetime for an unprivileged account (student / guardian / alumni). */
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+/** Session lifetime for a privileged account (director / admin / staff / mentor). */
+const PRIVILEGED_SESSION_TTL_MS = 12 * 60 * 60 * 1000 // 12 hours
+
+/**
+ * When a session minted at `now` expires. `privileged` is not re-derived from
+ * roles here on purpose: each call site already KNOWS which it is by construction
+ * (the TOTP paths are reachable only for a privileged account, the password-only
+ * path only for an unprivileged one), and re-deriving it would add a query whose
+ * answer could disagree with the branch that got here.
+ */
+function sessionExpiresAt(now: Date, privileged: boolean): Date {
+  return new Date(now.getTime() + (privileged ? PRIVILEGED_SESSION_TTL_MS : SESSION_TTL_MS))
+}
+
+// ---- new-device sign-in notification -------------------------------------
+
+/** What the mailer seam is told when a session is minted from an unfamiliar device. */
+export interface NewSignInNotice {
+  accountId: string
+  /** Coarse device descriptor ("Chrome on Windows"), or null if unrecognised. */
+  deviceLabel: string | null
+  /** The coarse client network (IPv4 /24, IPv6 /48), or null. */
+  ipHint: string | null
+  at: Date
+  /**
+   * The raw one-time token behind the "this wasn't me" link. Only its hash is
+   * stored on the session row; this value exists for exactly as long as it takes
+   * the caller to put it in a message, and is never logged.
+   */
+  revokeToken: string
+}
+
+/** The device-aware part of a sign-in request, threaded from the HTTP adapter. */
+interface DeviceInput {
+  clientIp?: string | null
+  /** The raw User-Agent header. Fingerprinted and labelled, never stored raw. */
+  userAgent?: string | null
+  /** Called ONLY when the sign-in is from a device this account has not used. */
+  notifyNewSignIn?: (n: NewSignInNotice) => void | Promise<void>
+}
+
+/**
+ * Fingerprint the device and decide whether this sign-in deserves a notice.
+ *
+ * An account's very FIRST session is never "a new device": at that point every
+ * device is new, and a "new sign-in" email arriving seconds after someone chose
+ * their own password is noise that teaches people to ignore the real one.
+ */
+async function prepareDevice(
+  input: { sql: PublicInputBase['sql'] } & DeviceInput,
+  accountId: string,
+): Promise<{ device: DeviceFingerprint; revokeToken: string | null }> {
+  const device = fingerprintDevice(accountId, input.userAgent ?? null, input.clientIp ?? null)
+  if (input.notifyNewSignIn === undefined) return { device, revokeToken: null }
+  const [seenBefore, hadPrior] = await Promise.all([
+    hasSeenDevice(input.sql, accountId, device.hash),
+    hasAnyPriorSession(input.sql, accountId),
+  ])
+  if (seenBefore || !hadPrior) return { device, revokeToken: null }
+  return { device, revokeToken: generateSessionToken() }
+}
+
+/**
+ * Fire the new-sign-in seam, if one was armed. Best-effort by construction: a
+ * mail failure must never turn a successful, legitimate sign-in into an error,
+ * and the session is already minted by the time this runs.
+ */
+async function announceNewSignIn(
+  input: DeviceInput,
+  notice: NewSignInNotice | null,
+): Promise<void> {
+  if (notice === null || input.notifyNewSignIn === undefined) return
+  try {
+    await input.notifyNewSignIn(notice)
+  } catch (err) {
+    console.error('[auth] new-sign-in notification failed:', err)
+  }
+}
 
 /** A membership row as the switcher presents it. */
 export interface MembershipSummary {
@@ -57,10 +162,8 @@ function unauthorized<B>(): ControllerResult<B> {
   return { status: 401, body: { error: 'unauthorized' } as unknown as B }
 }
 
-export interface LoginInput extends PublicInputBase {
+export interface LoginInput extends PublicInputBase, DeviceInput {
   body: { identifier?: unknown; password?: unknown }
-  /** Trusted client IP threaded from the HTTP layer (unused on the password step). */
-  clientIp?: string | null
 }
 
 /**
@@ -140,9 +243,17 @@ export function login(input: LoginInput): Promise<ControllerResult<LoginResult>>
         : { status: 200, body: { totpEnrollmentRequired: true, pendingToken } }
     }
 
-    // Non-privileged (student / guardian / alumni): password-only, unchanged.
-    const expiresAt = new Date(now.getTime() + SESSION_TTL_MS)
-    const { token } = await createSession(input.sql, { accountId, expiresAt })
+    // Non-privileged (student / guardian / alumni): password-only, unchanged, and
+    // the LONG session lifetime (see the SESSION_TTL_MS note above).
+    const expiresAt = sessionExpiresAt(now, false)
+    const { device, revokeToken } = await prepareDevice(input, accountId)
+    const { token } = await createSession(input.sql, { accountId, expiresAt, device, revokeToken })
+    await announceNewSignIn(
+      input,
+      revokeToken === null
+        ? null
+        : { accountId, deviceLabel: device.label, ipHint: device.ipHint, at: now, revokeToken },
+    )
     return {
       status: 200,
       body: { accountId },
@@ -153,9 +264,8 @@ export function login(input: LoginInput): Promise<ControllerResult<LoginResult>>
 
 // ---- §10 two-factor: submit the second factor + enrollment (token-gated) -----
 
-export interface SubmitTotpInput extends PublicInputBase {
+export interface SubmitTotpInput extends PublicInputBase, DeviceInput {
   body: { pendingToken?: unknown; code?: unknown }
-  clientIp?: string | null
 }
 
 /**
@@ -177,8 +287,11 @@ export function submitTotp(input: SubmitTotpInput): Promise<ControllerResult<{ a
     const { method } = await twoFactor.verifySecondFactor(accountId, code, { now, clientIp })
     await twoFactor.consumePendingLogin(pendingToken, { now })
 
-    const expiresAt = new Date(now.getTime() + SESSION_TTL_MS)
-    const { token } = await createSession(input.sql, { accountId, expiresAt })
+    // Only a PRIVILEGED account ever reaches a TOTP step, so this session takes
+    // the short lifetime by construction.
+    const expiresAt = sessionExpiresAt(now, true)
+    const { device, revokeToken } = await prepareDevice(input, accountId)
+    const { token } = await createSession(input.sql, { accountId, expiresAt, device, revokeToken })
     await writeAccessLedger(input.sql, {
       event: 'login.two_factor',
       actorAccountId: accountId,
@@ -186,6 +299,12 @@ export function submitTotp(input: SubmitTotpInput): Promise<ControllerResult<{ a
       clientIp,
       detail: { method },
     })
+    await announceNewSignIn(
+      input,
+      revokeToken === null
+        ? null
+        : { accountId, deviceLabel: device.label, ipHint: device.ipHint, at: now, revokeToken },
+    )
     return { status: 200, body: { accountId }, session: { token, expiresAt } }
   })
 }
@@ -213,9 +332,8 @@ export function beginTotpEnrollment(
   })
 }
 
-export interface ConfirmTotpEnrollmentInput extends PublicInputBase {
+export interface ConfirmTotpEnrollmentInput extends PublicInputBase, DeviceInput {
   body: { pendingToken?: unknown; code?: unknown }
-  clientIp?: string | null
 }
 
 /**
@@ -238,8 +356,14 @@ export function confirmTotpEnrollment(
     const { backupCodes } = await twoFactor.confirmEnrollment(accountId, code, { now, clientIp })
     await twoFactor.consumePendingLogin(pendingToken, { now })
 
-    const expiresAt = new Date(now.getTime() + SESSION_TTL_MS)
-    const { token } = await createSession(input.sql, { accountId, expiresAt })
+    // Forced enrollment only happens for a PRIVILEGED account: short lifetime.
+    // No new-sign-in notice fires here even though the device is by definition
+    // unfamiliar — this IS the account's first session (prepareDevice's
+    // first-session rule), and the person is sitting in front of the enrollment
+    // screen that produced it.
+    const expiresAt = sessionExpiresAt(now, true)
+    const { device } = await prepareDevice(input, accountId)
+    const { token } = await createSession(input.sql, { accountId, expiresAt, device })
     return { status: 200, body: { accountId, backupCodes }, session: { token, expiresAt } }
   })
 }
@@ -300,6 +424,15 @@ export type PasswordResetRoute = 'self_email' | 'guardian' | 'chapter_director'
 export interface PasswordResetDelivery {
   accountId: string
   route: PasswordResetRoute
+  /**
+   * The raw reset token, returned to the delivery seam exactly ONCE. Only its
+   * SHA-256 hash is persisted (CredentialTokenService), so this value exists only
+   * for as long as it takes the mailer to build the link — it must never be
+   * logged, stored, or echoed into a response body.
+   */
+  token: string
+  /** When the token stops working, so the message can say so honestly. */
+  expiresAt: Date
 }
 
 export interface RequestPasswordResetInput extends PublicInputBase {
@@ -337,10 +470,53 @@ export function requestPasswordReset(
     })
     if (issued !== null) {
       const deliver = input.deliver
-      if (deliver !== undefined) await deliver({ accountId: issued.accountId, route: issued.route })
+      if (deliver !== undefined) {
+        // Best-effort: a mail failure must not change the response, because a
+        // different response for "the send failed" would be an existence oracle
+        // (it only ever fires for an identifier that resolved).
+        try {
+          await deliver({
+            accountId: issued.accountId,
+            route: issued.route,
+            token: issued.token,
+            expiresAt: issued.expiresAt,
+          })
+        } catch (err) {
+          console.error('[auth/password/reset-request] delivery failed:', err)
+        }
+      }
     }
     // Uniform response in every branch — the entire security property.
     return { status: 202, body: { requested: true } }
+  })
+}
+
+// ---- password reset token pre-flight (the reset FORM's server-side check) ----
+
+export interface CheckPasswordResetTokenInput extends PublicInputBase {
+  body: { token?: unknown }
+}
+
+/**
+ * Is a reset token still usable? A READ used by the page behind a reset link, so
+ * it can show "this link has expired or has already been used" BEFORE asking
+ * someone to compose a password they are about to lose.
+ *
+ * Deliberately NOT an app/api route: it is called directly by the server
+ * component that renders /reset-password/[token], which keeps the token out of an
+ * extra HTTP request (and therefore out of an extra access log). It reveals
+ * nothing an unguessable token's holder does not already know, and the three
+ * not-usable causes collapse to one answer.
+ */
+export function checkPasswordResetToken(
+  input: CheckPasswordResetTokenInput,
+): Promise<ControllerResult<{ usable: boolean }>> {
+  return runPublic(async () => {
+    const token = reqStr(input.body?.token, 'token')
+    const usable = await new CredentialTokenService({ sql: input.sql }).checkPasswordReset(token, {
+      now: input.now,
+    })
+    return { status: 200, body: { usable } }
   })
 }
 
@@ -348,6 +524,13 @@ export function requestPasswordReset(
 
 export interface ResetPasswordInput extends PublicInputBase {
   body: { token?: unknown; newPassword?: unknown }
+  /**
+   * The "your password was changed" seam, called ONLY after a successful reset.
+   * This notice is the one thing that makes an unauthorized reset VISIBLE to the
+   * real owner: whoever reset the password holds the mailbox at that moment, but
+   * the owner still gets a message they did not ask for and can act on.
+   */
+  notifyChanged?: (n: { accountId: string; at: Date }) => void | Promise<void>
 }
 
 /**
@@ -355,15 +538,29 @@ export interface ResetPasswordInput extends PublicInputBase {
  * actor-less endpoint, 05-api-surface.md). Consumes the reset token: sets the
  * account's argon2id password, marks the token consumed, and revokes the account's
  * prior sessions. An expired, consumed, or unknown token is one opaque 401
- * (InvalidCredentialTokenError -> invalid_token), revealing nothing.
+ * (InvalidCredentialTokenError -> invalid_token), revealing nothing. A password
+ * below the shared policy is a 400 that DOES name the unmet rules — the caller
+ * already holds the token, so there is no oracle to protect.
  */
 export function resetPassword(input: ResetPasswordInput): Promise<ControllerResult<{ reset: true }>> {
   return runPublic(async () => {
     const token = reqStr(input.body?.token, 'token')
     const newPassword = reqStr(input.body?.newPassword, 'newPassword')
-    await new CredentialTokenService({ sql: input.sql }).consumePasswordReset(token, newPassword, {
-      now: input.now,
-    })
+    const now = input.now ?? new Date()
+    const { accountId } = await new CredentialTokenService({ sql: input.sql }).consumePasswordReset(
+      token,
+      newPassword,
+      { now },
+    )
+    if (input.notifyChanged !== undefined) {
+      // Best-effort: the password is already changed and the old sessions are
+      // already revoked, so a mail failure must not report the reset as failed.
+      try {
+        await input.notifyChanged({ accountId, at: now })
+      } catch (err) {
+        console.error('[auth/password/reset] change notification failed:', err)
+      }
+    }
     return { status: 200, body: { reset: true } }
   })
 }

@@ -1,4 +1,4 @@
-import { cookies, headers } from "next/headers";
+import { originAndCookie } from "@/lib/internal-origin";
 import { pickDirectorChapter, type SessionMembership } from "./pick-chapter";
 
 export interface DirectorContext {
@@ -17,14 +17,9 @@ interface SessionResp {
  *  Returns the director's request context, or null (→ representative fallback). */
 export async function getDirectorContext(): Promise<DirectorContext | null> {
   try {
-    const session = (await cookies()).get("cl_session");
-    if (!session) return null;
-    const h = await headers();
-    const host = h.get("host");
-    const proto = h.get("x-forwarded-proto") ?? "http";
-    const origin = process.env.NEXT_PUBLIC_SITE_URL ?? (host ? `${proto}://${host}` : "");
-    if (!origin) return null;
-    const cookie = `cl_session=${session.value}`;
+    const ctx = await originAndCookie();
+    if (!ctx) return null;
+    const { origin, cookie } = ctx;
 
     const sres = await fetch(`${origin}/api/auth/session`, { headers: { cookie }, cache: "no-store" });
     if (!sres.ok) return null;

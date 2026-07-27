@@ -3,6 +3,8 @@
 // then emails the fresh link via Resend (§12). Body: { inviteId, targetEmail?, kind? }.
 // Best-effort email: a send failure never voids the reissued invite.
 import { sendInviteEmail, type InviteKind } from "@/lib/emails/invite-mail";
+import { internalOrigin } from "@/lib/internal-origin";
+import { resolveAppUrl } from "@/lib/app-url";
 
 const EMAILABLE: InviteKind[] = ["guardian", "mentor", "staff", "director", "admin"];
 
@@ -15,7 +17,10 @@ export async function POST(req: Request) {
     return Response.json({ error: "invalid_request" }, { status: 400 });
   }
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;
+  // The self-call carries the director's session cookie, so its target comes from
+  // internalOrigin (never the client-controlled Host header); the mailed link
+  // comes from resolveAppUrl, because it has to be openable in a browser.
+  const origin = internalOrigin(req.headers.get("host"));
   const cookie = req.headers.get("cookie") ?? "";
 
   const res = await fetch(`${origin}/api/ops/invites/${inviteId}/resend`, {
@@ -31,7 +36,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "resend_failed" }, { status: 502 });
   }
 
-  const inviteUrl = `${origin}/invite/${data.token}`;
+  const inviteUrl = `${resolveAppUrl(req)}/invite/${data.token}`;
   let emailed = false;
   if (targetEmail && EMAILABLE.includes(kind as InviteKind) && process.env.RESEND_API_KEY) {
     try {

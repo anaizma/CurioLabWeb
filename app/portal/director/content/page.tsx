@@ -1,7 +1,10 @@
 import { getContentView } from "@/lib/portal/director/content-data";
 import SampleBanner from "@/components/portal/SampleBanner";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function ContentPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const { newsletters, reviews, isSample } = await getContentView();
   return (
     <div className="flex flex-col gap-6">

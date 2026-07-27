@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { emptyEditableFor } from "@/lib/portal/director/consent-forms-data";
 import ConsentFormEditor from "@/components/portal/director/ConsentFormEditor";
+import { requireDirector } from "@/lib/portal/director/guard";
 
-export default function NewConsentFormPage() {
+export default async function NewConsentFormPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   return (
     <div className="flex flex-col gap-6 max-w-3xl">
       <Link

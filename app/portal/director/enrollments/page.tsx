@@ -1,7 +1,10 @@
 import { getEnrollmentsView } from "@/lib/portal/director/enrollments-data";
 import SampleBanner from "@/components/portal/SampleBanner";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function EnrollmentsPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const { enrollments, isSample } = await getEnrollmentsView();
   return (
     <div className="flex flex-col gap-6">

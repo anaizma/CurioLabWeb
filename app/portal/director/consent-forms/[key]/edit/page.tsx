@@ -2,8 +2,11 @@ import Link from "next/link";
 import { getEditableConsentForm } from "@/lib/portal/director/consent-forms-data";
 import SampleBanner from "@/components/portal/SampleBanner";
 import ConsentFormEditor from "@/components/portal/director/ConsentFormEditor";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function ConsentFormEditPage({ params }: { params: Promise<{ key: string }> }) {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const { key } = await params;
   const { editable, isSample } = await getEditableConsentForm(key);
   if (!editable) {

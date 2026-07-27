@@ -108,7 +108,11 @@ describe('privileged first login: forced enrollment', () => {
     expect(confirm.body.backupCodes).toHaveLength(10)
     expect(confirm.session?.token).toBeTruthy()
 
-    const sess = await getSession({ sql: h.sql, sessionToken: confirm.session!.token! })
+    // Same pinned clock as the mint. Session validity is evaluated at DECISION
+    // TIME, and a privileged session now lasts 12 hours rather than 30 days, so
+    // reading it back against the real wall clock would just be asserting that
+    // the fixture date is recent.
+    const sess = await getSession({ sql: h.sql, sessionToken: confirm.session!.token!, now })
     expect(sess.status).toBe(200)
     expect(sess.body.accountId).toBe(accountId)
 

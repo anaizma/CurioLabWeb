@@ -2,7 +2,8 @@ import Link from "next/link";
 import { getApplicationsView, getTerms, gradeLabel, type ApplicationStatus } from "@/lib/portal/director/applications-data";
 import ApplicationsControls from "@/components/portal/director/ApplicationsControls";
 import AutoRefresh from "@/components/portal/director/AutoRefresh";
-import SampleBanner from "@/components/portal/SampleBanner";
+import LoadFailed from "@/components/portal/LoadFailed";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 const STATUS_LABEL: Record<ApplicationStatus, string> = {
   interested: "Interested",
@@ -37,26 +38,37 @@ function StatusBadge({ status }: { status: ApplicationStatus }) {
 }
 
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<{ term?: string }> }) {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const { term } = await searchParams;
   const [{ terms }, appsView] = await Promise.all([
     getTerms(),
     getApplicationsView({ termId: term }),
   ]);
-  const { applications, activeTermId, activeTermName, isSample } = appsView;
+  const { applications, activeTermId, activeTermName, state } = appsView;
   const showingAll = term === "all";
+
+  // The "not signed in" redirect that used to live here is gone: requireDirector()
+  // above is now the ONE place that decides, so this page can no longer disagree
+  // with it. A `state` of "unauthenticated" past the gate means the ops read
+  // itself was refused, which is a load failure, not a sign-in problem.
+  const selfHref = `/portal/director/applications${term ? `?term=${encodeURIComponent(term)}` : ""}`;
 
   return (
     <div className="flex flex-col gap-6">
-      <AutoRefresh intervalMs={20000} />
+      {/* Only poll when there is live data to refresh; polling a failed read
+          would just retry silently and hide the failure from the director. */}
+      {state === "ok" && <AutoRefresh intervalMs={20000} />}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Applications</h1>
           <p className="text-ink/60 text-sm mt-1">Review and advance applications for this chapter.</p>
         </div>
-        <ApplicationsControls terms={terms} activeTermId={activeTermId} />
+        {state === "ok" && <ApplicationsControls terms={terms} activeTermId={activeTermId} />}
       </div>
-      {isSample && <SampleBanner />}
-      {applications.length === 0 ? (
+      {state !== "ok" ? (
+        <LoadFailed what="your applications" retryHref={selfHref} />
+      ) : applications.length === 0 ? (
         <p className="text-sm text-ink/50 rounded-sm border border-ink/10 bg-white px-4 py-6 text-center">
           No applications{showingAll ? "" : activeTermName ? ` for ${activeTermName}` : ""}.
         </p>

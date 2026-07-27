@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { getDashboardSummary } from "@/lib/portal/director/dashboard-data";
 import SampleBanner from "@/components/portal/SampleBanner";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function DirectorDashboardPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const s = await getDashboardSummary();
   const cards = [
     { label: "New applications", value: s.newApplications, href: "/portal/director/applications" },

@@ -1,8 +1,11 @@
 import { getGuardianshipsView } from "@/lib/portal/director/guardianships-data";
 import SampleBanner from "@/components/portal/SampleBanner";
 import OpsActionButton from "@/components/portal/director/OpsActionButton";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function GuardianshipsPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const { guardianships, isSample } = await getGuardianshipsView();
   return (
     <div className="flex flex-col gap-6">

@@ -1,7 +1,10 @@
 import { getAuditView } from "@/lib/portal/director/audit-data";
 import SampleBanner from "@/components/portal/SampleBanner";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function AuditPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const { entries, isSample } = await getAuditView();
   return (
     <div className="flex flex-col gap-6">

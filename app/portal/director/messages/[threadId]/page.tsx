@@ -2,8 +2,11 @@ import Link from "next/link";
 import { getThreadDetail } from "@/lib/portal/director/messages-data";
 import SampleBanner from "@/components/portal/SampleBanner";
 import ReplyClient from "./reply-client";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function DirectorThreadPage({ params }: { params: Promise<{ threadId: string }> }) {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const { threadId } = await params;
   const { detail, isSample } = await getThreadDetail(threadId);
   if (!detail) {

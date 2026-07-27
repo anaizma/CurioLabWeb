@@ -8,6 +8,15 @@ export {
 } from './messaging-guard.js'
 export { platformGrant } from './platformGrant.js'
 export { PRIVILEGED_ROLES, requiresTwoFactor } from './privileged-roles.js'
+export {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_CHARACTER_CLASSES,
+  PASSWORD_POLICY_HINTS,
+  passwordPolicyProblems,
+  passwordMeetsPolicy,
+  type PasswordProblem,
+} from './password-policy.js'
 export { can } from './can.js'
 export {
   MENTOR_ELIGIBILITY_COMPONENTS,

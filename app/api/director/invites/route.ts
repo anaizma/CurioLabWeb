@@ -4,6 +4,8 @@
 // resulting link via Resend (§12) so the raw token is mailed server-side.
 // Best-effort email: a send failure never voids the already-issued invite.
 import { sendInviteEmail, type InviteKind } from "@/lib/emails/invite-mail";
+import { internalOrigin } from "@/lib/internal-origin";
+import { resolveAppUrl } from "@/lib/app-url";
 
 const EMAILABLE: InviteKind[] = ["guardian", "mentor", "staff", "director", "admin"];
 
@@ -16,7 +18,13 @@ export async function POST(req: Request) {
     return Response.json({ error: "invalid_request" }, { status: 400 });
   }
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;
+  // Two different origins, deliberately. The self-call below carries the
+  // director's SESSION COOKIE, so its target must never come from the
+  // client-controlled Host header (internalOrigin refuses anything that is not an
+  // explicit APP_URL or a loopback host). The invite link, by contrast, has to be
+  // an address a guardian can open, so it comes from resolveAppUrl like every
+  // other link in outbound mail.
+  const origin = internalOrigin(req.headers.get("host"));
   const cookie = req.headers.get("cookie") ?? "";
 
   const res = await fetch(`${origin}/api/ops/invites`, {
@@ -33,7 +41,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "issue_failed" }, { status: 502 });
   }
 
-  const inviteUrl = `${origin}/invite/${data.token}`;
+  const inviteUrl = `${resolveAppUrl(req)}/invite/${data.token}`;
   let emailed = false;
   if (targetEmail && EMAILABLE.includes(kind as InviteKind) && process.env.RESEND_API_KEY) {
     try {

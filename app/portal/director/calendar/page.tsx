@@ -1,8 +1,11 @@
 import { getCalendarView } from "@/lib/portal/director/calendar-data";
 import SampleBanner from "@/components/portal/SampleBanner";
 import CalendarClient from "./calendar-client";
+import { requireDirector } from "@/lib/portal/director/guard";
 
 export default async function DirectorCalendarPage() {
+  // Gate first: nothing below this line runs for a non-director (see guard.ts).
+  await requireDirector();
   const view = await getCalendarView();
   return (
     <div className="flex flex-col gap-6">
