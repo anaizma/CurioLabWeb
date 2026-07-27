@@ -716,6 +716,22 @@ export class InvalidCredentialTokenError extends Error {
   }
 }
 
+/**
+ * A new password failed the shared policy (@curiolab/core password-policy). Maps
+ * to a 400 and, unlike the token errors above, DOES carry its reasons: the caller
+ * already proved possession of the reset token, so there is no oracle to protect
+ * here, and an opaque refusal would leave someone retyping passwords blind. The
+ * `problems` are the same sentences the form renders from the same rules.
+ */
+export class WeakPasswordError extends Error {
+  readonly problems: readonly string[]
+  constructor(problems: readonly string[]) {
+    super('password does not meet the policy')
+    this.name = 'WeakPasswordError'
+    this.problems = problems
+  }
+}
+
 // ---------------------------------------------------------------------------
 // TOTP two-factor (admin/director backend §10).
 // ---------------------------------------------------------------------------

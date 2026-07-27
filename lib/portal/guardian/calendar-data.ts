@@ -23,25 +23,11 @@ function normKind(k: string | undefined): GuardianCalKind {
 }
 
 function sampleEvents(): GuardianCalEvent[] {
-  const out: GuardianCalEvent[] = [];
-  const sat = new Date();
-  sat.setDate(sat.getDate() - ((sat.getDay() + 1) % 7));
-  for (let i = -2; i <= 5; i++) {
-    const d = new Date(sat);
-    d.setDate(d.getDate() + i * 7);
-    const s = new Date(d);
-    s.setHours(10, 0, 0, 0);
-    const e = new Date(d);
-    e.setHours(12, 0, 0, 0);
-    out.push({ id: `sample_sess_${i + 2}`, title: "Weekly build session", kind: "session", startsAt: s.toISOString(), endsAt: e.toISOString(), location: "Sears think[box], Room 3", notes: null });
-  }
-  const showcase = new Date(sat);
-  showcase.setDate(showcase.getDate() + 18);
-  showcase.setHours(17, 30, 0, 0);
-  const showcaseEnd = new Date(showcase);
-  showcaseEnd.setHours(19, 0, 0, 0);
-  out.push({ id: "sample_showcase", title: "Family showcase night", kind: "meeting", startsAt: showcase.toISOString(), endsAt: showcaseEnd.toISOString(), location: "CWRU campus — Thwing Center", notes: "Students present their term projects. Families welcome." });
-  return out;
+  // No invented sessions. This used to synthesise eight weekly build sessions
+  // and a "Family showcase night", complete with rooms and times, and serve them
+  // whenever the calendar could not be read. A parent could have shown up for a
+  // session that does not exist. It now returns nothing and the banner explains.
+  return [];
 }
 
 /** Parent-audience chapter events: live via GET /api/guardian/calendar when a

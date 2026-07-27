@@ -5,7 +5,7 @@ import MyInformation from "@/components/portal/settings/MyInformation";
 export default async function ParentSettingsPage() {
   const view = await getMyInformation("parent");
   return (
-    <SettingsShell active="my-information">
+    <SettingsShell active="my-information" basePath="/portal/parent/settings">
       <MyInformation view={view} />
     </SettingsShell>
   );

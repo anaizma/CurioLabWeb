@@ -3,52 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { errorCopy, postJson, SS_LEAD_EMAIL, studentLinkUrl } from "../../funnel";
+import { errorCopy, postJson, SS_LEAD_EMAIL, studentLinkUrl, type FormDefinitionLike } from "../../funnel";
+import FormFields, {
+  firstMissingRequired,
+  questionsOf,
+  seedAnswers,
+  sectionMeta,
+  type AnswerMap,
+  type AnswerValue,
+} from "../../FormFields";
 import ApplyLoading from "../../ApplyLoading";
 
 type Mode = "loading" | "form" | "invalid" | "error";
-type SaveStatus = "idle" | "submitting" | "saved" | "conflict" | "error";
+type SaveStatus = "idle" | "submitting" | "saved" | "error";
 type LinkStatus = "idle" | "creating" | "error";
-
-interface ParentForm {
-  childFirstName: string;
-  childLastName: string;
-  childDob: string;
-  gradeEntering: string;
-  schoolName: string;
-  guardianFirstName: string;
-  guardianLastName: string;
-  guardianEmail: string;
-  guardianPhone: string;
-  relationship: string;
-  secondGuardianName: string;
-  secondGuardianEmail: string;
-  saturdayAvailability: boolean;
-  commitmentAcknowledged: boolean;
-  scholarshipInterest: boolean;
-  attestedGuardian: boolean;
-  contactConsent: boolean;
-}
-
-const EMPTY_FORM: ParentForm = {
-  childFirstName: "",
-  childLastName: "",
-  childDob: "",
-  gradeEntering: "",
-  schoolName: "",
-  guardianFirstName: "",
-  guardianLastName: "",
-  guardianEmail: "",
-  guardianPhone: "",
-  relationship: "",
-  secondGuardianName: "",
-  secondGuardianEmail: "",
-  saturdayAvailability: false,
-  commitmentAcknowledged: false,
-  scholarshipInterest: false,
-  attestedGuardian: false,
-  contactConsent: false,
-};
 
 export default function ParentClient({ token }: { token: string }) {
   const router = useRouter();
@@ -56,126 +24,127 @@ export default function ParentClient({ token }: { token: string }) {
 
   const [mode, setMode] = useState<Mode>("loading");
   const [modeErrorMessage, setModeErrorMessage] = useState("");
-  const [alreadyStarted, setAlreadyStarted] = useState(false);
+  const [form, setForm] = useState<FormDefinitionLike | null>(null);
+  const [answers, setAnswers] = useState<AnswerMap>({});
+  const [resumed, setResumed] = useState(false);
 
-  const [form, setForm] = useState<ParentForm>(() => {
-    if (typeof window === "undefined") return EMPTY_FORM;
-    try {
-      const savedEmail = sessionStorage.getItem(SS_LEAD_EMAIL);
-      return savedEmail ? { ...EMPTY_FORM, guardianEmail: savedEmail } : EMPTY_FORM;
-    } catch {
-      return EMPTY_FORM;
-    }
-  });
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveErrorMessage, setSaveErrorMessage] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [showStudentLink, setShowStudentLink] = useState(false);
-  // On reopen we can't yet prefill saved answers (no draft-read endpoint), so the
-  // form stays hidden behind a warned opt-in — otherwise re-saving a blank form
-  // would overwrite the parent's saved answers via the backend's additive merge.
-  const [editing, setEditing] = useState(false);
 
   const [linkStatus, setLinkStatus] = useState<LinkStatus>("idle");
   const [linkErrorMessage, setLinkErrorMessage] = useState("");
   const [studentLink, setStudentLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Phase-router: figure out where this parent token currently sits, since
-  // there is no direct phase-read endpoint — try-and-branch off start/review.
+  // Start the draft if this is the first visit, then load whatever is saved so a
+  // returning parent sees their own answers filled in. The old flow could not
+  // read the draft, so it hid the form behind a "re-entering replaces everything"
+  // warning; the draft-read endpoint removes that whole problem.
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
 
-    async function run() {
+    (async () => {
       const start = await postJson("/api/public/stage2/start", { token });
-
-      if (start.status === 201) {
-        setMode("form");
-        return;
-      }
-
       if (start.status === 401) {
         setMode("invalid");
         return;
       }
-
-      if (start.status === 409) {
-        const review = await postJson("/api/public/stage2/review", { token });
-
-        if (review.status === 200) {
-          router.replace(`/apply/review/${token}`);
-          return;
-        }
-        if (review.status === 409) {
-          setAlreadyStarted(true);
-          setShowStudentLink(true);
-          setMode("form");
-          return;
-        }
-        if (review.status === 401) {
-          setMode("invalid");
-          return;
-        }
-        setModeErrorMessage(errorCopy(review.status));
+      if (start.status !== 201 && start.status !== 409) {
+        setModeErrorMessage(errorCopy(start.status));
         setMode("error");
         return;
       }
 
-      setModeErrorMessage(errorCopy(start.status));
-      setMode("error");
-    }
+      const draft = await postJson("/api/public/stage2/draft", { token });
+      if (draft.status === 401) {
+        setMode("invalid");
+        return;
+      }
+      if (draft.status !== 200) {
+        setModeErrorMessage(errorCopy(draft.status));
+        setMode("error");
+        return;
+      }
 
-    run();
+      const published = (draft.body.form ?? null) as FormDefinitionLike | null;
+      const saved = (draft.body.parentAnswers ?? {}) as Record<string, unknown>;
+      const phase = typeof draft.body.phase === "string" ? draft.body.phase : "2a";
+
+      // A finished student section means the application is waiting at review.
+      if (phase === "2c") {
+        router.replace(`/apply/review/${token}`);
+        return;
+      }
+      if (phase === "submitted") {
+        setModeErrorMessage(
+          "This application has already been submitted. We'll be in touch by email.",
+        );
+        setMode("error");
+        return;
+      }
+
+      const seeded = seedAnswers(questionsOf(published, "parent"), saved);
+      // Same-device convenience: prefill the guardian email captured at Stage 1
+      // when the draft has nothing saved for it yet.
+      if (typeof window !== "undefined") {
+        try {
+          const leadEmail = sessionStorage.getItem(SS_LEAD_EMAIL);
+          if (leadEmail && seeded.guardianEmail === "") seeded.guardianEmail = leadEmail;
+        } catch {
+          // best-effort only
+        }
+      }
+
+      setForm(published);
+      setAnswers(seeded);
+      setResumed(Object.keys(saved).length > 0);
+      setShowStudentLink(phase === "2b");
+      setMode("form");
+    })();
   }, [token, router]);
 
-  function updateField<K extends keyof ParentForm>(key: K, value: ParentForm[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
+  const questions = questionsOf(form, "parent");
+  const meta = sectionMeta(form, "parent");
+
+  function updateAnswer(key: string, value: AnswerValue) {
+    setAnswers((a) => ({ ...a, [key]: value }));
+    setSaveStatus("idle");
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    setValidationError(null);
+
+    const missing = firstMissingRequired(questions, answers);
+    if (missing) {
+      setValidationError(`Please complete "${missing.label}" before saving.`);
+      return;
+    }
+
     setSaveStatus("submitting");
     setSaveErrorMessage("");
 
-    const childName = `${form.childFirstName.trim()} ${form.childLastName.trim()}`.trim();
-    const guardianName = `${form.guardianFirstName.trim()} ${form.guardianLastName.trim()}`.trim();
+    // Every question is sent on every save, including blanks, because the backend
+    // merges additively: a key omitted here would keep its previous server value,
+    // so an answer the parent just cleared could never actually be cleared.
+    const payload: Record<string, AnswerValue> = {};
+    for (const q of questions) {
+      const v = answers[q.key];
+      payload[q.key] = typeof v === "string" ? v.trim() : (v ?? "");
+    }
 
-    // Always include every field explicitly, even when empty/false: the
-    // backend merges resaved answers additively (JSONB ||), so a key
-    // absent from this payload would keep its old server-side value and
-    // an optional field could never be cleared.
-    const answers: Record<string, unknown> = {
-      childFirstName: form.childFirstName.trim(),
-      childLastName: form.childLastName.trim(),
-      childName,
-      childDob: form.childDob,
-      gradeEntering: form.gradeEntering,
-      schoolName: form.schoolName.trim(),
-      guardianFirstName: form.guardianFirstName.trim(),
-      guardianLastName: form.guardianLastName.trim(),
-      guardianName,
-      guardianEmail: form.guardianEmail.trim(),
-      guardianPhone: form.guardianPhone.trim(),
-      relationship: form.relationship,
-      secondGuardianName: form.secondGuardianName.trim(),
-      secondGuardianEmail: form.secondGuardianEmail.trim(),
-      saturdayAvailability: form.saturdayAvailability,
-      commitmentAcknowledged: form.commitmentAcknowledged,
-      scholarshipInterest: form.scholarshipInterest,
-      attestedGuardian: form.attestedGuardian,
-      contactConsent: form.contactConsent,
-    };
-
-    const { status } = await postJson("/api/public/stage2/parent", { token, answers });
+    const { status } = await postJson("/api/public/stage2/parent", { token, answers: payload });
 
     if (status === 200) {
       setSaveStatus("saved");
       setShowStudentLink(true);
       return;
     }
-    if (status === 409) {
-      setSaveStatus("conflict");
-      setShowStudentLink(true);
+    if (status === 401) {
+      setMode("invalid");
       return;
     }
     setSaveErrorMessage(errorCopy(status));
@@ -224,9 +193,7 @@ export default function ParentClient({ token }: { token: string }) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-20">
         <p className="label-blue mb-3">Apply</p>
-        <h1 className="text-3xl md:text-4xl font-bold mb-4">
-          This link isn&apos;t working
-        </h1>
+        <h1 className="text-3xl md:text-4xl font-bold mb-4">This link isn&apos;t working</h1>
         <p className="text-muted">{errorCopy(401)}</p>
       </div>
     );
@@ -236,9 +203,7 @@ export default function ParentClient({ token }: { token: string }) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-20">
         <p className="label-blue mb-3">Apply</p>
-        <h1 className="text-3xl md:text-4xl font-bold mb-4">
-          Something went wrong
-        </h1>
+        <h1 className="text-3xl md:text-4xl font-bold mb-4">Something went wrong</h1>
         <p className="text-muted">{modeErrorMessage}</p>
       </div>
     );
@@ -246,290 +211,32 @@ export default function ParentClient({ token }: { token: string }) {
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-20">
-      <p className="label-blue mb-3">Apply · Parent/guardian section</p>
-      <h1 className="text-3xl md:text-4xl font-bold mb-8">
-        {alreadyStarted && !editing
-          ? "Your section is saved"
-          : "Tell us about your student"}
+      <p className="label-blue mb-3">Apply &middot; Parent/guardian section</p>
+      <h1 className="text-3xl md:text-4xl font-bold mb-4">
+        {meta?.title || "Tell us about your student"}
       </h1>
+      {meta?.description && <p className="text-muted mb-4">{meta.description}</p>}
+      <p className="text-muted mb-8">
+        {resumed
+          ? "We've filled in what you saved before. Change anything you need to and save again."
+          : "You can save this and come back to it later — saving isn't submitting."}
+      </p>
 
-      {alreadyStarted && !editing ? (
-        <div className="mb-4">
-          <p className="text-muted mb-6">
-            We&apos;ve got the details you entered for this application. Create
-            your student&apos;s link below, or head to review and submit once
-            they&apos;re done. We don&apos;t re-display your saved answers here
-            yet, so there&apos;s nothing to accidentally overwrite.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Re-entering replaces the answers you saved before — you'll need to fill in the whole section again. Continue?",
-                )
-              ) {
-                setEditing(true);
-              }
-            }}
-            className="text-sm text-coral font-medium hover:underline"
-          >
-            Need to change what you entered? Re-enter this section &rarr;
-          </button>
-        </div>
-      ) : (
-        <>
-          {alreadyStarted && editing && (
-            <div className="border border-coral/40 rounded-md bg-coral/5 px-4 py-3 mb-8 text-sm text-ink">
-              Heads up: saving replaces the answers you entered before, so please
-              fill in the whole section again before you save.
-            </div>
-          )}
-
-          <form className="space-y-8" onSubmit={handleSave}>
+      <form className="space-y-8" onSubmit={handleSave}>
         <div className="space-y-6">
-          <h2 className="text-xl font-bold">Student</h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label block mb-2">Student first name</label>
-              <input
-                className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-                type="text"
-                required
-                value={form.childFirstName}
-                onChange={(e) => updateField("childFirstName", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label block mb-2">Student last name</label>
-              <input
-                className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-                type="text"
-                required
-                value={form.childLastName}
-                onChange={(e) => updateField("childLastName", e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="label block mb-2">Date of birth</label>
-            <input
-              className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-              type="date"
-              required
-              value={form.childDob}
-              onChange={(e) => updateField("childDob", e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="label block mb-2">Grade entering in the fall</label>
-            <select
-              className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-              required
-              value={form.gradeEntering}
-              onChange={(e) => updateField("gradeEntering", e.target.value)}
-            >
-              <option value="" disabled>
-                Select a grade
-              </option>
-              {["6", "7", "8", "9", "10", "11", "12"].map((grade) => (
-                <option key={grade} value={grade}>
-                  Grade {grade}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="label block mb-2">School</label>
-            <input
-              className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-              type="text"
-              required
-              value={form.schoolName}
-              onChange={(e) => updateField("schoolName", e.target.value)}
-            />
-          </div>
+          <FormFields
+            questions={questions}
+            answers={answers}
+            onChange={updateAnswer}
+            disabled={saveStatus === "submitting"}
+          />
         </div>
 
-        <div className="space-y-6">
-          <h2 className="text-xl font-bold">Parent / guardian</h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label block mb-2">Your first name</label>
-              <input
-                className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-                type="text"
-                required
-                value={form.guardianFirstName}
-                onChange={(e) => updateField("guardianFirstName", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label block mb-2">Your last name</label>
-              <input
-                className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-                type="text"
-                required
-                value={form.guardianLastName}
-                onChange={(e) => updateField("guardianLastName", e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="label block mb-2">Your email</label>
-            <input
-              className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-              type="email"
-              required
-              value={form.guardianEmail}
-              onChange={(e) => updateField("guardianEmail", e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="label block mb-2">Your phone</label>
-            <input
-              className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-              type="tel"
-              required
-              value={form.guardianPhone}
-              onChange={(e) => updateField("guardianPhone", e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="label block mb-2">Relationship to student</label>
-            <select
-              className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-              required
-              value={form.relationship}
-              onChange={(e) => updateField("relationship", e.target.value)}
-            >
-              <option value="" disabled>
-                Select one
-              </option>
-              <option value="Parent">Parent</option>
-              <option value="Legal guardian">Legal guardian</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label block mb-2">
-                Second guardian name (optional)
-              </label>
-              <input
-                className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-                type="text"
-                value={form.secondGuardianName}
-                onChange={(e) => updateField("secondGuardianName", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label block mb-2">
-                Second guardian email (optional)
-              </label>
-              <input
-                className="w-full border border-black/20 rounded-md px-4 py-3 bg-white"
-                type="email"
-                value={form.secondGuardianEmail}
-                onChange={(e) => updateField("secondGuardianEmail", e.target.value)}
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted -mt-4">
-            Password resets for a minor route to all verified guardians — a
-            second contact avoids a stall.
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold">A few confirmations</h2>
-
-          <label className="flex items-start gap-3 text-black">
-            <input
-              type="checkbox"
-              className="mt-1"
-              required
-              checked={form.saturdayAvailability}
-              onChange={(e) => updateField("saturdayAvailability", e.target.checked)}
-            />
-            <span>
-              My family can commit to Saturday sessions this semester.
-            </span>
-          </label>
-
-          <label className="flex items-start gap-3 text-black">
-            <input
-              type="checkbox"
-              className="mt-1"
-              required
-              checked={form.commitmentAcknowledged}
-              onChange={(e) => updateField("commitmentAcknowledged", e.target.checked)}
-            />
-            <span>
-              I understand CurioLab meets on Saturdays, includes a semester
-              fee, and requires an interview as part of the application
-              process.
-            </span>
-          </label>
-
-          <label className="flex items-start gap-3 text-black">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={form.scholarshipInterest}
-              onChange={(e) => updateField("scholarshipInterest", e.target.checked)}
-            />
-            <span>
-              Would you like information about need-based scholarships?
-            </span>
-          </label>
-
-          <label className="flex items-start gap-3 text-black">
-            <input
-              type="checkbox"
-              className="mt-1"
-              required
-              checked={form.attestedGuardian}
-              onChange={(e) => updateField("attestedGuardian", e.target.checked)}
-            />
-            <span>I am the parent or legal guardian of this student.</span>
-          </label>
-
-          <label className="flex items-start gap-3 text-black">
-            <input
-              type="checkbox"
-              className="mt-1"
-              required
-              checked={form.contactConsent}
-              onChange={(e) => updateField("contactConsent", e.target.checked)}
-            />
-            <span>I consent to be contacted about this application.</span>
-          </label>
-
-          <p className="text-xs text-muted">See our privacy notice.</p>
-        </div>
-
-        {saveStatus === "error" && (
-          <p className="text-sm text-coral">{saveErrorMessage}</p>
-        )}
+        {validationError && <p className="text-sm text-coral">{validationError}</p>}
+        {saveStatus === "error" && <p className="text-sm text-coral">{saveErrorMessage}</p>}
         {saveStatus === "saved" && (
           <p className="text-sm text-sage font-medium">
-            Saved. Your student link tool is below.
-          </p>
-        )}
-        {saveStatus === "conflict" && (
-          <p className="text-sm text-black">
-            This section is already locked in — your application has moved
-            to the next step. Your student link tool is below.
+            Saved. You can reopen this link any time to change it, right up until you submit.
           </p>
         )}
 
@@ -540,17 +247,14 @@ export default function ParentClient({ token }: { token: string }) {
         >
           {saveStatus === "submitting" ? "Saving…" : "Save"}
         </button>
-          </form>
-        </>
-      )}
+      </form>
 
       {showStudentLink && (
         <div className="mt-12 border-t border-black/10 pt-8">
           <h2 className="text-xl font-bold mb-2">Your student&apos;s section</h2>
           <p className="text-muted mb-4">
-            Your student fills in their own section, in their own words.
-            Create a link and pass it to them however you like — we never
-            ask for a student email.
+            Your student fills in their own section, in their own words. Create a link and pass it
+            to them however you like &mdash; we never ask for a student email.
           </p>
 
           <button
@@ -559,14 +263,10 @@ export default function ParentClient({ token }: { token: string }) {
             disabled={linkStatus === "creating"}
             className="bg-coral text-white px-6 py-3 rounded-md font-medium hover:bg-coral-dark transition-colors disabled:opacity-60"
           >
-            {linkStatus === "creating"
-              ? "Creating…"
-              : "Create a link to send to my student"}
+            {linkStatus === "creating" ? "Creating…" : "Create a link to send to my student"}
           </button>
 
-          {linkStatus === "error" && (
-            <p className="text-sm text-coral mt-3">{linkErrorMessage}</p>
-          )}
+          {linkStatus === "error" && <p className="text-sm text-coral mt-3">{linkErrorMessage}</p>}
 
           {studentLink && (
             <div className="mt-6 space-y-3">
@@ -586,17 +286,15 @@ export default function ParentClient({ token }: { token: string }) {
                   {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
-              <p className="text-xs text-muted">
-                Creating a new link replaces the old one.
-              </p>
+              <p className="text-xs text-muted">Creating a new link replaces the old one.</p>
               <p className="text-sm text-black">
-                When they&apos;re done, come back here to review and submit —
-                or head there now:{" "}
+                When they&apos;re done, come back here to review and submit &mdash; or head there
+                now:{" "}
                 <Link
                   href={`/apply/review/${token}`}
                   className="text-coral font-medium hover:underline"
                 >
-                  Review and submit →
+                  Review and submit &rarr;
                 </Link>
               </p>
             </div>

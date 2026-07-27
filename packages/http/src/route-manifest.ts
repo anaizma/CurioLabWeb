@@ -293,6 +293,23 @@ export const ROUTE_MANIFEST: RouteManifest = [
     inert: 'pending-2FA-token-gated; confirms TOTP enrollment (activates + returns backup codes once) and mints the session, no actor',
     specEnumerated: false,
   },
+  // Session self-management (migration 0045). Both writes are scoped to the
+  // caller's OWN account by the query itself, and carry no registry capability
+  // for the same reason POST /api/auth/logout does not: the authority is
+  // self-ownership of the session, not a role. The list read (GET
+  // /api/auth/sessions) is GET-exempt from the manifest.
+  {
+    method: 'POST',
+    path: '/api/auth/sessions/revoke',
+    inert: 'revokes the caller’s OWN session(s); account-scoped in the query, no registry capability (like /api/auth/logout)',
+    specEnumerated: false,
+  },
+  {
+    method: 'POST',
+    path: '/api/auth/sessions/revoke-link',
+    inert: 'unauthenticated, token-gated; the “this wasn’t me” link from the new-sign-in email revokes exactly the one session its token names, no actor',
+    specEnumerated: false,
+  },
 
   // ---- Apply funnel Stage 1 (frontend-owned adapter over LeadService.createLead) ----
   {

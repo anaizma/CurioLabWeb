@@ -26,15 +26,28 @@ export {
   type ProvisioningUriInput,
 } from './totp.js'
 export {
+  coarseIp,
+  deviceLabel,
+  deviceHash,
+  fingerprintDevice,
+  type DeviceFingerprint,
+} from './device.js'
+export {
   IMPERSONATION_TTL_MS,
   createSession,
   createImpersonationSession,
   validateSession,
   revokeSession,
   revokeAllSessionsForAccount,
+  hasSeenDevice,
+  hasAnyPriorSession,
+  listLiveSessions,
+  touchSession,
+  revokeSessionByRevokeToken,
   type CreateSessionArgs,
   type CreatedSession,
   type ValidatedSession,
+  type AccountSessionRow,
 } from './sessions.js'
 export {
   encryptField,

@@ -120,3 +120,116 @@ export async function sendDirectorLeadNotification(input: DirectorLeadNotificati
   const { subject, text, html } = buildDirectorLeadNotification(input);
   await new Resend(key).emails.send({ from: FROM, to: directorNotifyRecipient(), subject, text, html });
 }
+
+// ---------------------------------------------------------------------------
+// The SUBMITTED-application notice.
+//
+// Two jobs, and the second is the important one:
+//
+//  1. It tells the director a completed application has arrived. Without it a
+//     submission lands silently and is only seen by someone opening the portal.
+//
+//  2. It is an INDEPENDENT, OFF-SITE COPY of the submission. The full set of
+//     answers is written into the message body, so every application also exists
+//     in a mailbox that does not share failure modes with the application
+//     database. If the database were lost between backups, each submission could
+//     still be reconstructed from this mail.
+//
+// PRIVACY NOTE: because of (2) this message necessarily contains the child's
+// details (name, date of birth, school) alongside the guardian's contact
+// details. That is the same information the director already reads in the
+// portal, sent to the director's own address — but it does place it in a mail
+// provider. Set APPLICATION_EMAIL_INCLUDE_ANSWERS=false to reduce this message
+// to a bare "an application arrived, open the portal" pointer, which keeps the
+// notification and gives up the off-site copy.
+// ---------------------------------------------------------------------------
+
+export interface SubmittedAnswer {
+  question: string;
+  answer: string;
+}
+
+export interface ApplicationSubmittedInput {
+  applicationId: string;
+  /** The applicant's full name, for the subject line. */
+  studentName: string | null;
+  guardianName: string | null;
+  guardianEmail: string | null;
+  /** Parent (2A) answers, labelled against the stamped form. */
+  parentAnswers: SubmittedAnswer[];
+  /** Student (2B) answers, labelled against the stamped form. */
+  studentAnswers: SubmittedAnswer[];
+  /** Site origin used to build the portal link. */
+  appUrl: string;
+}
+
+/** Whether the notice carries the answers themselves (see PRIVACY NOTE above). */
+export function includeAnswersInSubmitEmail(): boolean {
+  return process.env.APPLICATION_EMAIL_INCLUDE_ANSWERS !== "false";
+}
+
+export function buildApplicationSubmittedEmail(input: ApplicationSubmittedInput): BuiltEmail {
+  const who = input.studentName?.trim() || "a new applicant";
+  const detailUrl = `${input.appUrl}/portal/director/applications/${input.applicationId}`;
+  const subject = `New CurioLab application: ${who}`;
+  const withAnswers = includeAnswersInSubmitEmail();
+
+  const textLines = [
+    `A completed CurioLab application has been submitted for ${who}.`,
+    "",
+    `Guardian: ${input.guardianName ?? "-"}`,
+    `Guardian email: ${input.guardianEmail ?? "-"}`,
+    "",
+    `Open it here:`,
+    detailUrl,
+  ];
+  const htmlParts = [
+    `<p>A completed CurioLab application has been submitted for <strong>${escapeHtml(who)}</strong>.</p>`,
+    `<p><strong>Guardian:</strong> ${escapeHtml(input.guardianName ?? "-")}<br>`,
+    `<strong>Guardian email:</strong> ${escapeHtml(input.guardianEmail ?? "-")}</p>`,
+    `<p><a href="${detailUrl}">Open the application &rarr;</a></p>`,
+  ];
+
+  if (withAnswers) {
+    const section = (title: string, rows: SubmittedAnswer[]) => {
+      if (rows.length === 0) return;
+      textLines.push("", `--- ${title} ---`);
+      htmlParts.push(`<h3 style="margin-bottom:4px">${escapeHtml(title)}</h3>`);
+      for (const r of rows) {
+        textLines.push("", r.question, r.answer);
+        htmlParts.push(
+          `<p style="margin:0 0 10px 0"><span style="color:#666;font-size:12px">${escapeHtml(r.question)}</span><br>` +
+            `${escapeHtml(r.answer).replace(/\n/g, "<br>")}</p>`,
+        );
+      }
+    };
+    htmlParts.push(
+      '<hr style="border:none;border-top:1px solid #ddd;margin:20px 0">',
+      '<p style="color:#666;font-size:12px">A full copy of the submission follows, so this message is also an off-site record of it.</p>',
+    );
+    textLines.push(
+      "",
+      "A full copy of the submission follows, so this message is also an off-site record of it.",
+    );
+    section("Parent / guardian section", input.parentAnswers);
+    section("Student section", input.studentAnswers);
+  }
+
+  textLines.push("", "CurioLab");
+  htmlParts.push("<p>CurioLab</p>");
+  return { subject, text: textLines.join("\n"), html: htmlParts.join("") };
+}
+
+/**
+ * Send the director the completed application. Throws on failure — the caller
+ * treats it as best-effort, because the application row is already committed and
+ * a mail failure must never turn a successful submit into an error for the family.
+ */
+export async function sendApplicationSubmittedNotification(
+  input: ApplicationSubmittedInput,
+): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new Error("RESEND_API_KEY is not set");
+  const { subject, text, html } = buildApplicationSubmittedEmail(input);
+  await new Resend(key).emails.send({ from: FROM, to: directorNotifyRecipient(), subject, text, html });
+}

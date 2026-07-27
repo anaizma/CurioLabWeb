@@ -37,10 +37,7 @@ function fmt(d: string | undefined | null): string {
   return isNaN(t.getTime()) ? "—" : t.toLocaleDateString();
 }
 
-const SAMPLE: ModerationReport[] = [
-  { reportId: "rep_sample_1", targetType: "post", targetId: "post_9", reportClass: "safety", reason: "Possible personal info in a photo caption", dueLabel: "Jul 24", filedLabel: "Jul 23", acknowledged: false, escalated: false },
-  { reportId: "rep_sample_2", targetType: "comment", targetId: "cmt_4", reportClass: "ordinary", reason: "Off-topic / spammy link", dueLabel: "Jul 25", filedLabel: "Jul 23", acknowledged: true, escalated: false },
-];
+const SAMPLE: ModerationReport[] = [];
 
 export async function getModerationView(): Promise<ModerationView> {
   const ctx = await getDirectorContext();

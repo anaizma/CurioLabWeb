@@ -1,4 +1,4 @@
-import { cookies, headers } from "next/headers";
+import { originAndCookie } from "@/lib/internal-origin";
 
 // ---------------------------------------------------------------------------
 // "My Information" data seam.
@@ -46,17 +46,6 @@ export interface MyInfoView {
   isSample: boolean;
 }
 
-async function originAndCookie(): Promise<{ origin: string; cookie: string } | null> {
-  const session = (await cookies()).get("cl_session");
-  if (!session) return null;
-  const h = await headers();
-  const host = h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? (host ? `${proto}://${host}` : "");
-  if (!origin) return null;
-  return { origin, cookie: `cl_session=${session.value}` };
-}
-
 async function getSessionAge(): Promise<number | null> {
   try {
     const ctx = await originAndCookie();
@@ -87,22 +76,32 @@ async function fetchNotificationEmail(): Promise<NotificationEmailModel | null> 
   }
 }
 
-// ---- representative values -------------------------------------------------
+// ---- empty views -----------------------------------------------------------
+//
+// These used to return an invented identity per role — a student "Ari Okafor"
+// with a date of birth, school and guardian; a parent "Jordan Okafor" with a
+// phone number; a director "Amara Okoro" at a made-up address on the real
+// acuriolab.org domain. On a settings page headed "My information" that is
+// actively misleading: every value reads as the signed-in person's own record,
+// and one of them looked like a real staff mailbox.
+//
+// Nothing is invented now. Fields render blank behind SampleBanner until the
+// per-role read endpoints are wired.
 
-const GUARDIAN_EMAIL = "jordan.okafor@example.com";
+const EMPTY_VALUE = "";
 
-/** Representative email model that mirrors the endpoint's rules by age. */
-function representativeEmail(age: number): NotificationEmailModel {
-  if (age < 13) {
-    return { primary: { email: GUARDIAN_EMAIL, isOwn: false, editable: false }, secondary: { email: null, editable: false } };
-  }
-  return { primary: { email: "ari.okafor@example.com", isOwn: true, editable: true }, secondary: { email: GUARDIAN_EMAIL, editable: false } };
+/** The empty email model; the live endpoint fills this when it is wired. */
+function representativeEmail(): NotificationEmailModel {
+  return {
+    primary: { email: null, isOwn: false, editable: false },
+    secondary: { email: null, editable: false },
+  };
 }
 
 function studentView(age: number, email: NotificationEmailModel, emailLive: boolean): MyInfoView {
   return {
     role: "student",
-    displayName: "Ari Okafor",
+    displayName: EMPTY_VALUE,
     age,
     emailLive,
     isSample: true,
@@ -111,23 +110,23 @@ function studentView(age: number, email: NotificationEmailModel, emailLive: bool
       {
         title: "Identity",
         fields: [
-          { key: "fullName", label: "Full name", value: "Ari Okafor", editable: false },
-          { key: "dob", label: "Date of birth", value: "September 14, 2013", editable: false },
-          { key: "age", label: "Age", value: `${age}`, editable: false, note: "Calculated from your date of birth." },
+          { key: "fullName", label: "Full name", value: EMPTY_VALUE, editable: false },
+          { key: "dob", label: "Date of birth", value: EMPTY_VALUE, editable: false },
+          { key: "age", label: "Age", value: EMPTY_VALUE, editable: false, note: "Calculated from your date of birth." },
         ],
       },
       {
         title: "Guardian",
         fields: [
-          { key: "guardianName", label: "Guardian", value: "Jordan Okafor", editable: false },
-          { key: "guardianEmail", label: "Guardian email", value: GUARDIAN_EMAIL, editable: false },
+          { key: "guardianName", label: "Guardian", value: EMPTY_VALUE, editable: false },
+          { key: "guardianEmail", label: "Guardian email", value: EMPTY_VALUE, editable: false },
         ],
       },
       {
         title: "School",
         fields: [
-          { key: "school", label: "School", value: "Lincoln Middle School", editable: true, kind: "text" },
-          { key: "grade", label: "Grade", value: "8", editable: false },
+          { key: "school", label: "School", value: EMPTY_VALUE, editable: true, kind: "text" },
+          { key: "grade", label: "Grade", value: EMPTY_VALUE, editable: false },
         ],
       },
     ],
@@ -137,24 +136,24 @@ function studentView(age: number, email: NotificationEmailModel, emailLive: bool
 function guardianView(): MyInfoView {
   return {
     role: "parent",
-    displayName: "Jordan Okafor",
+    displayName: EMPTY_VALUE,
     age: null,
     emailLive: false,
     isSample: true,
     sections: [
-      { title: "Identity", fields: [{ key: "fullName", label: "Full name", value: "Jordan Okafor", editable: false }] },
+      { title: "Identity", fields: [{ key: "fullName", label: "Full name", value: EMPTY_VALUE, editable: false }] },
       {
         title: "Contact",
         fields: [
-          { key: "email", label: "Email", value: GUARDIAN_EMAIL, editable: true, kind: "email" },
-          { key: "phone", label: "Phone", value: "(216) 555-0143", editable: false },
+          { key: "email", label: "Email", value: EMPTY_VALUE, editable: true, kind: "email" },
+          { key: "phone", label: "Phone", value: EMPTY_VALUE, editable: false },
         ],
       },
       {
         title: "Family",
         fields: [
-          { key: "children", label: "Students", value: "Ari Okafor", editable: false },
-          { key: "relationship", label: "Relationship", value: "Parent", editable: false },
+          { key: "children", label: "Students", value: EMPTY_VALUE, editable: false },
+          { key: "relationship", label: "Relationship", value: EMPTY_VALUE, editable: false },
         ],
       },
     ],
@@ -164,18 +163,18 @@ function guardianView(): MyInfoView {
 function directorView(): MyInfoView {
   return {
     role: "director",
-    displayName: "Amara Okoro",
+    displayName: EMPTY_VALUE,
     age: null,
     emailLive: false,
     isSample: true,
     sections: [
-      { title: "Identity", fields: [{ key: "fullName", label: "Full name", value: "Amara Okoro", editable: false }] },
-      { title: "Contact", fields: [{ key: "email", label: "Email", value: "a.okoro@acuriolab.org", editable: true, kind: "email" }] },
+      { title: "Identity", fields: [{ key: "fullName", label: "Full name", value: EMPTY_VALUE, editable: false }] },
+      { title: "Contact", fields: [{ key: "email", label: "Email", value: EMPTY_VALUE, editable: true, kind: "email" }] },
       {
         title: "Role",
         fields: [
-          { key: "role", label: "Role", value: "Chapter Director", editable: false },
-          { key: "chapter", label: "Chapter", value: "Cleveland", editable: false },
+          { key: "role", label: "Role", value: EMPTY_VALUE, editable: false },
+          { key: "chapter", label: "Chapter", value: EMPTY_VALUE, editable: false },
         ],
       },
     ],
@@ -190,5 +189,5 @@ export async function getMyInformation(role: PortalRole): Promise<MyInfoView> {
   const age = (await getSessionAge()) ?? 12;
   const live = await fetchNotificationEmail();
   if (live) return studentView(age, live, true);
-  return studentView(age, representativeEmail(age), false);
+  return studentView(age, representativeEmail(), false);
 }

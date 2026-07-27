@@ -1,6 +1,43 @@
 // Shared client-side plumbing for the apply funnel pages.
-// The 2B question set MUST stay within the backend allowlist
-// (packages/app/src/config.ts STAGE2_STUDENT_ALLOWED_FIELDS).
+//
+// The apply pages carry NO question list of their own. Every question the parent
+// and the student answer comes from the DIRECTOR-PUBLISHED form definition that
+// the Stage-2 endpoints return alongside the draft, and the backend accepts
+// exactly the student keys that definition publishes. That is what keeps the
+// director's editor and the applicant's form in sync in both directions.
+
+/** The question shape as the published definition carries it. */
+export interface FormQuestionLike {
+  key: string;
+  label: string;
+  type:
+    | "short_text"
+    | "long_text"
+    | "email"
+    | "phone"
+    | "date"
+    | "dropdown"
+    | "multiple_choice"
+    | "checkboxes"
+    | "consent";
+  required: boolean;
+  help?: string;
+  options?: string[];
+}
+
+export interface FormSectionLike {
+  id: "parent" | "student";
+  title?: string;
+  description?: string;
+  questions: FormQuestionLike[];
+}
+
+/** The resolved published form the Stage-2 endpoints return. */
+export interface FormDefinitionLike {
+  formId?: string;
+  version?: number;
+  definition?: { sections?: FormSectionLike[] };
+}
 
 export interface ApiResult {
   status: number
@@ -39,35 +76,11 @@ export function errorCopy(status: number): string {
   }
 }
 
-/** The 2B student questions. Keys MUST be on the backend allowlist. */
-export const STUDENT_QUESTIONS: ReadonlyArray<{
-  key: string
-  label: string
-  optional?: boolean
-}> = [
-  { key: 'interests', label: "What do you like doing when you're not in school?" },
-  { key: 'motivation', label: 'Why do you want to join CurioLab?' },
-  {
-    key: 'curiosity',
-    label: "What's something you're curious about right now - in school or outside it?",
-  },
-  {
-    key: 'problem_to_fix',
-    label:
-      "Is there a problem you've noticed at school, in your neighborhood, or in your community that you wish someone would fix?",
-  },
-  {
-    key: 'goals',
-    label: 'What do you hope to learn or make by the end of your first semester?',
-  },
-  {
-    key: 'prior_experience',
-    label: 'Have you done any coding, building, or making before?',
-    optional: true,
-  },
-]
-
-/** Labels for the 2A facts, used by the 2C read-only review. */
+/**
+ * Fallback labels for the 2A facts, used by the 2C review ONLY for a saved answer
+ * whose question is no longer on the published form (a director removed it after
+ * the parent answered). The published definition supplies every label otherwise.
+ */
 export const PARENT_FIELD_LABELS: Readonly<Record<string, string>> = {
   childName: 'Student name',
   childDob: 'Date of birth',

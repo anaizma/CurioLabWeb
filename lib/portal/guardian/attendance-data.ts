@@ -37,23 +37,15 @@ export interface AttendanceView {
 
 const ZERO: AttendanceCounts = { totalAbsences: 0, outstanding: 0, madeUp: 0, late: 0 };
 
-function keyOf(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** Two representative past exceptions, anchored to recent Saturdays so they are
- *  reachable in the month view. */
+/**
+ * No invented records. This previously returned two fabricated exceptions (an
+ * absence for "Family travel", a late arrival) anchored to recent Saturdays, and
+ * it was mixed into the LIVE view as well as the fallback — so a parent could
+ * read an absence for their child that never happened. Attendance is exactly the
+ * kind of record a parent acts on, so nothing is invented here.
+ */
 function buildSampleRecords(): SampleAttendanceRecord[] {
-  const sat = new Date();
-  sat.setDate(sat.getDate() - ((sat.getDay() + 1) % 7));
-  const lastWeek = new Date(sat);
-  lastWeek.setDate(lastWeek.getDate() - 7);
-  const threeBack = new Date(sat);
-  threeBack.setDate(threeBack.getDate() - 21);
-  return [
-    { dateKey: keyOf(threeBack), type: "absent", reason: "Family travel", slots: ["Wed · 7:00 PM"], madeUp: true },
-    { dateKey: keyOf(lastWeek), type: "late", arrive: "10:25" },
-  ];
+  return [];
 }
 
 export async function getAttendanceView(): Promise<AttendanceView> {

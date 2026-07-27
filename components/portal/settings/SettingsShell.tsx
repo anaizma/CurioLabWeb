@@ -1,14 +1,30 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
-// Settings has room for several sections; only "My Information" is built today.
+// Settings has room for several sections. "My information" and "Account &
+// security" are built; the rest are not links yet and say so rather than
+// pretending to be clickable.
 const NAV = [
-  { key: "my-information", label: "My information", ready: true },
-  { key: "security", label: "Account & security", ready: false },
-  { key: "notifications", label: "Notifications", ready: false },
-  { key: "privacy", label: "Privacy", ready: false },
+  { key: "my-information", label: "My information", path: "", ready: true },
+  { key: "security", label: "Account & security", path: "/security", ready: true },
+  { key: "notifications", label: "Notifications", path: "/notifications", ready: false },
+  { key: "privacy", label: "Privacy", path: "/privacy", ready: false },
 ];
 
-export default function SettingsShell({ active = "my-information", children }: { active?: string; children: ReactNode }) {
+export default function SettingsShell({
+  active = "my-information",
+  /**
+   * The portal's settings root, e.g. "/portal/director/settings". Each portal
+   * mounts the same sections under its own path, so the links are built from
+   * this rather than hardcoded to one role.
+   */
+  basePath,
+  children,
+}: {
+  active?: string;
+  basePath: string;
+  children: ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -27,9 +43,14 @@ export default function SettingsShell({ active = "my-information", children }: {
               );
             }
             return (
-              <span key={item.key} className={`rounded-md px-3 py-1.5 text-[13px] shrink-0 ${on ? "font-semibold bg-cream" : "text-ink/60"}`} style={on ? { color: "var(--pt-accent)" } : undefined}>
+              <Link
+                key={item.key}
+                href={`${basePath}${item.path}`}
+                className={`rounded-md px-3 py-1.5 text-[13px] shrink-0 ${on ? "font-semibold bg-cream" : "text-ink/60 hover:bg-cream"}`}
+                style={on ? { color: "var(--pt-accent)" } : undefined}
+              >
                 {item.label}
-              </span>
+              </Link>
             );
           })}
         </nav>

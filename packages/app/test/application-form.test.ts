@@ -30,12 +30,13 @@ import {
   Stage2Service,
   validateDefinition,
   fixedFieldsOf,
+  allowedStudentKeys,
   StudentSectionFieldNotAllowedError,
   type ApplicationFormAuthorizeFn,
   type OpsReadAuthorizeFn,
   type FormDefinition,
 } from '../src/index.js'
-import { STAGE2_STUDENT_ALLOWED_FIELDS, STAGE2_IDENTIFYING_KEY_PATTERN } from '../src/config.js'
+import { STAGE2_IDENTIFYING_KEY_PATTERN } from '../src/config.js'
 
 let h: Harness
 
@@ -70,7 +71,6 @@ async function platformDefaultDefinition(): Promise<FormDefinition> {
 describe('validateDefinition (pure, override 1 + spec rules)', () => {
   async function deps() {
     return {
-      allowedStudentFields: STAGE2_STUDENT_ALLOWED_FIELDS,
       identifyingKeyPattern: STAGE2_IDENTIFYING_KEY_PATTERN,
       fixedFields: fixedFieldsOf(await platformDefaultDefinition()),
     }
@@ -82,17 +82,34 @@ describe('validateDefinition (pure, override 1 + spec rules)', () => {
     expect(() => validateDefinition(def, d)).not.toThrow()
   })
 
-  test('a student key OFF the allowlist is rejected (override 1)', async () => {
+  test('a director may add a NEW, non-identifying student question', async () => {
+    // The closed code allowlist no longer gates student keys: the published
+    // definition IS the allowlist, so the questions a director writes reach the
+    // child and the backend accepts exactly those keys.
     const def = await platformDefaultDefinition()
     const student = def.sections.find((s) => s.id === 'student')!
-    student.questions.push({ id: 's_new', key: 'made_up_key', label: 'x', type: 'long_text', required: false })
-    try {
-      validateDefinition(def, await deps())
-      throw new Error('should have thrown')
-    } catch (e) {
-      expect(e).toBeInstanceOf(ApplicationFormValidationError)
-      expect((e as ApplicationFormValidationError).code).toBe('student_key_not_allowed')
-    }
+    student.questions.push({
+      id: 's_new',
+      key: 'favorite_project',
+      label: 'What is the best thing you have ever made?',
+      type: 'long_text',
+      required: false,
+    })
+    expect(() => validateDefinition(def, awaitDepsFor(def))).not.toThrow()
+  })
+
+  test('allowedStudentKeys reflects exactly the published student questions', async () => {
+    const def = await platformDefaultDefinition()
+    const student = def.sections.find((s) => s.id === 'student')!
+    student.questions.push({
+      id: 's_new',
+      key: 'favorite_project',
+      label: 'x',
+      type: 'long_text',
+      required: false,
+    })
+    expect(allowedStudentKeys(def)).toContain('favorite_project')
+    expect(allowedStudentKeys(def)).toEqual(student.questions.map((q) => q.key))
   })
 
   test('an identifying student key is rejected with the identifying signal', async () => {
@@ -165,11 +182,10 @@ function catchErr(fn: () => unknown): unknown {
   }
   throw new Error('expected the function to throw')
 }
-/** Deps with the real allowlist/pattern; fixedFields empty (the identifying check
- *  fires during the section loop, before fixed-field validation). */
+/** Deps with the real identifying pattern; fixedFields empty (the identifying
+ *  check fires during the section loop, before fixed-field validation). */
 function awaitDepsFor(_def: FormDefinition) {
   return {
-    allowedStudentFields: STAGE2_STUDENT_ALLOWED_FIELDS,
     identifyingKeyPattern: STAGE2_IDENTIFYING_KEY_PATTERN,
     fixedFields: [],
   }
@@ -309,13 +325,15 @@ describe('ApplicationFormService.saveForm (PUT)', () => {
     expect(rows).toHaveLength(0)
   })
 
-  test('a student key off the allowlist is rejected 400 (override 1) and no row is written', async () => {
+  test('an IDENTIFYING student key is rejected 400 at publish and no row is written', async () => {
+    // The COPPA floor moved to publish time: the director is told in the editor,
+    // rather than the child hitting an opaque wall when they try to save.
     const chapter = await makeChapter(h.sql)
     const director = await makeAdult(h.sql)
     const ctx = directorCtx(director, chapter)
     const def = await platformDefaultDefinition()
     def.sections.find((s) => s.id === 'student')!.questions.push({
-      id: 's_bad', key: 'super_secret', label: 'x', type: 'long_text', required: false,
+      id: 's_bad', key: 'home_address', label: 'Where do you live?', type: 'long_text', required: false,
     })
     let caught: unknown
     await withRequest(async () => {
@@ -326,9 +344,26 @@ describe('ApplicationFormService.saveForm (PUT)', () => {
       }
     })
     expect(caught).toBeInstanceOf(ApplicationFormValidationError)
-    expect((caught as ApplicationFormValidationError).code).toBe('student_key_not_allowed')
+    expect((caught as ApplicationFormValidationError).code).toBe('identifying_key')
     const rows = await h.sql`select id from application_form where chapter_id = ${chapter}`
     expect(rows).toHaveLength(0)
+  })
+
+  test('a NEW non-identifying student question publishes and becomes an accepted 2B key', async () => {
+    const chapter = await makeChapter(h.sql)
+    const director = await makeAdult(h.sql)
+    const ctx = directorCtx(director, chapter)
+    const def = await platformDefaultDefinition()
+    def.sections.find((s) => s.id === 'student')!.questions.push({
+      id: 's_new', key: 'favorite_project', label: 'Best thing you have made?', type: 'long_text', required: false,
+    })
+    await withRequest(async () => {
+      await svc().saveForm(ctx, { definition: def, publish: true }, chapter)
+    })
+    const [row] = await h.sql`
+      select definition from application_form
+      where chapter_id = ${chapter} and status = 'published' order by version desc limit 1`
+    expect(allowedStudentKeys(row!.definition as FormDefinition)).toContain('favorite_project')
   })
 })
 
@@ -400,7 +435,7 @@ describe('version stamping (override 2): getApplication renders the stamped vers
       guardianEmail: `guardian-${randomUUID().slice(0, 6)}@example.test`,
     })
     const { studentToken } = await s2.createStudentLink(parentToken)
-    await s2.saveStudentSection(studentToken, { interests: 'robotics', motivation: 'to build' })
+    await s2.saveStudentSection(studentToken, { interests: 'robotics', motivation: 'to build' }, { finish: true })
     const { applicationId } = await s2.submitStage2(parentToken)
     return applicationId
   }
@@ -457,7 +492,7 @@ describe('safety regression: saveStudentSection guard unchanged', () => {
     await s2.startStage2(parentToken)
     await s2.saveParentSection(parentToken, { childName: 'Minor Testchild' })
     const { studentToken } = await s2.createStudentLink(parentToken)
-    await expect(s2.saveStudentSection(studentToken, { off_list_key: 'x' })).rejects.toBeInstanceOf(
+    await expect(s2.saveStudentSection(studentToken, { off_list_key: 'x' }, { finish: true })).rejects.toBeInstanceOf(
       StudentSectionFieldNotAllowedError,
     )
   })

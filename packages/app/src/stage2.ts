@@ -38,7 +38,12 @@ import type { Sql, JSONValue } from 'postgres'
 import { generateSessionToken, hashToken } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig, guardianNamesMatch } from './config.js'
 import { type Mailer, defaultMailer } from './mail.js'
-import { resolvePublishedForm, type ResolvedForm } from './application-form.js'
+import {
+  allowedStudentKeys,
+  formById,
+  resolvePublishedForm,
+  type ResolvedForm,
+} from './application-form.js'
 import { writeApplicationEvent } from './events.js'
 import {
   InvalidStage2TokenError,
@@ -95,6 +100,12 @@ export interface ReviewStage2Result {
   parentAnswers: Answers | null
   /** The 2B student answers, read-only (the parent cannot edit them). */
   studentAnswers: Answers | null
+  /**
+   * The form definition STAMPED on this draft, so the review screen labels every
+   * answer with the exact question that was asked — not a prettified key, and not
+   * a newer version of the form the applicant never saw.
+   */
+  form: ResolvedForm | null
 }
 
 export interface SubmitStage2Result {
@@ -212,12 +223,21 @@ export class Stage2Service {
    */
   async saveParentSection(parentToken: string, answers: Answers): Promise<void> {
     const draft = await this.loadDraftByParentToken(parentToken)
-    this.assertPhase(draft, ['2a', '2b'])
+    // 2c is permitted: SAVING is not SUBMITTING, so a parent who spots a typo on
+    // the review screen can correct their own section right up until they submit.
+    // Only submitStage2 closes editing. A submitted draft is phase 'submitted'
+    // and is refused here.
+    this.assertPhase(draft, ['2a', '2b', '2c'])
+
+    // Advance 2a -> 2b on the first save, but never drag a draft BACKWARDS: a
+    // parent editing at review time stays at 2c rather than being bounced to 2b,
+    // which would strand the student's finished section behind a phase gate.
+    const nextPhase = draft.phase === '2c' ? '2c' : '2b'
 
     await this.sql`
       update application_draft set
         parent_answers = coalesce(parent_answers, '{}'::jsonb) || ${this.sql.json(answers as unknown as JSONValue)},
-        phase = '2b'
+        phase = ${nextPhase}
       where id = ${draft.id}
     `
   }
@@ -251,10 +271,31 @@ export class Stage2Service {
    * `2b_saved` and advances to `2c` (parent review). This SAVES and notifies the
    * parent; it does NOT submit and creates NO `application`.
    */
-  async saveStudentSection(studentToken: string, answers: Answers): Promise<void> {
+  async saveStudentSection(
+    studentToken: string,
+    answers: Answers,
+    opts?: { finish?: boolean },
+  ): Promise<void> {
     const draft = await this.loadDraftByStudentToken(studentToken)
     this.assertPhase(draft, ['2b'])
-    this.assertNonIdentifying(answers)
+    await this.assertStudentKeysAllowed(draft, answers)
+
+    // SAVE and FINISH are different acts. A plain save merges the answers and
+    // leaves the draft in 2b, so the student can close the tab, reopen their link
+    // and keep working (getStudentDraft prefills what they wrote). Only FINISH
+    // hands the application on: it advances to 2c and emails the parent. Without
+    // this split every keystroke-save would fire a "your child is done" email and
+    // lock the student out of their own answers.
+    const finish = opts?.finish === true
+
+    if (!finish) {
+      await this.sql`
+        update application_draft set
+          student_answers = coalesce(student_answers, '{}'::jsonb) || ${this.sql.json(answers as unknown as JSONValue)}
+        where id = ${draft.id}
+      `
+      return
+    }
 
     // Mint a fresh CSPRNG REVIEW token so the ready-to-review email can carry a
     // WORKING "Review and submit" button. Only its hash is stored on the draft
@@ -317,11 +358,19 @@ export class Stage2Service {
   async reviewStage2(token: string): Promise<ReviewStage2Result> {
     const draft = await this.loadDraftByParentOrReviewToken(token)
     this.assertPhase(draft, ['2c'])
+    // The STAMPED form, so the review labels match what was actually asked even
+    // if the director has republished since. Falls back to the chapter's current
+    // published form for a legacy draft that carries no stamp.
+    const form =
+      draft.form_id !== null
+        ? await formById(this.sql, draft.form_id)
+        : await resolvePublishedForm(this.sql, draft.lead_chapter_id)
     return {
       phase: draft.phase,
       status: draft.status,
       parentAnswers: draft.parent_answers,
       studentAnswers: draft.student_answers,
+      form,
     }
   }
 
@@ -566,18 +615,41 @@ export class Stage2Service {
   }
 
   /**
-   * Enforce the 2B non-identifying allowlist. Rejects loudly: an identifying-looking
-   * key raises StudentSectionIdentifyingFieldError (the specific signal), any other
-   * off-allowlist key raises StudentSectionFieldNotAllowedError.
+   * Enforce the 2B write rules against THIS draft's stamped form.
+   *
+   * Two independent gates, both rejecting loudly:
+   *
+   *  1. The identifying-key pattern — the COPPA floor. Checked FIRST and
+   *     unconditionally, so a name/email/school/phone/birthday key is refused even
+   *     if a form somehow published one (the editor refuses them too, at publish
+   *     time). Raises StudentSectionIdentifyingFieldError, the specific signal.
+   *
+   *  2. The published definition's own student keys — the allowlist. A director's
+   *     published questions ARE the accepted keys, so the form the child fills and
+   *     the answers the backend stores can never drift apart. A key that is not a
+   *     question on the stamped form raises StudentSectionFieldNotAllowedError.
+   *
+   * The draft's STAMPED form is used (not the chapter's current published one), so
+   * a director republishing mid-application cannot invalidate answers a child is
+   * partway through writing. If the draft predates form stamping, the code
+   * allowlist in config is the fallback — that is the only remaining use of it.
    */
-  private assertNonIdentifying(answers: Answers): void {
-    for (const key of Object.keys(answers)) {
+  private async assertStudentKeysAllowed(draft: DraftRow, answers: Answers): Promise<void> {
+    const keys = Object.keys(answers)
+    for (const key of keys) {
       if (this.config.stage2IdentifyingKeyPattern.test(key)) {
         throw new StudentSectionIdentifyingFieldError(key)
       }
-      if (!this.config.stage2StudentAllowedFields.includes(key)) {
-        throw new StudentSectionFieldNotAllowedError(key)
-      }
+    }
+    if (keys.length === 0) return
+
+    let allowed: readonly string[] = this.config.stage2StudentAllowedFields
+    if (draft.form_id !== null) {
+      const form = await formById(this.sql, draft.form_id)
+      if (form !== null) allowed = allowedStudentKeys(form.definition)
+    }
+    for (const key of keys) {
+      if (!allowed.includes(key)) throw new StudentSectionFieldNotAllowedError(key)
     }
   }
 }

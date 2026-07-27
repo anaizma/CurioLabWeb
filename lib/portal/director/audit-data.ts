@@ -27,11 +27,7 @@ function fmt(d: string | undefined): string {
   return isNaN(t.getTime()) ? "—" : t.toLocaleString();
 }
 
-const SAMPLE: AuditEntry[] = [
-  { id: "a1", atLabel: "Jul 23, 2:14 PM", action: "invite.issued", subjectType: "invite", subjectId: "inv_sample_1" },
-  { id: "a2", atLabel: "Jul 23, 11:02 AM", action: "membership.activated", subjectType: "membership", subjectId: "mem_7" },
-  { id: "a3", atLabel: "Jul 22, 4:48 PM", action: "guardianship.verified", subjectType: "guardianship", subjectId: "gs_3" },
-];
+const SAMPLE: AuditEntry[] = [];
 
 export async function getAuditView(): Promise<AuditView> {
   const ctx = await getDirectorContext();

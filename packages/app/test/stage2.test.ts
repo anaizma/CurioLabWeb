@@ -235,6 +235,46 @@ describe('saveParentSection (2A, parent token)', () => {
     expect(d!.student_token_hash).toBeNull()
   })
 
+  test('the parent may still fix their own section at 2c — saving is not submitting', async () => {
+    // Saving stays open right up until submit. A parent who spots a typo on the
+    // review screen must be able to correct it without sending the student's
+    // section back, and the correction must not drag the draft out of 2c.
+    const f = await setup()
+    const s = await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parentAnswers)
+    const { studentToken } = await svc().createStudentLink(f.parentToken)
+    await svc().saveStudentSection(studentToken, { motivation: 'x' }, { finish: true })
+
+    await svc().saveParentSection(f.parentToken, { guardianPhone: '216-555-0000' })
+
+    const [d] = await h.sql`select phase, parent_answers from application_draft where id = ${s.draftId}`
+    expect(d!.phase).toBe('2c')
+    expect(d!.parent_answers).toMatchObject({
+      childName: 'Minor Testchild',
+      guardianPhone: '216-555-0000',
+    })
+    // Still submittable straight after the edit.
+    const submitted = await svc().submitStage2(f.parentToken)
+    expect(submitted.applicationId).toBeTruthy()
+  })
+
+  test('a SUBMITTED application can no longer be edited', async () => {
+    const f = await setup()
+    await svc().startStage2(f.parentToken)
+    await svc().saveParentSection(f.parentToken, parentAnswers)
+    const { studentToken } = await svc().createStudentLink(f.parentToken)
+    await svc().saveStudentSection(studentToken, { motivation: 'x' }, { finish: true })
+    await svc().submitStage2(f.parentToken)
+
+    let caught: unknown
+    try {
+      await svc().saveParentSection(f.parentToken, { guardianPhone: 'too late' })
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(Stage2NotInPhaseError)
+  })
+
   test('an unknown/forged parent token is rejected', async () => {
     let caught: unknown
     try {
@@ -260,7 +300,7 @@ describe('createStudentLink (explicit parent action, parent token)', () => {
     expect(d!.student_token_hash).toBe(hashToken(link.studentToken))
 
     // The minted token actually gates 2B.
-    await svc().saveStudentSection(link.studentToken, studentAnswers)
+    await svc().saveStudentSection(link.studentToken, studentAnswers, { finish: true })
     const [d2] = await h.sql`select phase, student_answers from application_draft where id = ${s.draftId}`
     expect(d2!.phase).toBe('2c')
     expect(d2!.student_answers).toMatchObject({ motivation: 'I like building robots' })
@@ -282,13 +322,13 @@ describe('createStudentLink (explicit parent action, parent token)', () => {
     // The old token is dead; the new one works.
     let caught: unknown
     try {
-      await svc().saveStudentSection(first.studentToken, studentAnswers)
+      await svc().saveStudentSection(first.studentToken, studentAnswers, { finish: true })
     } catch (e) {
       caught = e
     }
     expect(caught).toBeInstanceOf(InvalidStage2TokenError)
 
-    await svc().saveStudentSection(second.studentToken, studentAnswers)
+    await svc().saveStudentSection(second.studentToken, studentAnswers, { finish: true })
     const [d2] = await h.sql`select phase from application_draft where id = ${s.draftId}`
     expect(d2!.phase).toBe('2c')
   })
@@ -334,12 +374,79 @@ describe('saveStudentSection (2B, student token, non-identifying allowlist)', ()
     const f = await setup()
     const { s, studentToken } = await toStudentPhase(f)
 
-    await svc().saveStudentSection(studentToken, { motivation: 'x', interests: 'y', goals: 'z' })
+    await svc().saveStudentSection(studentToken, { motivation: 'x', interests: 'y', goals: 'z' }, { finish: true })
 
     const [d] = await h.sql`select phase, status, student_answers from application_draft where id = ${s.draftId}`
     expect(d!.phase).toBe('2c')
     expect(d!.status).toBe('2b_saved')
     expect(d!.student_answers).toMatchObject({ motivation: 'x', interests: 'y', goals: 'z' })
+  })
+
+  test('a plain SAVE (no finish) keeps the section editable and does not advance or notify', async () => {
+    const f = await setup()
+    const { s, studentToken } = await toStudentPhase(f)
+    const mailer = new FakeMailer()
+    const service = new Stage2Service({ sql: h.sql, mailer })
+
+    await service.saveStudentSection(studentToken, { motivation: 'half a thought' })
+
+    const [d] = await h.sql`
+      select phase, status, student_answers, review_token_hash from application_draft where id = ${s.draftId}`
+    // Still the student's to edit: 2b, no review token, and crucially no email —
+    // a save must not tell the parent their child is finished.
+    expect(d!.phase).toBe('2b')
+    expect(d!.status).toBe('in_progress')
+    expect(d!.review_token_hash).toBeNull()
+    expect(d!.student_answers).toMatchObject({ motivation: 'half a thought' })
+    expect(mailer.sent).toHaveLength(0)
+  })
+
+  test('saves accumulate across visits, and the last one wins per key', async () => {
+    const f = await setup()
+    const { s, studentToken } = await toStudentPhase(f)
+
+    await svc().saveStudentSection(studentToken, { motivation: 'first pass' })
+    await svc().saveStudentSection(studentToken, { interests: 'skating' })
+    await svc().saveStudentSection(studentToken, { motivation: 'better wording' })
+
+    const [d] = await h.sql`select phase, student_answers from application_draft where id = ${s.draftId}`
+    expect(d!.phase).toBe('2b')
+    expect(d!.student_answers).toMatchObject({ motivation: 'better wording', interests: 'skating' })
+  })
+
+  test('getStudentDraft returns what a save stored, so reopening the link resumes', async () => {
+    const f = await setup()
+    const { studentToken } = await toStudentPhase(f)
+
+    await svc().saveStudentSection(studentToken, { motivation: 'saved earlier' })
+    const resumed = await svc().getStudentDraft(studentToken)
+
+    expect(resumed.phase).toBe('2b')
+    expect(resumed.studentAnswers).toMatchObject({ motivation: 'saved earlier' })
+  })
+
+  test('finishing AFTER saves advances once and sends exactly one parent email', async () => {
+    const f = await setup()
+    const { s, studentToken } = await toStudentPhase(f)
+    const mailer = new FakeMailer()
+    const service = new Stage2Service({ sql: h.sql, mailer })
+
+    await service.saveStudentSection(studentToken, { motivation: 'draft' })
+    await service.saveStudentSection(studentToken, { interests: 'robots' })
+    expect(mailer.sent).toHaveLength(0)
+
+    await service.saveStudentSection(studentToken, { goals: 'ship something' }, { finish: true })
+
+    const [d] = await h.sql`
+      select phase, status, student_answers, review_token_hash from application_draft where id = ${s.draftId}`
+    expect(d!.phase).toBe('2c')
+    expect(d!.status).toBe('2b_saved')
+    expect(d!.review_token_hash).not.toBeNull()
+    // Everything written across the saves survives the finish.
+    expect(d!.student_answers).toMatchObject({
+      motivation: 'draft', interests: 'robots', goals: 'ship something',
+    })
+    expect(mailer.sent).toHaveLength(1)
   })
 
   test('rejects an identifying field (name/email/school) LOUDLY, storing nothing', async () => {
@@ -349,7 +456,7 @@ describe('saveStudentSection (2B, student token, non-identifying allowlist)', ()
     for (const bad of [{ student_name: 'Real Name' }, { email: 'kid@example.test' }, { school: 'PS 118' }]) {
       let caught: unknown
       try {
-        await svc().saveStudentSection(studentToken, { motivation: 'ok', ...bad })
+        await svc().saveStudentSection(studentToken, { motivation: 'ok', ...bad }, { finish: true })
       } catch (e) {
         caught = e
       }
@@ -367,7 +474,7 @@ describe('saveStudentSection (2B, student token, non-identifying allowlist)', ()
 
     let caught: unknown
     try {
-      await svc().saveStudentSection(studentToken, { motivation: 'x', secret_field: 'y' })
+      await svc().saveStudentSection(studentToken, { motivation: 'x', secret_field: 'y' }, { finish: true })
     } catch (e) {
       caught = e
     }
@@ -379,7 +486,7 @@ describe('saveStudentSection (2B, student token, non-identifying allowlist)', ()
     const { s, studentToken } = await toStudentPhase(f)
 
     const before = await countApps()
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
     expect(await countApps()).toBe(before)
 
     const [d] = await h.sql`select status from application_draft where id = ${s.draftId}`
@@ -393,7 +500,7 @@ describe('saveStudentSection (2B, student token, non-identifying allowlist)', ()
   test('no student email is ever stored on the draft', async () => {
     const f = await setup()
     const { s, studentToken } = await toStudentPhase(f)
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
     const [d] = await h.sql`select student_answers from application_draft where id = ${s.draftId}`
     expect(JSON.stringify(d!.student_answers)).not.toMatch(/@/)
   })
@@ -405,7 +512,7 @@ describe('reviewStage2 + submitStage2 (2C, parent token only)', () => {
     const s = await svc().startStage2(f.parentToken)
     await svc().saveParentSection(f.parentToken, parentAnswers)
     const { studentToken } = await svc().createStudentLink(f.parentToken)
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
     return { s, studentToken }
   }
 
@@ -414,7 +521,7 @@ describe('reviewStage2 + submitStage2 (2C, parent token only)', () => {
     const started = await svc().startStage2(f.parentToken)
     await svc().saveParentSection(f.parentToken, parentAnswers)
     const { studentToken } = await svc().createStudentLink(f.parentToken)
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
 
     const review = await svc().reviewStage2(f.parentToken)
     expect(review.phase).toBe('2c')
@@ -496,7 +603,7 @@ describe('sendBack (2C -> 2B)', () => {
     const s = await svc().startStage2(f.parentToken)
     await svc().saveParentSection(f.parentToken, parentAnswers)
     const { studentToken } = await svc().createStudentLink(f.parentToken)
-    await svc().saveStudentSection(studentToken, { motivation: 'first draft' })
+    await svc().saveStudentSection(studentToken, { motivation: 'first draft' }, { finish: true })
 
     const before = await countApps()
     await svc().sendBack(f.parentToken)
@@ -506,7 +613,7 @@ describe('sendBack (2C -> 2B)', () => {
     expect(d!.phase).toBe('2b')
     expect(d!.status).toBe('sent_back')
 
-    await svc().saveStudentSection(studentToken, { motivation: 'revised draft' })
+    await svc().saveStudentSection(studentToken, { motivation: 'revised draft' }, { finish: true })
     ;[d] = await h.sql`select phase, status, student_answers from application_draft where id = ${s.draftId}`
     expect(d!.phase).toBe('2c')
     expect(d!.status).toBe('2b_saved')
@@ -580,7 +687,7 @@ describe('getParentDraft (read-only 2A prefill, parent token)', () => {
     await svc().startStage2(f.parentToken)
     await svc().saveParentSection(f.parentToken, parentAnswers)
     const { studentToken } = await svc().createStudentLink(f.parentToken)
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
 
     const draft = await svc().getParentDraft(f.parentToken)
     expect(draft.phase).toBe('2c')
@@ -618,7 +725,7 @@ describe('getStudentDraft (read-only 2B prefill, student token)', () => {
   test('returns the saved studentAnswers and phase after a 2B save; changes nothing', async () => {
     const f = await setup()
     const { studentToken } = await toStudent(f)
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
 
     const draft = await svc().getStudentDraft(studentToken)
     expect(draft.phase).toBe('2c')
@@ -707,7 +814,7 @@ describe('request-time lead expiry', () => {
 
     let caught: unknown
     try {
-      await svc().saveStudentSection(studentToken, studentAnswers)
+      await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
     } catch (e) {
       caught = e
     }
@@ -719,7 +826,7 @@ describe('request-time lead expiry', () => {
     const s = await svc().startStage2(f.parentToken)
     await svc().saveParentSection(f.parentToken, parentAnswers)
     const { studentToken } = await svc().createStudentLink(f.parentToken)
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
     await expireLead(f.leadId)
 
     const before = await countApps()
@@ -766,7 +873,7 @@ describe('review token (the emailed 2C "Review and submit" button)', () => {
     const s = await service.startStage2(f.parentToken)
     await service.saveParentSection(f.parentToken, parentAnswers)
     const { studentToken } = await service.createStudentLink(f.parentToken)
-    await service.saveStudentSection(studentToken, studentAnswers)
+    await service.saveStudentSection(studentToken, studentAnswers, { finish: true })
     return { s, service, mailer, studentToken, reviewToken: reviewTokenFrom(mailer) }
   }
 
@@ -852,7 +959,7 @@ describe('review token (the emailed 2C "Review and submit" button)', () => {
       () => service.saveParentSection(reviewToken, parentAnswers),
       () => service.getParentDraft(reviewToken),
       () => service.getStudentDraft(reviewToken),
-      () => service.saveStudentSection(reviewToken, studentAnswers),
+      () => service.saveStudentSection(reviewToken, studentAnswers, { finish: true }),
     ]) {
       let caught: unknown
       try {
@@ -883,7 +990,7 @@ describe('review token (the emailed 2C "Review and submit" button)', () => {
     expect(caught).toBeInstanceOf(InvalidStage2TokenError)
 
     // The student finishes again -> a fresh review token is minted and emailed.
-    await service.saveStudentSection(studentToken, { motivation: 'revised' })
+    await service.saveStudentSection(studentToken, { motivation: 'revised' }, { finish: true })
     const secondReview = reviewTokenFrom(mailer)
     expect(secondReview).not.toBe(firstReview)
     const [d] = await h.sql`select review_token_hash from application_draft where id = ${s.draftId}`
@@ -912,7 +1019,7 @@ describe('review token (the emailed 2C "Review and submit" button)', () => {
       await service.saveParentSection(f.parentToken, parentAnswers)
       const { studentToken } = await service.createStudentLink(f.parentToken)
       // Nothing throws even though no email is delivered.
-      await service.saveStudentSection(studentToken, studentAnswers)
+      await service.saveStudentSection(studentToken, studentAnswers, { finish: true })
       const [d] = await h.sql`select review_token_hash from application_draft where id = ${s.draftId}`
       expect(d!.review_token_hash).not.toBeNull()
     } finally {
@@ -931,7 +1038,7 @@ describe('FIX A — submitStage2 writes a null -> submitted application_event', 
     const s = await svc().startStage2(f.parentToken)
     await svc().saveParentSection(f.parentToken, parentAnswers)
     const { studentToken } = await svc().createStudentLink(f.parentToken)
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
     return { s, studentToken }
   }
 
@@ -989,7 +1096,7 @@ describe('FIX B — submitStage2 name derivation prefers split keys, falls back 
     const s = await svc().startStage2(f.parentToken)
     await svc().saveParentSection(f.parentToken, parent)
     const { studentToken } = await svc().createStudentLink(f.parentToken)
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
     return s
   }
 
@@ -1077,7 +1184,7 @@ describe('submitStage2 — non-blocking duplicate flag (child name + DOB, same c
     await svc().startStage2(f.parentToken)
     await svc().saveParentSection(f.parentToken, parent)
     const { studentToken } = await svc().createStudentLink(f.parentToken)
-    await svc().saveStudentSection(studentToken, studentAnswers)
+    await svc().saveStudentSection(studentToken, studentAnswers, { finish: true })
     return svc().submitStage2(f.parentToken)
   }
 

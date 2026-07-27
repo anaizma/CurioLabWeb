@@ -1,5 +1,3 @@
-import { STUDENT_QUESTIONS } from "@/app/apply/funnel";
-
 // ---------------------------------------------------------------------------
 // Application-form definition model.
 //
@@ -92,15 +90,19 @@ const PARENT_QUESTIONS: FormQuestion[] = [
   { id: "p_contactConsent", key: "contactConsent", label: "I consent to be contacted about this application", type: "consent", required: true, fixed: true },
 ];
 
-// Student (Stage 2B) questionnaire — sourced from the live funnel config so the
-// seed matches exactly what applicants see today.
-const STUDENT_QS: FormQuestion[] = STUDENT_QUESTIONS.map((q) => ({
-  id: `s_${q.key}`,
-  key: q.key,
-  label: q.label,
-  type: "long_text" as QuestionType,
-  required: !q.optional,
-}));
+// Student (Stage 2B) questionnaire. This is only the SEED for a chapter that has
+// never saved a form; the published definition in the database is what applicants
+// actually see and what the backend accepts as 2B keys. A director may reword
+// these, remove them, or add their own, subject to one rule enforced at publish:
+// a student question may not ask for identifying information.
+const STUDENT_QS: FormQuestion[] = [
+  { id: "s_interests", key: "interests", label: "What do you like doing when you're not in school?", type: "long_text", required: true },
+  { id: "s_motivation", key: "motivation", label: "Why do you want to join CurioLab?", type: "long_text", required: true },
+  { id: "s_curiosity", key: "curiosity", label: "What's something you're curious about right now - in school or outside it?", type: "long_text", required: true },
+  { id: "s_problem_to_fix", key: "problem_to_fix", label: "Is there a problem you've noticed at school, in your neighborhood, or in your community that you wish someone would fix?", type: "long_text", required: true },
+  { id: "s_goals", key: "goals", label: "What do you hope to learn or make by the end of your first semester?", type: "long_text", required: true },
+  { id: "s_prior_experience", key: "prior_experience", label: "Have you done any coding, building, or making before?", type: "long_text", required: false },
+];
 
 export function defaultForm(): ApplicationForm {
   return {

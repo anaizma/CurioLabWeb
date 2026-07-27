@@ -104,7 +104,7 @@ describe('the Stage 2 three-phase chain against tokens', () => {
     // 2B: the student's non-identifying section (saves, does not submit).
     const studentSaved = await saveStudentSection({
       sql: h.sql,
-      body: { token: studentToken, answers: { motivation: 'I like robots', interests: 'robotics' } },
+      body: { token: studentToken, answers: { motivation: 'I like robots', interests: 'robotics' }, finish: true },
     })
     expect(studentSaved.status).toBe(200)
 
@@ -136,7 +136,7 @@ describe('the Stage 2 three-phase chain against tokens', () => {
       body: { token: parentToken, answers: { childName: 'C', guardianName: 'P', guardianEmail: 'parent-c@example.test' } },
     })
     const linked = await createStudentLink({ sql: h.sql, body: { token: parentToken } })
-    await saveStudentSection({ sql: h.sql, body: { token: linked.body.studentToken, answers: { motivation: 'x' } } })
+    await saveStudentSection({ sql: h.sql, body: { token: linked.body.studentToken, answers: { motivation: 'x' }, finish: true } })
 
     const back = await sendBack({ sql: h.sql, body: { token: parentToken } })
     expect(back.status).toBe(200)
@@ -160,7 +160,7 @@ describe('the Stage 2 three-phase chain against tokens', () => {
     })
     const linked = await createStudentLink({ sql: h.sql, body: { token: parentToken } })
     const studentToken = linked.body.studentToken
-    await saveStudentSection({ sql: h.sql, body: { token: studentToken, answers: { motivation: 'I like robots' } } })
+    await saveStudentSection({ sql: h.sql, body: { token: studentToken, answers: { motivation: 'I like robots' }, finish: true } })
 
     // Parent draft: saved 2A answers, current phase, no student answers leaked.
     const parentDraft = await getParentDraft({ sql: h.sql, body: { token: parentToken } })

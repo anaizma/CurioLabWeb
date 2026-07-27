@@ -25,6 +25,7 @@
 
 import type { Sql } from 'postgres'
 import type { CredentialOwner } from '@curiolab/core'
+import { passwordPolicyProblems } from '@curiolab/core'
 import {
   generateSessionToken,
   hashPassword,
@@ -33,7 +34,18 @@ import {
 } from '@curiolab/runtime'
 import { type AppConfig, defaultConfig } from './config.js'
 import { passwordResetRoute } from './maturation.js'
-import { InvalidCredentialTokenError } from './errors.js'
+import { InvalidCredentialTokenError, WeakPasswordError } from './errors.js'
+
+/**
+ * The single gate every password WRITE in this service passes. It lives here, at
+ * the service, rather than only at the HTTP edge or in the form, because this is
+ * the layer that actually calls hashPassword: a caller that bypasses the route
+ * still cannot write a password below policy.
+ */
+function assertPasswordPolicy(password: string): void {
+  const problems = passwordPolicyProblems(password)
+  if (problems.length > 0) throw new WeakPasswordError(problems)
+}
 
 export interface CredentialTokenServiceDeps {
   sql: Sql
@@ -133,6 +145,27 @@ export class CredentialTokenService {
     return { accountId, token, expiresAt, route }
   }
 
+  // ---- check (the reset FORM's server-side pre-flight) ---------------------
+  /**
+   * Is this reset token usable right now? A READ, deliberately: the page behind a
+   * reset link has to distinguish "type your new password" from "this link has
+   * expired or has already been used" BEFORE the person composes a password, and
+   * the only alternative would be to consume the token to find out.
+   *
+   * It is not an oracle: the token is high-entropy and unguessable, so the only
+   * caller who can ask about a token is the one already holding it, and the two
+   * not-usable causes (expired, consumed, never existed) are one answer.
+   */
+  async checkPasswordReset(token: string, opts: { now?: Date } = {}): Promise<boolean> {
+    const now = opts.now ?? new Date()
+    const [row] = await this.sql`
+      select 1 from credential_token
+      where token_hash = ${hashToken(token)} and purpose = 'password_reset'
+        and consumed_at is null and expires_at > ${now}
+    `
+    return row !== undefined
+  }
+
   // ---- consume (POST /auth/password/reset) ---------------------------------
   /**
    * Validate (live, unexpired, unconsumed) at request time; set the account's
@@ -157,6 +190,9 @@ export class CredentialTokenService {
     if (row === undefined) throw new InvalidCredentialTokenError()
 
     const accountId = row.account_id as string
+    // Policy BEFORE hashing: a weak password should cost neither an argon2id pass
+    // nor the token, so the person can simply try a stronger one on the same link.
+    assertPasswordPolicy(newPassword)
     // Hash after the validity pre-check (skip the cost for a clearly-invalid token).
     const passwordHash = await hashPassword(newPassword)
 
@@ -233,6 +269,9 @@ export class CredentialTokenService {
     if (row === undefined) throw new InvalidCredentialTokenError()
 
     const accountId = row.account_id as string
+    // Same order as consumePasswordReset: policy first, so a weak password costs
+    // neither the argon2id pass nor the one-shot token.
+    assertPasswordPolicy(newPassword)
     const passwordHash = await hashPassword(newPassword)
 
     return this.sql.begin(async (tx) => {

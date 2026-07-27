@@ -6,8 +6,9 @@ import {
   errorCopy,
   postJson,
   PARENT_FIELD_LABELS,
-  STUDENT_QUESTIONS,
+  type FormDefinitionLike,
 } from "../../funnel";
+import { questionsOf } from "../../FormFields";
 import ApplyLoading from "../../ApplyLoading";
 
 type Mode =
@@ -23,10 +24,58 @@ type ActionStatus = "idle" | "submitting" | "sendingBack";
 interface ReviewData {
   parentAnswers: Record<string, unknown>;
   studentAnswers: Record<string, unknown>;
+  form: FormDefinitionLike | null;
 }
 
 function hasValue(value: unknown): boolean {
-  return value !== undefined && value !== null && value !== "";
+  if (value === undefined || value === null || value === "") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function displayValue(value: unknown): string {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(", ");
+  return String(value);
+}
+
+/** Turn a bare answer key into something readable, for an answer whose question
+ *  is no longer on the form (the director removed it after it was answered). */
+function humanizeKey(k: string): string {
+  return k
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+/**
+ * Every answer the applicant actually gave, labelled by the stamped form. Answers
+ * are driven by the ANSWER blob, not the question list, so an answer whose
+ * question was since removed is still shown rather than silently disappearing
+ * from the parent's last look before they submit.
+ */
+function labelledAnswers(
+  form: FormDefinitionLike | null,
+  section: "parent" | "student",
+  blob: Record<string, unknown>,
+  fallbackLabels: Readonly<Record<string, string>> = {},
+): { key: string; label: string; value: string }[] {
+  const questions = questionsOf(form, section);
+  const order = new Map(questions.map((q, i) => [q.key, i]));
+  const labelOf = new Map(questions.map((q) => [q.key, q.label]));
+
+  return Object.keys(blob)
+    .filter((k) => hasValue(blob[k]))
+    // The combined convenience keys duplicate the split first/last name fields.
+    .filter((k) => order.has(k) || fallbackLabels[k] !== undefined)
+    .sort((a, b) => (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER))
+    .map((k) => ({
+      key: k,
+      label: labelOf.get(k) ?? fallbackLabels[k] ?? humanizeKey(k),
+      value: displayValue(blob[k]),
+    }));
 }
 
 export default function ReviewClient({ token }: { token: string }) {
@@ -54,6 +103,7 @@ export default function ReviewClient({ token }: { token: string }) {
 
       if (status === 200) {
         setData({
+          form: (body.form as FormDefinitionLike | null) ?? null,
           parentAnswers:
             (body.parentAnswers as Record<string, unknown>) ?? {},
           studentAnswers:
@@ -201,12 +251,13 @@ export default function ReviewClient({ token }: { token: string }) {
   }
 
   if (mode === "review" && data) {
-    const parentEntries = Object.entries(PARENT_FIELD_LABELS).filter(([key]) =>
-      hasValue(data.parentAnswers[key]),
+    const parentEntries = labelledAnswers(
+      data.form,
+      "parent",
+      data.parentAnswers,
+      PARENT_FIELD_LABELS,
     );
-    const studentEntries = STUDENT_QUESTIONS.filter((q) =>
-      hasValue(data.studentAnswers[q.key]),
-    );
+    const studentEntries = labelledAnswers(data.form, "student", data.studentAnswers);
 
     return (
       <div className="mx-auto max-w-2xl px-6 py-20">
@@ -218,28 +269,21 @@ export default function ReviewClient({ token }: { token: string }) {
         <div className="space-y-4 mb-12">
           <h2 className="text-xl font-bold">About your student</h2>
           <dl className="space-y-4">
-            {parentEntries.map(([key, label]) => {
-              const value = data.parentAnswers[key];
-              const display =
-                typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
-              return (
-                <div key={key}>
-                  <dt className="label mb-1">{label}</dt>
-                  <dd className="text-black">{display}</dd>
-                </div>
-              );
-            })}
+            {parentEntries.map((entry) => (
+              <div key={entry.key}>
+                <dt className="label mb-1">{entry.label}</dt>
+                <dd className="text-black">{entry.value}</dd>
+              </div>
+            ))}
           </dl>
         </div>
 
         <div className="space-y-6 mb-12">
           <h2 className="text-xl font-bold">Your student&apos;s own words</h2>
-          {studentEntries.map((q) => (
-            <div key={q.key}>
-              <p className="label mb-1">{q.label}</p>
-              <p className="text-black whitespace-pre-wrap">
-                {String(data.studentAnswers[q.key])}
-              </p>
+          {studentEntries.map((entry) => (
+            <div key={entry.key}>
+              <p className="label mb-1">{entry.label}</p>
+              <p className="text-black whitespace-pre-wrap">{entry.value}</p>
             </div>
           ))}
         </div>

@@ -164,19 +164,7 @@ export function emptyEditableFor(audience: FormAudience): EditableConsentForm {
 // Metadata mirrors the live @curiolab/app CATALOG. Item/field text is
 // representative, not the exact legal wording (the live read supplies that).
 
-const SAMPLE_FORMS: DirectorFormSummary[] = [
-  { formKey: "form-01", audience: "guardian", title: "Enrollment and Account Setup", documentId: "CL-CONSENT-01", version: "2026.03", elevated: false, itemCount: 9, fieldCount: 7, pdfPath: "/consent-forms/form-01.pdf" },
-  { formKey: "form-02", audience: "guardian", title: "Publishing Your Child’s Work Publicly", documentId: "CL-CONSENT-02", version: "2026.03", elevated: true, itemCount: 7, fieldCount: 3, pdfPath: "/consent-forms/form-02.pdf" },
-  { formKey: "form-03", audience: "guardian", title: "Photograph and Video Release", documentId: "CL-CONSENT-03", version: "2026.03", elevated: false, itemCount: 10, fieldCount: 3, pdfPath: "/consent-forms/form-03.pdf" },
-  { formKey: "form-04", audience: "guardian", title: "Direct Messages Between Your Child and Their Mentor", documentId: "CL-CONSENT-04", version: "2026.03", elevated: true, itemCount: 3, fieldCount: 3, pdfPath: "/consent-forms/form-04.pdf" },
-  { formKey: "form-05", audience: "guardian", title: "Shareable Verification Link Acknowledgment", documentId: "CL-CONSENT-05", version: "2026.03", elevated: false, itemCount: 5, fieldCount: 3, pdfPath: "/consent-forms/form-05.pdf" },
-  { formKey: "form-06", audience: "guardian", title: "Emergency Contact and Medical Authorization", documentId: "CL-CONSENT-06", version: "2026.03", elevated: false, itemCount: 4, fieldCount: 5, pdfPath: "/consent-forms/form-06.pdf" },
-  { formKey: "form-07", audience: "guardian", title: "Pickup and Release Authorization", documentId: "CL-CONSENT-07", version: "2026.03", elevated: false, itemCount: 3, fieldCount: 3, pdfPath: "/consent-forms/form-07.pdf" },
-  { formKey: "form-08", audience: "mentor", title: "Mentor Code of Conduct and Acceptable Use", documentId: "CL-CONSENT-08", version: "2026.03", elevated: false, itemCount: 1, fieldCount: 2, pdfPath: "/consent-forms/form-08.pdf" },
-  { formKey: "form-09", audience: "mentor", title: "Background Check Disclosure and Authorization", documentId: "CL-CONSENT-09", version: "2026.03", elevated: false, itemCount: 2, fieldCount: 2, pdfPath: "/consent-forms/form-09.pdf" },
-  { formKey: "form-10", audience: "mentor", title: "Volunteer and Role Agreement", documentId: "CL-CONSENT-10", version: "2026.03", elevated: false, itemCount: 1, fieldCount: 2, pdfPath: "/consent-forms/form-10.pdf" },
-  { formKey: "form-11", audience: "student", title: "Age of Majority Transfer Acknowledgment", documentId: "CL-CONSENT-11", version: "2026.03", elevated: false, itemCount: 5, fieldCount: 2, pdfPath: "/consent-forms/form-11.pdf" },
-];
+const SAMPLE_FORMS: DirectorFormSummary[] = [];
 
 /** Synthesize a representative detail for the sample (real metadata, generic clause text). */
 function sampleDetail(summary: DirectorFormSummary): DirectorFormDetail {

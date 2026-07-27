@@ -46,7 +46,14 @@ export function startStage2(input: Stage2StartInput): Promise<ControllerResult<S
 }
 
 export interface Stage2TokenBodyInput extends PublicInputBase {
-  body: { token?: unknown; answers?: unknown }
+  body: { token?: unknown; answers?: unknown; finish?: unknown }
+  /**
+   * The base URL for links in any mail this op sends (the 2B save emails the
+   * parent a "review and submit" link). Passed from the route so the link always
+   * matches the host the request actually arrived on; omitted, the service falls
+   * back to its configured APP_URL. See lib/app-url.ts.
+   */
+  appUrl?: string
 }
 
 /** POST /api/public/stage2/parent — 2A save (parent token); does NOT issue the student token. */
@@ -76,15 +83,23 @@ export function createStudentLink(
   })
 }
 
-/** POST /api/public/stage2/student — 2B save (student token); saves, does not submit. */
+/**
+ * POST /api/public/stage2/student — 2B save (student token); saves, never submits.
+ * `finish: true` additionally advances 2b -> 2c and emails the parent the review
+ * link; without it the section stays editable and nothing is sent.
+ */
 export function saveStudentSection(
   input: Stage2TokenBodyInput,
-): Promise<ControllerResult<{ saved: true }>> {
+): Promise<ControllerResult<{ saved: true; finished: boolean }>> {
   return runPublic(async () => {
     const token = reqStr(input.body?.token, 'token')
     const answers = reqObj(input.body?.answers, 'answers') as Answers
-    await new Stage2Service({ sql: input.sql }).saveStudentSection(token, answers)
-    return { status: 200, body: { saved: true } }
+    const config = input.appUrl === undefined ? undefined : { appUrl: input.appUrl }
+    // `finish: true` is the student pressing "I'm done" — it advances to 2c and
+    // emails the parent. Anything else is a plain save that keeps 2B editable.
+    const finish = input.body?.finish === true
+    await new Stage2Service({ sql: input.sql, config }).saveStudentSection(token, answers, { finish })
+    return { status: 200, body: { saved: true, finished: finish } }
   })
 }
 

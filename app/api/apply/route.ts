@@ -5,6 +5,15 @@
 import { getSql } from '@curiolab/http'
 import { LeadService } from '@curiolab/app'
 import { sendParentContinueEmail, sendDirectorLeadNotification } from '@/lib/emails/apply-mail'
+import { clientIp, verifyTurnstile, turnstileRefusal, TURNSTILE_FIELD } from '@/lib/turnstile'
+import { resolveAppUrl } from '@/lib/app-url'
+import {
+  checkAndRecord,
+  emailAndIpBuckets,
+  rateLimitRefusal,
+  APPLY_EMAIL_LIMIT,
+  APPLY_IP_LIMIT,
+} from '@/lib/rate-limit'
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
@@ -21,8 +30,39 @@ export async function POST(req: Request) {
     return Response.json({ error: 'invalid_request', field: 'chapter' }, { status: 400 })
   }
 
+  const sql = getSql()
+  const ip = clientIp(req)
+
+  // Bot check BEFORE any write or send, so a failed challenge costs nothing.
+  const bot = await verifyTurnstile(body[TURNSTILE_FIELD], ip)
+  if (!bot.ok) {
+    console.warn('[api/apply] turnstile rejected:', bot.errorCodes?.join(',') ?? 'unknown')
+    return turnstileRefusal()
+  }
+
+  // Throttle second: this endpoint sends two emails per accepted call.
+  const limited = await checkAndRecord(
+    sql,
+    'apply',
+    emailAndIpBuckets(email, ip, APPLY_EMAIL_LIMIT, APPLY_IP_LIMIT),
+  )
+  if (!limited.ok) {
+    console.warn(`[api/apply] rate limited on ${limited.exceeded}`)
+    return rateLimitRefusal(limited.retryAfterSeconds)
+  }
+
+  // The chapter code MUST resolve to a real chapter. Without this the lead is
+  // created with a null chapter_id, the family fills in every section, and
+  // submitStage2 then refuses (Stage2LeadChapterRequiredError) with a generic
+  // 400 they cannot act on — a dead end that strands their work. Rejecting the
+  // unknown code up front makes that state unreachable.
+  const [known] = await sql`select 1 from chapter where slug = ${chapter} limit 1`
+  if (known === undefined) {
+    return Response.json({ error: 'invalid_request', field: 'chapter' }, { status: 400 })
+  }
+
   try {
-    const result = await new LeadService({ sql: getSql() }).createLead({
+    const result = await new LeadService({ sql }).createLead({
       email,
       chapter,
       source,
@@ -32,7 +72,7 @@ export async function POST(req: Request) {
     // (a student-filler's link is emailed to the parent by the backend, which
     // holds that token). Best-effort: a send failure must not lose the lead.
     if (result.parentToken && process.env.RESEND_API_KEY) {
-      const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin
+      const origin = resolveAppUrl(req)
       const continueUrl = `${origin}/apply/parent/${result.parentToken}`
       try {
         await sendParentContinueEmail(email, continueUrl)
@@ -46,7 +86,7 @@ export async function POST(req: Request) {
     // failure must not lose the lead, so it is logged and swallowed - identical to
     // the continue-link send above.
     if (!result.resent && process.env.RESEND_API_KEY) {
-      const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin
+      const origin = resolveAppUrl(req)
       try {
         await sendDirectorLeadNotification({ leadEmail: email, chapter, fillerRole, source, appUrl: origin })
       } catch (mailErr) {

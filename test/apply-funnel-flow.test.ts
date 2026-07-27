@@ -91,8 +91,10 @@ describe('the apply funnel, end to end over the route handlers', () => {
     expect(linkRes.status).toBe(200)
     const studentToken = (await json(linkRes)).studentToken as string
 
+    // `finish: true` is the student pressing "I'm done" — a plain save keeps 2B
+    // open for them and would not advance the draft to review.
     const studentSave = await student(
-      req({ token: studentToken, answers: { interests: 'building model rockets', motivation: 'i want to make things', goals: 'finish a real project' } }),
+      req({ token: studentToken, answers: { interests: 'building model rockets', motivation: 'i want to make things', goals: 'finish a real project' }, finish: true }),
     )
     expect(studentSave.status).toBe(200)
 
@@ -112,11 +114,26 @@ describe('the apply funnel, end to end over the route handlers', () => {
   })
 
   test('a student filler gets NO token back', async () => {
+    // The chapter must resolve to a real row: an unmapped code is refused up front
+    // now, because a lead with no chapter could complete the whole funnel and then
+    // be unable to submit.
+    const slug = `cwru-sf-${randomUUID().slice(0, 8)}`
+    await makeChapterWithSlug(slug)
     const res = await apply(
-      req({ email: 'other.parent@example.test', chapter: 'another-school', fillerRole: 'student' }),
+      req({ email: 'other.parent@example.test', chapter: slug, fillerRole: 'student' }),
     )
     expect(res.status).toBe(201)
     expect((await json(res)).parentToken).toBeNull()
+  })
+
+  test('an unmapped chapter code is refused, so no dead-end lead is created', async () => {
+    const res = await apply(
+      req({ email: 'dead.end@example.test', chapter: 'another-school', fillerRole: 'parent' }),
+    )
+    expect(res.status).toBe(400)
+    expect((await json(res)).field).toBe('chapter')
+    const leads = await h.sql`select id from application_lead where email = 'dead.end@example.test'`
+    expect(leads).toHaveLength(0)
   })
 
   test('the student token cannot submit and identifying 2B fields are rejected', async () => {

@@ -20,11 +20,7 @@ export interface CalendarView {
   isSample: boolean;
 }
 
-const SAMPLE: CalendarEvent[] = [
-  { id: "cal_sample_1", title: "Weekly build session", kind: "session", startsAt: "2026-08-01T14:00:00.000Z", endsAt: "2026-08-01T16:00:00.000Z", audiences: ["parent", "mentor"], location: "Sears think[box], Room 3", notes: null },
-  { id: "cal_sample_2", title: "Mentor orientation", kind: "orientation", startsAt: "2026-07-28T23:00:00.000Z", endsAt: "2026-07-29T00:00:00.000Z", audiences: ["mentor"], location: "Zoom", notes: "New-cohort onboarding." },
-  { id: "cal_sample_3", title: "Directors sync", kind: "meeting", startsAt: "2026-07-30T18:00:00.000Z", endsAt: "2026-07-30T18:30:00.000Z", audiences: ["director"], location: null, notes: null },
-];
+const SAMPLE: CalendarEvent[] = [];
 
 function normKind(k: string | undefined): CalendarKind {
   return k === "orientation" || k === "meeting" || k === "other" ? k : "session";

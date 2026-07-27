@@ -29,7 +29,7 @@ import type {
   SessionContext,
 } from '@curiolab/core'
 import { MENTOR_ELIGIBILITY_ROLES } from '@curiolab/core'
-import { validateSession } from '@curiolab/runtime'
+import { touchSession, validateSession } from '@curiolab/runtime'
 import { MENTOR_ELIGIBILITY_ENFORCED, loadMentorEligibility } from '@curiolab/app'
 
 /** Whole years from `dob` to `at` (birthday-aware, UTC). */
@@ -57,6 +57,18 @@ export async function resolveAuthContext(
   if (!token) return null
   const s = await validateSession(sql, token, now)
   if (s === null) return null
+
+  // "Last seen" for the sessions list in portal settings (migration 0045). This
+  // is the one place every authenticated request already resolves a session, so
+  // it is the only place the field can be kept honest. touchSession skips the
+  // write unless the stamp is already minutes old, so the hot path pays for a
+  // no-op UPDATE rather than a row rewrite per request; a failure is swallowed
+  // because losing a display timestamp must never cost someone their session.
+  try {
+    await touchSession(sql, s.id, now)
+  } catch (err) {
+    console.error('[auth] failed to refresh session last_seen_at:', err)
+  }
 
   // The effective identity is the impersonated account when one is named.
   const effectiveAccountId = s.impersonatedAccountId ?? s.accountId

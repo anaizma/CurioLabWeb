@@ -7,11 +7,7 @@ export interface InvitesView {
   isSample: boolean;
 }
 
-const SAMPLE_INVITES: InviteRow[] = [
-  { inviteId: "inv_sample_1", kind: "guardian", targetEmail: "parent@example.org", status: "pending", issuedLabel: "Jul 21", expiresLabel: "Jul 28" },
-  { inviteId: "inv_sample_2", kind: "mentor", targetEmail: "mentor@example.org", status: "pending", issuedLabel: "Jul 20", expiresLabel: "Jul 27" },
-  { inviteId: "inv_sample_3", kind: "staff", targetEmail: null, status: "accepted", issuedLabel: "Jul 18", expiresLabel: "—" },
-];
+const SAMPLE_INVITES: InviteRow[] = [];
 
 function fmt(d: string | undefined | null): string { if (!d) return "—"; const t = new Date(d); return isNaN(t.getTime()) ? "—" : t.toLocaleDateString(); }
 

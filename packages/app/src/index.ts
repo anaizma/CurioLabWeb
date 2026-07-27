@@ -475,6 +475,7 @@ export {
   fixedFieldsOf,
   resolvePublishedForm,
   formById,
+  allowedStudentKeys,
   CHOICE_TYPES,
 } from './application-form.js'
 export type {
@@ -667,6 +668,7 @@ export {
   CredentialWitnessInvalidError,
   CredentialWitnessIsGuardianError,
   InvalidCredentialTokenError,
+  WeakPasswordError,
   ChapterNotFoundError,
   TermNotFoundError,
   PodNotFoundError,

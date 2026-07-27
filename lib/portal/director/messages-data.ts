@@ -31,26 +31,8 @@ function fmt(d: string | undefined | null): string {
   return isNaN(t.getTime()) ? "—" : t.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
 }
 
-const SAMPLE_THREADS: ThreadSummary[] = [
-  { id: "thr_sample_1", guardianName: "J. Okafor", subject: "Saturday cable", lastPreview: "Thanks so much! We'll pack one.", lastLabel: "Mon 6:40 PM" },
-  { id: "thr_sample_2", guardianName: "R. Nair", subject: null, lastPreview: "Yes — Saturday as usual that week.", lastLabel: "Sun 3:10 PM" },
-];
-const SAMPLE_DETAIL: Record<string, ThreadDetail> = {
-  thr_sample_1: {
-    id: "thr_sample_1", guardianName: "J. Okafor", subject: "Saturday cable",
-    messages: [
-      { id: "m1", who: "staff", name: "Ms. Alvarez (Mentor)", text: "Hi! Ari did great building the sensor circuit today — bring a USB-C cable next Saturday if you have one.", timeLabel: "Mon 4:12 PM" },
-      { id: "m2", who: "guardian", name: "J. Okafor", text: "Thanks so much! We'll pack one.", timeLabel: "Mon 6:40 PM" },
-    ],
-  },
-  thr_sample_2: {
-    id: "thr_sample_2", guardianName: "R. Nair", subject: null,
-    messages: [
-      { id: "m1", who: "guardian", name: "R. Nair", text: "Is there a session the week of the 28th?", timeLabel: "Sun 2:00 PM" },
-      { id: "m2", who: "staff", name: "Dr. Okoro (Director)", text: "Yes — Saturday as usual that week. I'll post the assignment on Sunday.", timeLabel: "Sun 3:10 PM" },
-    ],
-  },
-};
+const SAMPLE_THREADS: ThreadSummary[] = [];
+const SAMPLE_DETAIL: Record<string, ThreadDetail> = {};
 
 export async function getThreadsView(): Promise<ThreadsView> {
   const ctx = await getDirectorContext();

@@ -248,6 +248,36 @@ export function mapError(e: unknown): ControllerResult | null {
   if (TOO_MANY.has(name)) return { status: 429, body: { error: 'rate_limited' } }
   if (CONFLICT.has(name)) return { status: 409, body: { error: 'conflict' } }
   if (UNPROCESSABLE.has(name)) return { status: 422, body: { error: 'unprocessable' } }
+  // Form-definition validation is the one 400 that carries its reason. The
+  // endpoint is AUTHENTICATED and chapter-scoped (a director editing their own
+  // form), so there is no oracle to protect here — and an opaque
+  // "invalid_request" would leave the director guessing which of their questions
+  // the server refused, which is exactly the wall this validation exists to
+  // replace. `code`/`message`/`detail` name the offending section and key.
+  if (name === 'ApplicationFormValidationError' || name === 'ConsentFormValidationError') {
+    const err = e as Error & { code?: string; detail?: Record<string, unknown> }
+    return {
+      status: 400,
+      body: {
+        error: 'invalid_request',
+        code: err.code ?? 'invalid',
+        message: err.message,
+        detail: err.detail ?? {},
+      },
+    }
+  }
+  // The second 400 that carries its reason. The caller has already proved
+  // possession of a reset / change-required token, so there is nothing to protect
+  // with an opaque body — and "invalid_request" alone would leave someone
+  // guessing which rule their new password broke. The problems are the same
+  // sentences the form renders from the same shared policy.
+  if (name === 'WeakPasswordError') {
+    const err = e as Error & { problems?: readonly string[] }
+    return {
+      status: 400,
+      body: { error: 'weak_password', problems: err.problems ?? [] },
+    }
+  }
   if (BAD_REQUEST.has(name)) return { status: 400, body: { error: 'invalid_request' } }
   return null
 }

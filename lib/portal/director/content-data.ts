@@ -19,14 +19,8 @@ export interface ContentView {
   isSample: boolean;
 }
 
-const SAMPLE_NEWSLETTERS: NewsletterRow[] = [
-  { id: "nl_sample_1", title: "July build highlights", status: "draft" },
-  { id: "nl_sample_2", title: "Spring showcase recap", status: "published" },
-];
-const SAMPLE_REVIEWS: ReviewItem[] = [
-  { id: "rev_sample_1", type: "narrative", title: "Maya's intro narrative", author: "Maya R." },
-  { id: "rev_sample_2", type: "project", title: "Recycling robot", author: "Diego" },
-];
+const SAMPLE_NEWSLETTERS: NewsletterRow[] = [];
+const SAMPLE_REVIEWS: ReviewItem[] = [];
 
 export async function getContentView(): Promise<ContentView> {
   await getDirectorContext();

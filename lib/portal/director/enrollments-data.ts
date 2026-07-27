@@ -16,10 +16,7 @@ export interface EnrollmentsView {
 
 function fmt(d: string | undefined | null): string { if (!d) return "—"; const t = new Date(d); return isNaN(t.getTime()) ? "—" : t.toLocaleDateString(); }
 
-const SAMPLE: EnrollmentRow[] = [
-  { enrollmentRecordId: "enr_sample_1", studentName: "Diego", termName: "Fall 2026", guardianNameOnForm: "Marisol Santos", signatureLabel: "Jul 23", hasAccount: false },
-  { enrollmentRecordId: "enr_sample_2", studentName: "Maya R.", termName: "Fall 2026", guardianNameOnForm: "L. Rivera", signatureLabel: "Jul 15", hasAccount: true },
-];
+const SAMPLE: EnrollmentRow[] = [];
 
 export async function getEnrollmentsView(): Promise<EnrollmentsView> {
   const ctx = await getDirectorContext();

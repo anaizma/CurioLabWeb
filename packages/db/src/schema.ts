@@ -237,6 +237,16 @@ export const session = pgTable('session', {
   realActorAccountId: uuid('real_actor_account_id').references(() => account.id),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  // Device recognition (migration 0045). Nothing here is the raw value the
+  // browser sent: the hash is account-salted and irreversible, the label is a
+  // coarse "Chrome on Windows", and the IP hint is a /24 (or /48) network, never
+  // the exact address. See the migration for the full rationale.
+  deviceHash: text('device_hash'),
+  deviceLabel: text('device_label'),
+  ipHint: text('ip_hint'),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  // SHA-256 of the one-time "this wasn't me" token from the new-sign-in email.
+  revokeTokenHash: text('revoke_token_hash'),
   createdAt: createdAt(),
 })
 

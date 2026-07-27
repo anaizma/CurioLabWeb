@@ -127,10 +127,14 @@ describe('saveStudentSection — email 2: the ready-to-review parent email carri
     })
     const { studentToken } = await svc.createStudentLink(parentToken)
 
-    // Only saveStudentSection sends: start / saveParent / createStudentLink do not.
+    // Only FINISHING sends: start / saveParent / createStudentLink do not, and
+    // neither does a plain save — the student can keep working without the parent
+    // being told they are done.
+    expect(mailer.sent).toHaveLength(0)
+    await svc.saveStudentSection(studentToken, { motivation: 'still drafting' })
     expect(mailer.sent).toHaveLength(0)
 
-    await svc.saveStudentSection(studentToken, { motivation: 'I like building robots' })
+    await svc.saveStudentSection(studentToken, { motivation: 'I like building robots' }, { finish: true })
 
     expect(mailer.sent).toHaveLength(1)
     const msg = mailer.sent[0]!

@@ -47,107 +47,11 @@ function fmt(iso: string | undefined | null): string {
 
 // ---- representative data (full names; no titles/initials) ------------------
 
-const SAMPLE_INBOX: DirThread[] = [
-  {
-    id: "in_1", subject: "Session the week of the 28th?", counterpart: "Rohan Nair", counterpartRole: "parent", unread: true, lastLabel: "Sun 2:00 PM",
-    lastPreview: "Is there a session the week of the 28th? Priya has a recital that Saturday.",
-    msgs: [
-      { id: "m1", who: "parent", name: "Rohan Nair", body: "Is there a session the week of the 28th? Priya has a recital that Saturday.", timeLabel: "Sun 2:00 PM" },
-    ],
-  },
-  {
-    id: "in_2", subject: "USB-C cable for Saturday", counterpart: "Jordan Okafor", counterpartRole: "parent", unread: false, lastLabel: "Mon 6:40 PM",
-    lastPreview: "Thanks so much! We'll pack one.",
-    msgs: [
-      { id: "m1", who: "me", name: "You", body: "Ari did great building the sensor circuit today — bring a USB-C cable next Saturday if you have one.", timeLabel: "Mon 4:12 PM" },
-      { id: "m2", who: "parent", name: "Jordan Okafor", body: "Thanks so much! We'll pack one.", timeLabel: "Mon 6:40 PM" },
-    ],
-  },
-  {
-    id: "in_3", subject: "Pod roster question", counterpart: "Elena Alvarez", counterpartRole: "mentor", unread: false, lastLabel: "Jul 22",
-    lastPreview: "Can I move Diego into my Saturday pod?",
-    msgs: [
-      { id: "m1", who: "mentor", name: "Elena Alvarez", body: "Can I move Diego into my Saturday pod? He and Ari are already collaborating.", timeLabel: "Jul 22, 1:10 PM" },
-    ],
-  },
-];
+const SAMPLE_INBOX: DirThread[] = [];
 
-const SAMPLE_SENT: DirThread[] = [
-  {
-    id: "sent_1", subject: "Fall enrollment reminder", counterpart: "All guardians", unread: false, lastLabel: "Jul 19",
-    lastPreview: "Fall enrollment forms are due before the first September session.",
-    msgs: [
-      { id: "m1", who: "me", name: "You", body: "A reminder that fall enrollment forms are due before the first September session. You can complete everything from the Consent tab.", timeLabel: "Jul 19, 8:15 AM" },
-    ],
-  },
-  {
-    id: "sent_2", subject: "Newsletter assignments", counterpart: "Dev Kapoor", counterpartRole: "mentor", unread: false, lastLabel: "Jul 15",
-    lastPreview: "Can you collect two build-log posts from your pod this week?",
-    msgs: [
-      { id: "m1", who: "me", name: "You", body: "Can you collect two build-log posts from your pod this week for the newsletter?", timeLabel: "Jul 15, 9:30 AM" },
-      { id: "m2", who: "mentor", name: "Dev Kapoor", body: "On it — Ari's is ready, I'll get one more.", timeLabel: "Jul 15, 6:12 PM" },
-    ],
-  },
-];
+const SAMPLE_SENT: DirThread[] = [];
 
-const SAMPLE_OVERSIGHT: DirThread[] = [
-  {
-    id: "ov_1", subject: "Recycling robot — sensor help", counterpart: "Ari Okafor · Elena Alvarez", unread: false, lastLabel: "Jul 22",
-    lastPreview: "That fixed it!! The readings are steady now.",
-    participants: [{ role: "student", name: "Ari Okafor" }, { role: "mentor", name: "Elena Alvarez" }],
-    msgs: [
-      { id: "m1", who: "student", name: "Ari Okafor", body: "My IR sensor keeps giving random values when the motor runs. Is it broken?", timeLabel: "Jul 21, 5:20 PM" },
-      { id: "m2", who: "mentor", name: "Elena Alvarez", body: "Not broken — that's motor noise. Move the IR sensor away from the motor and twist the signal wires together.", timeLabel: "Jul 21, 6:05 PM" },
-      { id: "m3", who: "student", name: "Ari Okafor", body: "That fixed it!! The readings are steady now.", timeLabel: "Jul 22, 4:44 PM" },
-    ],
-  },
-  {
-    id: "ov_2", subject: "Newsletter draft feedback", counterpart: "Ari Okafor · Dev Kapoor", unread: false, lastLabel: "Jul 15",
-    lastPreview: "Second draft reads great — submitting it.",
-    participants: [{ role: "student", name: "Ari Okafor" }, { role: "mentor", name: "Dev Kapoor" }],
-    msgs: [
-      { id: "m1", who: "mentor", name: "Dev Kapoor", body: "Your build-log post is a great newsletter candidate. Add a line about what you'd do differently?", timeLabel: "Jul 14, 7:10 PM" },
-      { id: "m2", who: "student", name: "Ari Okafor", body: "Added it — and a photo of the wiring.", timeLabel: "Jul 15, 4:30 PM" },
-      { id: "m3", who: "mentor", name: "Dev Kapoor", body: "Second draft reads great — submitting it.", timeLabel: "Jul 15, 6:12 PM" },
-    ],
-  },
-  {
-    id: "ov_3", subject: "Fractions game — scoring bug", counterpart: "Priya Nair · Elena Alvarez", unread: false, lastLabel: "Jul 20",
-    lastPreview: "Try resetting the score inside the round loop.",
-    participants: [{ role: "student", name: "Priya Nair" }, { role: "mentor", name: "Elena Alvarez" }],
-    msgs: [
-      { id: "m1", who: "student", name: "Priya Nair", body: "My score keeps doubling every round. I can't find where.", timeLabel: "Jul 20, 3:00 PM" },
-      { id: "m2", who: "mentor", name: "Elena Alvarez", body: "Sounds like the score adds up across rounds. Try resetting the score inside the round loop.", timeLabel: "Jul 20, 3:40 PM" },
-    ],
-  },
-  {
-    id: "ov_4", subject: "First pod meeting", counterpart: "Diego Santos · Dev Kapoor", unread: false, lastLabel: "Jul 18",
-    lastPreview: "See you Saturday at 10!",
-    participants: [{ role: "student", name: "Diego Santos" }, { role: "mentor", name: "Dev Kapoor" }],
-    msgs: [
-      { id: "m1", who: "mentor", name: "Dev Kapoor", body: "Welcome to the pod, Diego! We meet Saturdays at 10. Bring a notebook.", timeLabel: "Jul 18, 11:00 AM" },
-      { id: "m2", who: "student", name: "Diego Santos", body: "See you Saturday at 10!", timeLabel: "Jul 18, 12:15 PM" },
-    ],
-  },
-  {
-    id: "ov_5", subject: "Saturday pickup", counterpart: "Rohan Nair · Elena Alvarez", unread: false, lastLabel: "Jul 17",
-    lastPreview: "Perfect, she's on the authorized list.",
-    participants: [{ role: "parent", name: "Rohan Nair" }, { role: "mentor", name: "Elena Alvarez" }],
-    msgs: [
-      { id: "m1", who: "parent", name: "Rohan Nair", body: "Priya's aunt will pick her up this Saturday — is that okay?", timeLabel: "Jul 17, 2:00 PM" },
-      { id: "m2", who: "mentor", name: "Elena Alvarez", body: "Perfect, she's on the authorized list. We'll check her in.", timeLabel: "Jul 17, 2:20 PM" },
-    ],
-  },
-  {
-    id: "ov_6", subject: "Family showcase night", counterpart: "Jordan Okafor · Dev Kapoor", unread: false, lastLabel: "Jul 16",
-    lastPreview: "Yes — families are very welcome!",
-    participants: [{ role: "parent", name: "Jordan Okafor" }, { role: "mentor", name: "Dev Kapoor" }],
-    msgs: [
-      { id: "m1", who: "parent", name: "Jordan Okafor", body: "Can Ari's grandparents come to the showcase night?", timeLabel: "Jul 16, 6:00 PM" },
-      { id: "m2", who: "mentor", name: "Dev Kapoor", body: "Yes — families are very welcome! It's at 6pm in the lab.", timeLabel: "Jul 16, 6:30 PM" },
-    ],
-  },
-];
+const SAMPLE_OVERSIGHT: DirThread[] = [];
 
 const FALLBACK: DirMailView = { inbox: SAMPLE_INBOX, sent: SAMPLE_SENT, oversight: SAMPLE_OVERSIGHT, live: false, isSample: true };
 

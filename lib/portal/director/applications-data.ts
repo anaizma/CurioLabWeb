@@ -48,66 +48,27 @@ export interface TermOption {
   name: string;
 }
 
+/**
+ * How a director-facing read turned out. The applications surfaces used to
+ * collapse "you are not signed in" and "the backend call failed" into a single
+ * fallback that served FABRICATED applicants (Ari Okafor and friends) behind a
+ * small banner. A director glancing at that page saw invented children presented
+ * as real applications. The two cases are now distinct and neither invents data:
+ *
+ *   ok              — live data, render it.
+ *   unauthenticated — no director session; the page sends them to log in.
+ *   error           — the ops call failed; the page says so and offers a retry.
+ */
+export type ViewState = "ok" | "unauthenticated" | "error";
+
 export interface ApplicationsView {
   applications: ApplicationRow[];
   /** The term the backend filtered to (most-recent by default, or the one requested); null when showing all terms. */
   activeTermId: string | null;
   activeTermName: string | null;
-  isSample: boolean;
+  state: ViewState;
 }
 
-// ---- sample (representative) data -----------------------------------------
-// Mirrors the live shape (full name, grade, school, contact, guardian, term) so the
-// representative view exercises the same fields the connected endpoints now return.
-
-const SAMPLE_TERMS: TermOption[] = [
-  { termId: "term_fall26", name: "Fall 2026" },
-  { termId: "term_summer26", name: "Summer 2026" },
-];
-/** All sample applications live in the most-recent sample term. */
-const SAMPLE_TERM_ID = "term_fall26";
-
-const SAMPLE: ApplicationDetail[] = [
-  {
-    applicationId: "app_sample_1", status: "submitted",
-    studentName: "Ari Okafor", gradeLevel: "8", school: "Lincoln Middle School", contactEmail: "j.okafor@example.com",
-    guardianName: "Jordan Okafor", guardianEmail: "j.okafor@example.com", termId: SAMPLE_TERM_ID, termName: "Fall 2026", submittedLabel: "Jul 22",
-    answers: [
-      { question: "What does the student want to build or explore?", answer: "A weather station that logs data to a small dashboard." },
-      { question: "Prior experience", answer: "Some Scratch; a little Python from a summer camp." },
-      { question: "Availability", answer: "Weekday evenings after 6pm." },
-      { question: "Why CurioLab?", answer: "Wants to meet other kids who like building things and get a mentor." },
-    ],
-    history: [{ at: "Jul 22", note: "Submitted by guardian" }],
-    duplicate: null,
-  },
-  {
-    applicationId: "app_sample_2", status: "screening",
-    studentName: "Priya Nair", gradeLevel: "10", school: "Westfield High School", contactEmail: "r.nair@example.com",
-    guardianName: "Rohan Nair", guardianEmail: "r.nair@example.com", termId: SAMPLE_TERM_ID, termName: "Fall 2026", submittedLabel: "Jul 21",
-    answers: [
-      { question: "What does the student want to build or explore?", answer: "A game that teaches younger kids fractions." },
-      { question: "Prior experience", answer: "Unity tutorials; comfortable with C#." },
-      { question: "Availability", answer: "Weekends." },
-      { question: "Why CurioLab?", answer: "Wants structure and a co-founder to ship an actual game." },
-    ],
-    history: [{ at: "Jul 21", note: "Submitted" }, { at: "Jul 22", note: "Moved to screening" }],
-    duplicate: null,
-  },
-  {
-    applicationId: "app_sample_3", status: "interview",
-    studentName: "Diego Santos", gradeLevel: "7", school: "Oakridge Middle School", contactEmail: "m.santos@example.com",
-    guardianName: "Maria Santos", guardianEmail: "m.santos@example.com", termId: SAMPLE_TERM_ID, termName: "Fall 2026", submittedLabel: "Jul 20",
-    answers: [
-      { question: "What does the student want to build or explore?", answer: "A robot that sorts recycling." },
-      { question: "Prior experience", answer: "None yet — very curious." },
-      { question: "Availability", answer: "Tuesday/Thursday afternoons." },
-      { question: "Why CurioLab?", answer: "Loves taking things apart and wants to build something that helps the planet." },
-    ],
-    history: [{ at: "Jul 20", note: "Submitted" }, { at: "Jul 21", note: "Screened" }, { at: "Jul 23", note: "Interview scheduled" }],
-    duplicate: null,
-  },
-];
 
 function fmt(d: string | undefined | null): string { if (!d) return "—"; const t = new Date(d); return isNaN(t.getTime()) ? "—" : t.toLocaleDateString(); }
 
@@ -180,27 +141,9 @@ function renderAgainstDefinition(definition: unknown, stage2a: unknown, stage2b:
   return out;
 }
 
-function toRow(a: ApplicationDetail): ApplicationRow {
-  return {
-    applicationId: a.applicationId,
-    status: a.status,
-    studentName: a.studentName,
-    gradeLevel: a.gradeLevel,
-    termName: a.termName,
-    submittedLabel: a.submittedLabel,
-    statusDateLabel: a.submittedLabel,
-    guardianName: a.guardianName,
-    school: a.school,
-    contactEmail: a.contactEmail,
-    duplicateFlag: false,
-  };
-}
-
-/** Sample rows honoring the requested term. Default (no termId) and "all" show every sample. */
-function sampleRows(termId?: string): ApplicationRow[] {
-  const all = SAMPLE.map(toRow);
-  if (!termId || termId === "all" || termId === SAMPLE_TERM_ID) return all;
-  return []; // samples only exist in the most-recent term
+/** The empty result for a read that could not produce live data. */
+function emptyView(state: ViewState): ApplicationsView {
+  return { applications: [], activeTermId: null, activeTermName: null, state };
 }
 
 // ---- live reads -----------------------------------------------------------
@@ -226,30 +169,29 @@ interface LiveListEnvelope {
   activeTermName?: string | null;
 }
 
-export async function getTerms(): Promise<{ terms: TermOption[]; isSample: boolean }> {
+/** The term filter options. An empty list simply hides the filter; it never invents terms. */
+export async function getTerms(): Promise<{ terms: TermOption[]; state: ViewState }> {
   const ctx = await getDirectorContext();
-  if (!ctx) return { terms: SAMPLE_TERMS, isSample: true };
+  if (!ctx) return { terms: [], state: "unauthenticated" };
   try {
     const res = await fetch(`${ctx.origin}/api/ops/terms`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
-    if (!res.ok) return { terms: SAMPLE_TERMS, isSample: true };
+    if (!res.ok) {
+      console.error(`[portal/applications] GET /api/ops/terms failed: ${res.status}`);
+      return { terms: [], state: "error" };
+    }
     const data = (await res.json()) as { items?: { termId?: string; name?: string }[] };
     const terms = (data.items ?? []).map((t, i) => ({ termId: t.termId ?? `term${i}`, name: t.name ?? "—" }));
-    return { terms, isSample: false };
-  } catch { return { terms: SAMPLE_TERMS, isSample: true }; }
+    return { terms, state: "ok" };
+  } catch (err) {
+    console.error("[portal/applications] GET /api/ops/terms threw:", err);
+    return { terms: [], state: "error" };
+  }
 }
 
 export async function getApplicationsView(opts?: { termId?: string }): Promise<ApplicationsView> {
   const termId = opts?.termId;
   const ctx = await getDirectorContext();
-  if (!ctx) {
-    const selected = termId && termId !== "all" ? termId : SAMPLE_TERM_ID;
-    return {
-      applications: sampleRows(termId),
-      activeTermId: termId === "all" ? null : selected,
-      activeTermName: termId === "all" ? null : (SAMPLE_TERMS.find((t) => t.termId === selected)?.name ?? null),
-      isSample: true,
-    };
-  }
+  if (!ctx) return emptyView("unauthenticated");
   try {
     // No termId → backend defaults to the most-recent term. ?termId=all shows every term.
     const params = new URLSearchParams();
@@ -257,7 +199,10 @@ export async function getApplicationsView(opts?: { termId?: string }): Promise<A
     params.set("view", "full");
     const qs = params.toString() ? `?${params.toString()}` : "";
     const res = await fetch(`${ctx.origin}/api/ops/applications${qs}`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
-    if (!res.ok) return { applications: sampleRows(termId), activeTermId: null, activeTermName: null, isSample: true };
+    if (!res.ok) {
+      console.error(`[portal/applications] GET /api/ops/applications failed: ${res.status}`);
+      return emptyView("error");
+    }
     const data = (await res.json()) as LiveListEnvelope;
     const applications: ApplicationRow[] = (data.items ?? []).map((a, i) => ({
       applicationId: a.applicationId ?? `app${i}`,
@@ -278,10 +223,11 @@ export async function getApplicationsView(opts?: { termId?: string }): Promise<A
       applications,
       activeTermId: data.activeTermId ?? null,
       activeTermName: data.activeTermName ?? null,
-      isSample: false,
+      state: "ok",
     };
-  } catch {
-    return { applications: sampleRows(termId), activeTermId: null, activeTermName: null, isSample: true };
+  } catch (err) {
+    console.error("[portal/applications] GET /api/ops/applications threw:", err);
+    return emptyView("error");
   }
 }
 
@@ -306,9 +252,12 @@ interface LiveDetail {
   };
 }
 
-export async function getApplicationDetail(id: string): Promise<{ detail: ApplicationDetail | null; isSample: boolean }> {
+export async function getApplicationDetail(
+  id: string,
+): Promise<{ detail: ApplicationDetail | null; state: ViewState }> {
   const ctx = await getDirectorContext();
-  if (ctx) {
+  if (!ctx) return { detail: null, state: "unauthenticated" };
+  {
     try {
       const res = await fetch(`${ctx.origin}/api/ops/applications/${id}`, { headers: { cookie: ctx.cookie }, cache: "no-store" });
       if (res.ok) {
@@ -340,10 +289,15 @@ export async function getApplicationDetail(id: string): Promise<{ detail: Applic
               }
             : null,
         };
-        return { detail, isSample: false };
+        return { detail, state: "ok" };
       }
-    } catch { /* fall through to sample */ }
+      // A 404 is a real answer (no such application in this chapter), not a
+      // failure to load — the page distinguishes it from a broken backend.
+      if (res.status === 404) return { detail: null, state: "ok" };
+      console.error(`[portal/applications] GET /api/ops/applications/${id} failed: ${res.status}`);
+    } catch (err) {
+      console.error(`[portal/applications] GET /api/ops/applications/${id} threw:`, err);
+    }
   }
-  const detail = SAMPLE.find((a) => a.applicationId === id) ?? SAMPLE[0] ?? null;
-  return { detail, isSample: true };
+  return { detail: null, state: "error" };
 }

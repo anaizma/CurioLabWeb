@@ -114,12 +114,26 @@ export interface FixedFieldSpec {
 }
 
 export interface ValidateDeps {
-  /** The code allowlist for student keys (override 1). */
-  allowedStudentFields: readonly string[]
-  /** The identifying-key rejection pattern (defence in depth). */
+  /**
+   * The COPPA floor for student questions: any student key matching this is
+   * refused at publish time. This is the ONLY constraint on which student keys a
+   * director may create — the published definition itself is the allowlist that
+   * saveStudentSection enforces at write time.
+   */
   identifyingKeyPattern: RegExp
   /** The fixed-field specs the incoming definition may not restructure. */
   fixedFields: readonly FixedFieldSpec[]
+}
+
+/**
+ * The student keys a given published definition permits — the runtime allowlist
+ * saveStudentSection checks a 2B write against. Derived from the definition so a
+ * director's published questions and the accepted answer keys can never drift.
+ */
+export function allowedStudentKeys(definition: FormDefinition | undefined | null): string[] {
+  if (!definition || !Array.isArray(definition.sections)) return []
+  const student = definition.sections.find((s) => s.id === 'student')
+  return (student?.questions ?? []).map((q) => q.key)
 }
 
 const SLUG_RE = /^[a-zA-Z][a-zA-Z0-9_]*$/
@@ -212,22 +226,21 @@ export function validateDefinition(definition: unknown, deps: ValidateDeps): For
         }
       }
 
-      // Override 1: student keys constrained to the code allowlist.
-      if (sectionId === 'student') {
-        if (deps.identifyingKeyPattern.test(key)) {
-          throw new ApplicationFormValidationError(
-            'identifying_key',
-            `student question key looks identifying: ${key}`,
-            { section: sectionId, key },
-          )
-        }
-        if (!deps.allowedStudentFields.includes(key)) {
-          throw new ApplicationFormValidationError(
-            'student_key_not_allowed',
-            `student question key is not on the allowlist: ${key}`,
-            { section: sectionId, key, allowed: [...deps.allowedStudentFields] },
-          )
-        }
+      // The COPPA floor for the student section. A director may now add their own
+      // student questions (the published definition is what applicants see AND
+      // what saveStudentSection accepts), so the closed code allowlist is no
+      // longer the gate. The identifying-key pattern IS, and it is enforced HERE,
+      // at publish time, so a director who tries to ask a child for their name,
+      // email, school, phone or birthday is refused in the editor with a clear
+      // message rather than the child hitting an opaque wall mid-application.
+      // saveStudentSection re-checks the same pattern at write time, so a form
+      // published before this rule existed still cannot smuggle a key through.
+      if (sectionId === 'student' && deps.identifyingKeyPattern.test(key)) {
+        throw new ApplicationFormValidationError(
+          'identifying_key',
+          `student question key looks identifying: ${key}`,
+          { section: sectionId, key },
+        )
       }
     }
   }
@@ -438,7 +451,6 @@ export class ApplicationFormService {
     const platformDefault = await resolvePublishedForm(this.sql, null)
     const fixedFields = platformDefault ? fixedFieldsOf(platformDefault.definition) : []
     const definition = validateDefinition(input.definition, {
-      allowedStudentFields: this.config.stage2StudentAllowedFields,
       identifyingKeyPattern: this.config.stage2IdentifyingKeyPattern,
       fixedFields,
     })

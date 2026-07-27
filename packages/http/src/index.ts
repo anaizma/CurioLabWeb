@@ -65,11 +65,24 @@ export {
   beginTotpEnrollment,
   confirmTotpEnrollment,
   requestPasswordReset,
+  checkPasswordResetToken,
   resetPassword,
   completeRequiredPasswordChange,
   startImpersonation,
   endImpersonation,
 } from './controllers/auth.js'
+export {
+  listSessions,
+  revokeSessions,
+  revokeSessionByLink,
+} from './controllers/sessions.js'
+export type {
+  SessionListItem,
+  SessionListResult,
+  RevokeSessionsInput,
+  RevokeSessionsResult,
+  RevokeSessionByLinkInput,
+} from './controllers/sessions.js'
 export type {
   SessionSummary,
   MembershipSummary,
@@ -81,7 +94,9 @@ export type {
   PasswordResetRoute,
   PasswordResetDelivery,
   RequestPasswordResetInput,
+  CheckPasswordResetTokenInput,
   ResetPasswordInput,
+  NewSignInNotice,
   CompleteRequiredPasswordChangeInput,
   StartImpersonationInput,
   StartImpersonationResult,

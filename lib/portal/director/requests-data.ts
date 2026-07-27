@@ -22,12 +22,8 @@ export interface RequestsView {
 
 function fmt(d: string | undefined | null): string { if (!d) return "—"; const t = new Date(d); return isNaN(t.getTime()) ? "—" : t.toLocaleDateString(); }
 
-const SAMPLE_DELETIONS: DeletionRequestRow[] = [
-  { deletionRequestId: "del_sample_1", subjectName: "Former student (Grade 12)", status: "submitted", requestedLabel: "Jul 19" },
-];
-const SAMPLE_EXPORTS: ExportRequestRow[] = [
-  { exportRequestId: "exp_sample_1", subjectName: "Priya S.", status: "submitted", requestedLabel: "Jul 20" },
-];
+const SAMPLE_DELETIONS: DeletionRequestRow[] = [];
+const SAMPLE_EXPORTS: ExportRequestRow[] = [];
 
 export async function getRequestsView(): Promise<RequestsView> {
   const ctx = await getDirectorContext();
