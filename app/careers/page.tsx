@@ -2,19 +2,19 @@ import Link from "next/link";
 
 const values = [
   {
-    kicker: "Real-world experience",
-    title: "We invest in the people who build CurioLab",
-    body: "Students work shoulder-to-shoulder with experienced, full-time colleagues on work that actually ships — teaching, mentoring, operations, finance, and communications. You'll leave with development resources, real mentorship, and a track record you can point to.",
+    kicker: "Substantive Responsibility, Measurable Impact",
+    title: "Investments in Next-Generation Leadership",
+    body: "At CurioLab, emerging leaders work directly alongside experienced professionals across core institutional functions, including instructional design, technical program management, operations, financial strategy, and strategic communications. Participants do not merely assist; they drive execution, leaving with tangible accomplishments, professional references, and a verified track record of operational impact.",
   },
   {
-    kicker: "What you'll gain",
-    title: "Skills, a portfolio, and a network that lasts",
-    body: "As a nonprofit, our rewards are experience and growth. Every role is built to help you develop tangible skills, a portfolio of real work, a professional network, and references from people who have seen you deliver — whether you're a student exploring a career or a professional giving back.",
+    kicker: "Professional Capital & Ecosystem Growth",
+    title: "Cultivating Skills, Portfolios, and Lifelong Networks",
+    body: "As a mission-driven organization, our primary investment is in human capital. Every role within CurioLab is structured to accelerate professional growth, equipping team members with specialized technical competencies, a portfolio of executed initiatives, and enduring connections across higher education, industry, and the social sector. Whether you are a student launching your career or a professional contributing strategic expertise, your contribution drives institutional progress.",
   },
   {
-    kicker: "Bring your authentic self",
-    title: "A place to be yourself",
-    body: "CurioLab is built by a mix of students and professionals from many backgrounds, and we are better for it. We are committed to a welcoming, inclusive culture where everyone — first-time volunteers and seasoned experts alike — can do their best work.",
+    kicker: "Inclusive Excellence & Collaborative Culture",
+    title: "An Ecosystem Built on Diverse Perspectives",
+    body: "CurioLab thrives on the synthesis of diverse academic disciplines, professional backgrounds, and personal experiences. We are dedicated to maintaining an inclusive, high-trust environment where contributors at every level, from first-time student coordinators to veteran advisors, are empowered to perform their best work, challenge conventional thinking, and grow together.",
   },
 ];
 
@@ -65,14 +65,19 @@ export default function CareersPage() {
   return (
     <div className="mx-auto max-w-6xl px-6 py-20">
       <p className="label-blue mb-3">Join the team</p>
-      <h1 className="text-3xl md:text-5xl font-bold mb-6">Careers</h1>
+      <h1 className="text-3xl md:text-5xl font-bold mb-6 text-balance">
+        Shape the Infrastructure of Student Innovation
+      </h1>
       <p className="text-black max-w-3xl text-lg mb-20">
-        CurioLab is a student-led nonprofit with chapters at universities and
-        educational institutions. Undergraduate and graduate students run real
-        programs alongside full-time professionals — gaining hands-on career
-        experience, mentorship, and skills that a classroom alone can&apos;t
-        provide.
+        CurioLab is a multi-institutional, student-led nonprofit operating
+        across university campuses and educational ecosystems. We pair
+        ambitious undergraduate and graduate scholars with seasoned industry
+        professionals to execute real-world educational initiatives,
+        delivering leadership experience, executive mentorship, and
+        operational agency that traditional coursework cannot replicate.
       </p>
+
+      <p className="label-blue mb-8">Value Propositions</p>
 
       {/* Value sections — text alternating with an image on each row. */}
       <div className="space-y-16 mb-24">

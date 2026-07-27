@@ -99,17 +99,6 @@ export default function TeamPage() {
           </div>
         ))}
       </div>
-
-      <div className="bg-ivory rounded-2xl p-8 md:p-12">
-        <p className="label text-coral mb-3">Near-peer structure</p>
-        <h2 className="text-2xl font-bold mb-4">Students teach Students</h2>
-        <p className="text-sm max-w-2xl">
-          We belive that the best way to establish that you knwo something is by teaching it. That's why Innovator-tier students mentor Explorers, University-tier alumni
-          mentor Innovators, and staff oversee the whole ladder. But most of the
-          day-to-day teaching happens student to student — which is part of
-          why it holds up over multiple semesters in cohorts.
-        </p>
-      </div>
     </div>
   );
 }
